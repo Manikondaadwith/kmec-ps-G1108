@@ -13,7 +13,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from app.api.schemas import ScoutChatRequest
 from app.config import Settings, get_settings
 from app.pipeline.config import PRODUCTION_METRICS
-from app.pipeline.model import build_model, parameter_count
+from app.pipeline.model import build_model, download_model_if_needed, parameter_count
 from app.services.analysis_service import AnalysisService
 from app.services.scout.service import ScoutContext, ScoutService
 from app.services.supabase import AuthenticatedUser, SupabaseService
@@ -33,7 +33,12 @@ class BackendState:
 
 def _load_model(state: BackendState) -> None:
     model = build_model()
-    weights = torch.load(state.settings.model_path, map_location=state.device, weights_only=True)
+    # Download from Supabase if no local path, or local path doesn't exist
+    if state.settings.model_path and state.settings.model_path.exists():
+        model_path = str(state.settings.model_path)
+    else:
+        model_path = download_model_if_needed()
+    weights = torch.load(model_path, map_location=state.device, weights_only=True)
     model.load_state_dict(weights)
     model.to(state.device)
     model.eval()

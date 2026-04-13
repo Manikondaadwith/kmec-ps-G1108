@@ -6,7 +6,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        populate_by_name=True,
+    )
 
     app_name: str = "NeuroSentinel Backend"
     environment: str = "development"
@@ -28,7 +33,7 @@ class Settings(BaseSettings):
     huggingface_model: str = "mistralai/Mistral-7B-Instruct-v0.3"
     huggingface_api_base: str = "https://api-inference.huggingface.co/models"
 
-    model_path: Path = Field(alias="MODEL_PATH")
+    model_path: Path | None = Field(default=None, alias="MODEL_PATH")
     scout_max_history: int = 20
     scout_report_limit: int = 8
 

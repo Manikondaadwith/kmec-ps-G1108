@@ -1,7 +1,40 @@
 import math
+import os
 
 import torch
 import torch.nn as nn
+
+BUCKET_NAME = "ml-models"
+MODEL_FILENAME = "multirep_best_model_v4.pt"
+LOCAL_MODEL_PATH = f"/tmp/{MODEL_FILENAME}"  # IMPORTANT: only safe writable path on Render free tier
+
+
+def download_model_if_needed() -> str:
+    """Download the model weights from Supabase Storage if not already cached locally."""
+    if os.path.exists(LOCAL_MODEL_PATH):
+        print("✅ Model already exists locally")
+        return LOCAL_MODEL_PATH
+
+    print("⬇️ Downloading model from Supabase...")
+
+    from supabase import create_client, Client
+
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
+
+    if not supabase_url or not supabase_key:
+        raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set to download the model.")
+
+    supabase: Client = create_client(supabase_url, supabase_key)
+
+    res = supabase.storage.from_(BUCKET_NAME).download(MODEL_FILENAME)
+
+    with open(LOCAL_MODEL_PATH, "wb") as f:
+        f.write(res)
+
+    print("✅ Model downloaded successfully")
+
+    return LOCAL_MODEL_PATH
 
 
 class PositionalEncoding(nn.Module):
