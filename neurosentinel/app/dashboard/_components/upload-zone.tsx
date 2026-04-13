@@ -15,6 +15,9 @@ type State =
   | { s: 'complete'; file: File; reportId: string; msg: string }
   | { s: 'error'; file: File | null; msg: string }
 
+const MAX_FILE_SIZE_MB = 150
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+
 const formatSize = (bytes: number) =>
   bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1048576).toFixed(1)} MB`
 
@@ -35,7 +38,7 @@ export function UploadZone({
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const dragCount = useRef(0)
-  const xhrRef = useRef<XMLHttpRequest | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const router = useRouter()
   const { showNotification, dismissNotification } = useReportNotification()
@@ -73,24 +76,28 @@ export function UploadZone({
         updateState({ s: 'error', file: null, msg: 'Only .edf files are supported.' })
         return
       }
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        updateState({ s: 'error', file: null, msg: `File must be less than ${MAX_FILE_SIZE_MB} MB. Your file is ${formatSize(file.size)}.` })
+        return
+      }
       updateState({ s: 'ready', file })
     },
     [resetUploadState, updateState]
   )
 
   const reset = () => {
-    if (xhrRef.current) {
-      xhrRef.current.abort()
-      xhrRef.current = null
+    if (abortRef.current) {
+      abortRef.current.abort()
+      abortRef.current = null
     }
     resetUploadState()
     if (inputRef.current) inputRef.current.value = ''
   }
 
   const cancelUpload = () => {
-    if (xhrRef.current) {
-      xhrRef.current.abort()
-      xhrRef.current = null
+    if (abortRef.current) {
+      abortRef.current.abort()
+      abortRef.current = null
     }
     stopPolling()
     setUploadProgress(null)
@@ -153,6 +160,11 @@ export function UploadZone({
     }, 4000)
   }, [stopPolling, onAnalysisComplete, shouldAutoRedirect, router, showNotification, dismissNotification, updateState])
 
+  /**
+   * NEW ARCHITECTURE — bypasses Vercel's body-size limit:
+   *   1. Upload the .edf directly to Supabase Storage (client-side)
+   *   2. Send the resulting URL to the backend via a tiny JSON proxy route
+   */
   const analyse = async () => {
     if (state.s !== 'ready') return
     const file = state.file
@@ -169,48 +181,98 @@ export function UploadZone({
     })
 
     try {
-      const result = await new Promise<{ report_id: string; status?: string; report_json?: unknown; summary?: string }>((resolve, reject) => {
-        const formData = new FormData()
-        formData.append('file', file)
+      const supabase = createClient()
 
-        const xhr = new XMLHttpRequest()
-        xhrRef.current = xhr
+      // ── Step 1: Upload file directly to Supabase Storage ──
+      const storagePath = `uploads/${Date.now()}_${file.name}`
+      const abortController = new AbortController()
+      abortRef.current = abortController
 
-        xhr.upload.onprogress = (event) => {
-          if (!event.lengthComputable) return
-          const percent = Math.round((event.loaded / event.total) * 100)
-          setUploadProgress(percent)
-          if (percent === 100) {
-            updateState({ s: 'uploading', file, msg: 'Upload complete. Waiting for backend response...' })
-          }
-        }
+      // Use XMLHttpRequest for upload progress tracking to Supabase
+      const uploadResult = await new Promise<{ path: string }>((resolve, reject) => {
 
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            try {
-              resolve(JSON.parse(xhr.responseText))
-            } catch {
-              reject(new Error('The upload completed, but the server returned an unreadable response.'))
-            }
+        // We need the session for the auth header — get it async
+        supabase.auth.getSession().then(({ data: { session: sess } }) => {
+          if (!sess) {
+            reject(new Error('You must be signed in to upload files.'))
             return
           }
 
-          let message = 'Upload failed'
-          try {
-            const payload = JSON.parse(xhr.responseText)
-            message = payload?.detail || payload?.error || message
-          } catch {}
-          reject(new Error(message))
-        }
+          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+          const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+          const uploadUrl = `${supabaseUrl}/storage/v1/object/eeg-uploads/${storagePath}`
 
-        xhr.onerror = () => reject(new Error('Network error. Please check your connection and try again.'))
-        xhr.onabort = () => reject(new Error('Upload was interrupted before analysis finished.'))
-        xhr.ontimeout = () => reject(new Error('Upload timed out. Please try again.'))
+          const xhr = new XMLHttpRequest()
 
-        xhr.timeout = 600_000
-        xhr.open('POST', '/api/upload')
-        xhr.send(formData)
+          xhr.upload.onprogress = (event) => {
+            if (!event.lengthComputable) return
+            const percent = Math.round((event.loaded / event.total) * 100)
+            setUploadProgress(percent)
+            if (percent === 100) {
+              updateState({ s: 'uploading', file, msg: 'Upload complete. Starting analysis...' })
+            }
+          }
+
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              resolve({ path: storagePath })
+            } else {
+              let errMsg = `Upload to storage failed (${xhr.status})`
+              try {
+                const payload = JSON.parse(xhr.responseText)
+                errMsg = payload?.message || payload?.error || errMsg
+              } catch {}
+              reject(new Error(errMsg))
+            }
+          }
+
+          xhr.onerror = () => reject(new Error('Network error during file upload. Please check your connection.'))
+          xhr.onabort = () => reject(new Error('Upload was cancelled.'))
+          xhr.ontimeout = () => reject(new Error('Upload timed out. Please try again.'))
+
+          xhr.timeout = 600_000 // 10 min for large files
+          xhr.open('POST', uploadUrl)
+          xhr.setRequestHeader('Authorization', `Bearer ${sess.access_token}`)
+          xhr.setRequestHeader('apikey', supabaseAnonKey)
+          xhr.setRequestHeader('x-upsert', 'true')
+          xhr.send(file)
+
+          // Wire up abort
+          abortController.signal.addEventListener('abort', () => xhr.abort())
+        }).catch(reject)
       })
+
+      // ── Step 2: Get the public URL for the uploaded file ──
+      const { data: urlData } = supabase.storage
+        .from('eeg-uploads')
+        .getPublicUrl(uploadResult.path)
+
+      const fileUrl = urlData.publicUrl
+
+      // ── Step 3: Send the URL to the backend via our lightweight proxy ──
+      updateState({ s: 'uploading', file, msg: 'File uploaded. Sending to NeuroSentinel AI backend...' })
+
+      const proxyResponse = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file_url: fileUrl, filename: file.name }),
+      })
+
+      if (!proxyResponse.ok) {
+        let errorMessage = 'Backend rejected the analysis request.'
+        try {
+          const errPayload = await proxyResponse.json()
+          errorMessage = errPayload?.error || errPayload?.detail || errorMessage
+        } catch {}
+        throw new Error(errorMessage)
+      }
+
+      const result = await proxyResponse.json() as {
+        report_id: string
+        status?: string
+        report_json?: unknown
+        summary?: string
+      }
 
       const reportId = result.report_id
       const reportStatus = result.status || 'processing'
@@ -243,7 +305,6 @@ export function UploadZone({
         }
       } else {
         // Async path — backend is processing in background
-        // Set intermediate state and start polling for completion
         const normalized = normalizeReport({
           id: reportId,
           filename: file.name,
@@ -379,7 +440,7 @@ export function UploadZone({
             </p>
             <div className="mt-5 flex flex-wrap items-center justify-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
               <span className="rounded-full border px-3 py-1" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>.edf</span>
-              <span>Large EEG files stream straight into NeuroSentinel AI for immediate processing.</span>
+              <span>Up to {MAX_FILE_SIZE_MB} MB — uploads go directly to secure cloud storage.</span>
             </div>
           </div>
         )}
@@ -438,7 +499,7 @@ export function UploadZone({
             {uploadProgress !== null ? (
               <div className="mt-5 w-full max-w-md px-2">
                 <div className="mb-1.5 flex justify-between text-xs text-[#8888A0]">
-                  <span>{state.s === 'processing' ? 'Upload complete — analysing in background' : 'Uploading EDF...'}</span>
+                  <span>{state.s === 'processing' ? 'Upload complete — analysing in background' : 'Uploading EDF to secure storage...'}</span>
                   <span>{uploadProgress}%</span>
                 </div>
                 <div className="h-[2px] w-full overflow-hidden rounded-full bg-[#1A1A28]">

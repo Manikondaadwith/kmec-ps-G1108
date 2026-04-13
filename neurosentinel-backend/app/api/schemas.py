@@ -17,6 +17,12 @@ class ScoutChatHistoryItem(BaseModel):
     content: str
 
 
+class AnalyzeUrlRequest(BaseModel):
+    """Request body for URL-based analysis (file already in Supabase Storage)."""
+    file_url: str = Field(min_length=1)
+    filename: str = Field(min_length=1)
+
+
 class ScoutChatRequest(BaseModel):
     message: str = Field(min_length=1)
     context: ScoutChatContext = Field(default_factory=ScoutChatContext)

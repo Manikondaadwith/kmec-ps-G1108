@@ -10,7 +10,7 @@ import torch
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app.api.schemas import ScoutChatRequest
+from app.api.schemas import AnalyzeUrlRequest, ScoutChatRequest
 from app.config import Settings, get_settings
 from app.pipeline.config import PRODUCTION_METRICS
 from app.pipeline.model import build_model, download_model_if_needed, parameter_count
@@ -165,6 +165,93 @@ def create_app(settings: Settings | None = None, load_model_on_startup: bool = T
                     os.remove(temp_path)
 
         asyncio.create_task(_run_analysis_background())
+
+        return {
+            "report_id": report_id,
+            "status": "processing",
+            "summary": "Your EEG file has been received. Analysis is running in the background — you can safely close this page.",
+        }
+
+    @app.post("/api/v1/analyze-url")
+    async def analyze_url(
+        payload: AnalyzeUrlRequest,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+        state: BackendState = Depends(get_backend_state),
+    ) -> dict[str, Any]:
+        """Accept a Supabase Storage URL (file already uploaded by the frontend)
+        and run the EEG analysis pipeline. This avoids Vercel's body-size limit."""
+        if state.model is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Model is not ready: {state.model_error or 'unknown error'}")
+
+        file_url = payload.file_url
+        file_name = payload.filename
+
+        if not file_name.lower().endswith(".edf"):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only .edf files are supported.")
+
+        # Download the file from Supabase Storage
+        import httpx as _httpx
+
+        try:
+            async with _httpx.AsyncClient(timeout=300) as client:
+                dl_response = await client.get(file_url)
+                dl_response.raise_for_status()
+                file_bytes = dl_response.content
+        except Exception as dl_exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to download file from storage: {dl_exc}",
+            )
+
+        # Write to temp file for the analysis pipeline
+        suffix = ".edf"
+        temp_path: str | None = None
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
+            temp_path = handle.name
+            handle.write(file_bytes)
+
+        # Free the in-memory copy
+        del file_bytes
+
+        # Create the report record immediately so the frontend can track it
+        from uuid import uuid4 as _uuid4
+        report_id = str(_uuid4())
+        state.analysis_service.supabase_service.insert_report(
+            {
+                "id": report_id,
+                "user_id": user.id,
+                "filename": file_name,
+                "storage_path": file_url,
+                "status": "processing",
+                "error_message": None,
+                "summary": "Your EEG file has been received. Analysis is running in the background — you can safely close this page.",
+                "report_json": None,
+            }
+        )
+
+        # Run the heavy analysis in a background thread
+        import asyncio as _asyncio
+
+        async def _run_url_analysis_background():
+            try:
+                await _asyncio.to_thread(
+                    state.analysis_service.run_analysis_upload_for_report,
+                    model=state.model,
+                    device=state.device,
+                    user_id=user.id,
+                    file_name=file_name,
+                    edf_path=temp_path,
+                    report_id=report_id,
+                    batch_size=state.settings.analysis_batch_size,
+                )
+            except Exception as exc:
+                import logging
+                logging.getLogger(__name__).exception("Background analysis failed for report %s", report_id)
+            finally:
+                if temp_path and os.path.exists(temp_path):
+                    os.remove(temp_path)
+
+        _asyncio.create_task(_run_url_analysis_background())
 
         return {
             "report_id": report_id,
