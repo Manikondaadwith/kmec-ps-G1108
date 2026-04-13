@@ -1,0 +1,61 @@
+# NeuroSentinel — Root Repository
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# Python caches
+__pycache__/
+*.py[cod]
+
+# Environment variables — NEVER commit these
+.env
+.env.*
+.env*.local
+!**/.env.example
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# ML model files (too large for GitHub — store in cloud storage)
+*.pt
+*.pth
+*.onnx
+*.pkl
+*.bin
+*.h5
+
+# Python packaging artifacts
+dist/
+*.egg-info/
+
+# Test caches
+.pytest_cache/
+
+# Vercel / Render deploy artifacts
+.vercel/
+
+# SQL migration working files (keep the final ones, ignore temp)
+migration_add_missing_columns.sql
+migration_fix_role_constraint.sql
+migration_fresh_start.sql
