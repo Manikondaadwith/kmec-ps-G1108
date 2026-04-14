@@ -47,21 +47,37 @@ _cancel_requested = threading.Event()
 
 
 def _get_memory_mb() -> float:
-    """Get current process RSS memory in MB. Works on Linux (Render) and Windows."""
-    # Fast path: read /proc/self/status (Linux, no imports needed)
+    """Get current CGROUP memory usage in MB (what Render actually measures).
+
+    VmRSS overcounts because it includes shared/mmap'd library pages.
+    Cgroup memory is the REAL usage that triggers Render's OOM kill.
+    """
+    # Priority 1: cgroup v2 (modern Linux / Render)
+    for path in ("/sys/fs/cgroup/memory.current", "/sys/fs/cgroup/memory/memory.usage_in_bytes"):
+        try:
+            with open(path) as f:
+                return int(f.read().strip()) / (1024 * 1024)
+        except (FileNotFoundError, OSError, ValueError):
+            continue
+
+    # Priority 2: /proc/self/statm (resident pages × page size) — still better than VmRSS text parsing
     try:
-        with open("/proc/self/status") as f:
-            for line in f:
-                if line.startswith("VmRSS:"):
-                    return int(line.split()[1]) / 1024  # kB -> MB
-    except (FileNotFoundError, OSError):
+        with open("/proc/self/statm") as f:
+            pages = int(f.read().split()[1])  # resident pages
+            return pages * os.sysconf("SC_PAGE_SIZE") / (1024 * 1024)
+    except (FileNotFoundError, OSError, ValueError):
         pass
-    # Fallback: psutil
+
+    # Priority 3: psutil fallback (Windows dev)
     try:
         import psutil
         return psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024)
     except ImportError:
         return -1.0
+
+
+# Baseline memory after model load — set once, used for delta tracking
+_baseline_memory_mb: float = 0.0
 
 
 def _make_guard_fn(job_start_time: float) -> "Callable[[], None]":
@@ -82,10 +98,10 @@ def _make_guard_fn(job_start_time: float) -> "Callable[[], None]":
         if elapsed > JOB_TIMEOUT_SECONDS:
             raise JobAborted(f"Job timeout: exceeded {JOB_TIMEOUT_SECONDS}s")
 
-        # 3. MEMORY CHECK — approaching container limit
+        # 3. MEMORY CHECK — approaching container limit (cgroup-based)
         mem = _get_memory_mb()
         if mem > 0 and mem > MEMORY_THRESHOLD_MB:
-            # Force gc before giving up
+            # Force gc before giving up — may reclaim enough
             gc.collect()
             mem = _get_memory_mb()
             if mem > MEMORY_THRESHOLD_MB:
@@ -113,7 +129,7 @@ class BackendState:
 
 def _load_model(state: BackendState) -> None:
     """Load model weights ONCE. Thread-safe via _model_lock."""
-    global _model_loaded
+    global _model_loaded, _baseline_memory_mb
 
     with _model_lock:
         # Double-check: another thread may have loaded while we waited
@@ -145,10 +161,10 @@ def _load_model(state: BackendState) -> None:
         state.model_error = None
         _model_loaded = True
 
-        mem = _get_memory_mb()
+        _baseline_memory_mb = _get_memory_mb()
         logger.info(
-            "✅ Model loaded ONCE (%d params). Current RSS: %.1fMB",
-            state.model_parameter_count, mem
+            "✅ Model loaded ONCE (%d params). Baseline cgroup memory: %.1fMB (threshold: %dMB)",
+            state.model_parameter_count, _baseline_memory_mb, MEMORY_THRESHOLD_MB
         )
 
 
