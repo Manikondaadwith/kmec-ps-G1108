@@ -10,7 +10,7 @@ import torch
 
 from app.config import Settings
 from app.pipeline.explainability import compute_channel_importance, extract_attention_maps
-from app.pipeline.inference import infer_from_data_chunked
+from app.pipeline.inference import GuardFn, JobAborted, infer_from_data_chunked
 from app.pipeline.preprocessing import preprocess_edf_to_data, extract_window_at
 from app.pipeline.reporting import build_full_report_payload
 from app.services.email import send_report_notification
@@ -137,9 +137,10 @@ class AnalysisService:
         edf_path: str,
         report_id: str,
         batch_size: int = 64,
+        guard_fn: GuardFn | None = None,
     ) -> dict[str, object]:
         """Run pipeline for a pre-created report record. Used by background tasks."""
-        return self._run_pipeline(model, device, user_id, file_name, edf_path, report_id, batch_size)
+        return self._run_pipeline(model, device, user_id, file_name, edf_path, report_id, batch_size, guard_fn=guard_fn)
 
     def _run_pipeline(
         self,
@@ -150,11 +151,14 @@ class AnalysisService:
         edf_path: str,
         report_id: str,
         batch_size: int = 64,
+        guard_fn: GuardFn | None = None,
     ) -> dict[str, object]:
         """Core analysis pipeline. Assumes report record already exists in DB."""
         try:
             # --- Stage 1: Preprocess (returns continuous data, NOT windows) ---
             self._set_stage(report_id, "Loading and preprocessing the uploaded EEG recording.")
+            if guard_fn:
+                guard_fn()
             data, channel_mask, metadata = preprocess_edf_to_data(edf_path)
             if data is None:
                 raise RuntimeError(metadata.get("error") or "No usable EEG windows were extracted from the uploaded EDF.")
@@ -167,6 +171,8 @@ class AnalysisService:
 
             # --- Stage 2: Chunked inference (~4 MiB window memory at a time) ---
             self._set_stage(report_id, f"Running model inference across {n_windows} EEG window(s) in memory-safe mode.")
+            if guard_fn:
+                guard_fn()
             inference_mode = "chunked-primary"
 
             try:
@@ -174,6 +180,7 @@ class AnalysisService:
                     model, data, channel_mask, metadata,
                     device=device, batch_size=effective_batch_size,
                     max_windows_per_chunk=50,
+                    guard_fn=guard_fn,
                 )
             except RuntimeError as exc:
                 if "could not execute a primitive" not in str(exc).lower():
@@ -186,6 +193,7 @@ class AnalysisService:
                         model, data, channel_mask, metadata,
                         device=device, batch_size=max(1, effective_batch_size // 2),
                         max_windows_per_chunk=30,
+                        guard_fn=guard_fn,
                     )
 
             if inference_result.get("status") != "ok":
@@ -193,6 +201,8 @@ class AnalysisService:
 
             # --- Stage 3: Explainability (uses one window only) ---
             self._set_stage(report_id, "Generating explainability outputs and assembling the report.")
+            if guard_fn:
+                guard_fn()
 
             representative_window = inference_result.get("representative_window")
             if representative_window is None:

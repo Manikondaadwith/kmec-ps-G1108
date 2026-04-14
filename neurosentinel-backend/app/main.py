@@ -19,6 +19,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from app.api.schemas import AnalyzeUrlRequest, ScoutChatRequest
 from app.config import Settings, get_settings
 from app.pipeline.config import PRODUCTION_METRICS
+from app.pipeline.inference import JobAborted
 from app.pipeline.model import build_model, download_model_if_needed, parameter_count
 from app.services.analysis_service import AnalysisService
 from app.services.scout.service import ScoutContext, ScoutService
@@ -29,35 +30,68 @@ logger = logging.getLogger(__name__)
 # ── Hard limits ──────────────────────────────────────────────────────────────
 MAX_UPLOAD_BYTES = 150 * 1024 * 1024       # 150MB file cap
 JOB_TIMEOUT_SECONDS = 600                  # 10 min max per job
+MEMORY_THRESHOLD_MB = 450                  # Abort job if RSS exceeds this
 STALE_JOB_CLEANUP_SECONDS = 300            # Clean up "processing" jobs older than 5 min on startup
 
 
 # ── Inference Lock ───────────────────────────────────────────────────────────
-# Only ONE inference job can run at a time. This prevents overlapping jobs
-# from doubling memory usage and crashing the container.
 _inference_lock = threading.Lock()
 
-# Current job tracking — allows cancel and status queries
 _current_job: dict[str, Any] = {
     "report_id": None,
     "filename": None,
     "started_at": None,
-    "status": "idle",  # idle | running | cancelling
+    "status": "idle",
 }
 _cancel_requested = threading.Event()
 
 
 def _get_memory_mb() -> float:
-    """Get current process RSS memory in MB."""
+    """Get current process RSS memory in MB. Works on Linux (Render) and Windows."""
+    # Fast path: read /proc/self/status (Linux, no imports needed)
     try:
-        import resource
-        return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024  # Linux
+        with open("/proc/self/status") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    return int(line.split()[1]) / 1024  # kB -> MB
+    except (FileNotFoundError, OSError):
+        pass
+    # Fallback: psutil
+    try:
+        import psutil
+        return psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024)
     except ImportError:
-        try:
-            import psutil
-            return psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024)
-        except ImportError:
-            return -1.0
+        return -1.0
+
+
+def _make_guard_fn(job_start_time: float) -> "Callable[[], None]":
+    """Create a guard callback that checks memory, cancel, and timeout.
+
+    Called at EVERY chunk and batch during inference. If any check fails,
+    raises JobAborted — which safely aborts the job before Render kills us.
+    """
+    from typing import Callable  # noqa: F811
+
+    def guard() -> None:
+        # 1. CANCEL CHECK — user requested abort
+        if _cancel_requested.is_set():
+            raise JobAborted("Job cancelled by user")
+
+        # 2. TIMEOUT CHECK — job running too long
+        elapsed = time.time() - job_start_time
+        if elapsed > JOB_TIMEOUT_SECONDS:
+            raise JobAborted(f"Job timeout: exceeded {JOB_TIMEOUT_SECONDS}s")
+
+        # 3. MEMORY CHECK — approaching container limit
+        mem = _get_memory_mb()
+        if mem > 0 and mem > MEMORY_THRESHOLD_MB:
+            # Force gc before giving up
+            gc.collect()
+            mem = _get_memory_mb()
+            if mem > MEMORY_THRESHOLD_MB:
+                raise JobAborted(f"Memory threshold exceeded: {mem:.0f}MB > {MEMORY_THRESHOLD_MB}MB")
+
+    return guard
 
 
 # ── Model Singleton ──────────────────────────────────────────────────────────
@@ -187,6 +221,9 @@ def _run_analysis_sync(
         mem = _get_memory_mb()
         logger.info("Starting analysis for %s (report=%s, RSS=%.1fMB)", file_name, report_id, mem)
 
+        # Create guard function — checks memory/cancel/timeout at every chunk
+        guard_fn = _make_guard_fn(time.time())
+
         state.analysis_service.run_analysis_upload_for_report(
             model=state.model,
             device=state.device,
@@ -195,6 +232,7 @@ def _run_analysis_sync(
             edf_path=edf_path,
             report_id=report_id,
             batch_size=state.settings.analysis_batch_size,
+            guard_fn=guard_fn,
         )
 
         mem = _get_memory_mb()

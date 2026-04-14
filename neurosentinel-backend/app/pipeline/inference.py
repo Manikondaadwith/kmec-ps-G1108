@@ -1,14 +1,25 @@
 from __future__ import annotations
 
 import gc
+import logging
 import os
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 import torch
 
 from app.pipeline.config import PIPELINE_CONFIG, SEIZURE_STRIDE_SAMPLES, WINDOW_SAMPLES
 from app.pipeline.preprocessing import preprocess_any_edf, preprocess_edf_to_data
+
+logger = logging.getLogger(__name__)
+
+# Type for the guard callback: raises if memory/cancel/timeout exceeded
+GuardFn = Callable[[], None]
+
+
+class JobAborted(Exception):
+    """Raised when a guard check fails (memory, cancel, timeout)."""
+    pass
 
 
 def _smooth(probabilities: np.ndarray, window: int = 7) -> np.ndarray:
@@ -156,11 +167,20 @@ def domain_adaptive_post_process(probabilities: np.ndarray, domain_shift: float,
 
 
 @torch.no_grad()
-def infer_probabilities(model: torch.nn.Module, windows: np.ndarray, device: torch.device, batch_size: int = 4) -> np.ndarray:
+def infer_probabilities(
+    model: torch.nn.Module,
+    windows: np.ndarray,
+    device: torch.device,
+    batch_size: int = 4,
+    guard_fn: GuardFn | None = None,
+) -> np.ndarray:
     """Run model inference on windows. Memory-safe: deletes tensors after each batch."""
     chunks: list[np.ndarray] = []
     model.eval()
     for start in range(0, len(windows), batch_size):
+        # Check memory/cancel/timeout BEFORE each batch forward pass
+        if guard_fn:
+            guard_fn()
         batch = torch.from_numpy(windows[start : start + batch_size]).to(device)
         logits = model(batch)
         probabilities = torch.softmax(logits, dim=1)[:, 1].cpu().numpy()
@@ -236,20 +256,21 @@ def infer_from_data_chunked(
     device: torch.device | None = None,
     batch_size: int = 4,
     max_windows_per_chunk: int = 50,
+    guard_fn: GuardFn | None = None,
 ) -> dict[str, Any]:
     """Run inference on preprocessed data without materializing all windows at once.
 
-    This is the memory-efficient path for large EDF files. Instead of extracting
-    all windows into a single array (which can require 600+ MiB), this function
-    extracts windows in small chunks of `max_windows_per_chunk` and streams them
-    through the model. Only the probabilities (one float per window) are kept.
-
     Memory discipline:
-    - Only `max_windows_per_chunk` windows exist at any time (~4MB for 50 windows)
+    - guard_fn is called EVERY chunk to check memory/cancel/timeout
+    - Only `max_windows_per_chunk` windows exist at any time (~4MB for 50)
     - Each chunk's tensors are deleted immediately after inference
     - gc.collect() is called after EVERY chunk to force release
-    - Quality samples capped at 10 (not 50) to avoid accumulation
+    - Quality samples capped at 10
     """
+    # Enforce hard chunk cap at runtime (never exceed 50 regardless of caller)
+    max_windows_per_chunk = min(max_windows_per_chunk, 50)
+    batch_size = min(batch_size, 4)
+
     if device is None:
         device = next(model.parameters()).device
     model.eval()
@@ -267,7 +288,11 @@ def infer_from_data_chunked(
     max_prob = -1.0
     quality_samples: list[np.ndarray] = []
 
-    for chunk_start in range(0, n_windows, max_windows_per_chunk):
+    for chunk_idx, chunk_start in enumerate(range(0, n_windows, max_windows_per_chunk)):
+        # ── GUARD CHECK: memory / cancel / timeout ──
+        if guard_fn:
+            guard_fn()
+
         chunk_end = min(chunk_start + max_windows_per_chunk, n_windows)
         chunk_n = chunk_end - chunk_start
 
@@ -285,8 +310,8 @@ def infer_from_data_chunked(
         )
         windows = view.copy().astype(np.float32)
 
-        # Run inference on this chunk (batch_size=4 inside)
-        probs = infer_probabilities(model, windows, device, batch_size)
+        # Run inference on this chunk (guard_fn also called per-batch inside)
+        probs = infer_probabilities(model, windows, device, batch_size, guard_fn=guard_fn)
         all_probs.append(probs)
 
         # Track representative window (highest seizure probability)
@@ -295,7 +320,7 @@ def infer_from_data_chunked(
             max_prob = float(probs[chunk_max_idx])
             representative_window = windows[chunk_max_idx].copy()
 
-        # Sample windows for quality assessment (keep up to 10 — not 50)
+        # Sample windows for quality assessment (keep up to 10)
         if len(quality_samples) < 10:
             sample_step = max(1, len(windows) // 3)
             for i in range(0, len(windows), sample_step):
@@ -305,6 +330,9 @@ def infer_from_data_chunked(
         # CRITICAL: free this chunk's memory before next iteration
         del windows, chunk_data, view, probs
         gc.collect()
+
+        if chunk_idx % 10 == 0:
+            logger.debug("Chunk %d/%d processed", chunk_idx + 1, (n_windows + max_windows_per_chunk - 1) // max_windows_per_chunk)
 
     raw_probabilities = np.concatenate(all_probs)
     del all_probs
