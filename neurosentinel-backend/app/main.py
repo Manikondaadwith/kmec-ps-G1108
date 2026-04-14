@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 import gc
 import logging
-from contextlib import asynccontextmanager
-from dataclasses import dataclass
 import os
 import tempfile
+import threading
+import time
+from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
 from typing import Any
+from uuid import uuid4
 
 import torch
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile, status
@@ -22,8 +26,43 @@ from app.services.supabase import AuthenticatedUser, SupabaseService
 
 logger = logging.getLogger(__name__)
 
-# Hard cap: 150MB — beyond this, free-tier crash is guaranteed regardless of optimizations
-MAX_UPLOAD_BYTES = 150 * 1024 * 1024
+# ── Hard limits ──────────────────────────────────────────────────────────────
+MAX_UPLOAD_BYTES = 150 * 1024 * 1024       # 150MB file cap
+JOB_TIMEOUT_SECONDS = 600                  # 10 min max per job
+STALE_JOB_CLEANUP_SECONDS = 300            # Clean up "processing" jobs older than 5 min on startup
+
+
+# ── Inference Lock ───────────────────────────────────────────────────────────
+# Only ONE inference job can run at a time. This prevents overlapping jobs
+# from doubling memory usage and crashing the container.
+_inference_lock = threading.Lock()
+
+# Current job tracking — allows cancel and status queries
+_current_job: dict[str, Any] = {
+    "report_id": None,
+    "filename": None,
+    "started_at": None,
+    "status": "idle",  # idle | running | cancelling
+}
+_cancel_requested = threading.Event()
+
+
+def _get_memory_mb() -> float:
+    """Get current process RSS memory in MB."""
+    try:
+        import resource
+        return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024  # Linux
+    except ImportError:
+        try:
+            import psutil
+            return psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024)
+        except ImportError:
+            return -1.0
+
+
+# ── Model Singleton ──────────────────────────────────────────────────────────
+_model_lock = threading.Lock()
+_model_loaded = False
 
 
 @dataclass
@@ -33,35 +72,54 @@ class BackendState:
     analysis_service: AnalysisService
     scout_service: ScoutService
     model: torch.nn.Module | None = None
-    device: torch.device = torch.device("cpu")
+    device: torch.device = field(default_factory=lambda: torch.device("cpu"))
     model_error: str | None = None
     model_parameter_count: int = 0
 
 
 def _load_model(state: BackendState) -> None:
-    """Load the model weights. Designed to be called lazily on first request."""
-    model = build_model()
-    # Download from Supabase if no local path, or local path doesn't exist
-    if state.settings.model_path and state.settings.model_path.exists():
-        model_path = str(state.settings.model_path)
-    else:
-        model_path = download_model_if_needed()
-    # Force CPU to minimize memory overhead on free-tier hosting
-    weights = torch.load(model_path, map_location="cpu", weights_only=True)
-    model.load_state_dict(weights)
-    # Free the weights dict immediately — model already has the parameters
-    del weights
-    gc.collect()
-    model.to(state.device)
-    model.eval()
-    state.model = model
-    state.model_parameter_count = parameter_count(model)
-    state.model_error = None
-    logger.info("Model loaded successfully (%d parameters)", state.model_parameter_count)
+    """Load model weights ONCE. Thread-safe via _model_lock."""
+    global _model_loaded
+
+    with _model_lock:
+        # Double-check: another thread may have loaded while we waited
+        if state.model is not None:
+            logger.info("Model already loaded (skipping duplicate load)")
+            return
+
+        if _model_loaded:
+            logger.warning("Model was previously loaded — refusing duplicate load")
+            return
+
+        logger.info("Loading model (this should happen EXACTLY ONCE)...")
+        model = build_model()
+
+        if state.settings.model_path and state.settings.model_path.exists():
+            model_path = str(state.settings.model_path)
+        else:
+            model_path = download_model_if_needed()
+
+        weights = torch.load(model_path, map_location="cpu", weights_only=True)
+        model.load_state_dict(weights)
+        del weights
+        gc.collect()
+
+        model.to(state.device)
+        model.eval()
+        state.model = model
+        state.model_parameter_count = parameter_count(model)
+        state.model_error = None
+        _model_loaded = True
+
+        mem = _get_memory_mb()
+        logger.info(
+            "✅ Model loaded ONCE (%d params). Current RSS: %.1fMB",
+            state.model_parameter_count, mem
+        )
 
 
 def _ensure_model(state: BackendState) -> None:
-    """Lazy-load model on first request. Avoids startup memory spike."""
+    """Lazy-load model on first request. Fully thread-safe singleton."""
     if state.model is not None:
         return
     if state.model_error:
@@ -70,9 +128,114 @@ def _ensure_model(state: BackendState) -> None:
         _load_model(state)
     except Exception as exc:
         state.model_error = str(exc)
-        logger.exception("Lazy model load failed")
+        logger.exception("Model load failed")
         raise
 
+
+def _cleanup_stale_jobs(supabase_service: SupabaseService) -> None:
+    """On startup, mark any leftover 'processing' jobs as failed.
+    This handles the case where the container crashed mid-analysis."""
+    try:
+        stale = supabase_service.client.table("reports").select("id,filename,status").eq(
+            "status", "processing"
+        ).execute()
+        if stale.data:
+            for report in stale.data:
+                logger.warning("Cleaning up stale job: %s (%s)", report["id"], report.get("filename"))
+                supabase_service.update_report(report["id"], {
+                    "status": "failed",
+                    "error_message": "Server restarted during processing. Please re-upload your file.",
+                    "report_json": {"error": "Server crash recovery — job was interrupted."},
+                })
+            logger.info("Cleaned up %d stale processing jobs", len(stale.data))
+    except Exception as exc:
+        logger.warning("Failed to clean up stale jobs (non-fatal): %s", exc)
+
+
+# ── Background analysis runner ──────────────────────────────────────────────
+
+def _run_analysis_sync(
+    state: BackendState,
+    user_id: str,
+    file_name: str,
+    edf_path: str,
+    report_id: str,
+) -> None:
+    """Run analysis synchronously, holding the inference lock.
+    Handles all cleanup on success, failure, and cancellation."""
+    global _current_job
+
+    acquired = _inference_lock.acquire(blocking=False)
+    if not acquired:
+        # Another job is running — mark this one as failed immediately
+        logger.warning("Inference lock busy — rejecting job %s", report_id)
+        state.analysis_service.supabase_service.update_report(report_id, {
+            "status": "failed",
+            "error_message": "Another analysis is already running. Please wait and try again.",
+        })
+        return
+
+    try:
+        _current_job = {
+            "report_id": report_id,
+            "filename": file_name,
+            "started_at": time.time(),
+            "status": "running",
+        }
+        _cancel_requested.clear()
+
+        mem = _get_memory_mb()
+        logger.info("Starting analysis for %s (report=%s, RSS=%.1fMB)", file_name, report_id, mem)
+
+        state.analysis_service.run_analysis_upload_for_report(
+            model=state.model,
+            device=state.device,
+            user_id=user_id,
+            file_name=file_name,
+            edf_path=edf_path,
+            report_id=report_id,
+            batch_size=state.settings.analysis_batch_size,
+        )
+
+        mem = _get_memory_mb()
+        logger.info("✅ Analysis completed for %s (RSS=%.1fMB)", file_name, mem)
+
+    except Exception as exc:
+        logger.exception("Analysis failed for report %s", report_id)
+        try:
+            state.analysis_service.supabase_service.update_report(report_id, {
+                "status": "failed",
+                "error_message": str(exc)[:500],
+                "report_json": {"error": str(exc)[:500]},
+            })
+        except Exception:
+            logger.error("Failed to update report status for %s", report_id)
+
+    finally:
+        # Always clean up — no matter what
+        if edf_path and os.path.exists(edf_path):
+            try:
+                os.remove(edf_path)
+            except OSError:
+                pass
+
+        _current_job = {
+            "report_id": None,
+            "filename": None,
+            "started_at": None,
+            "status": "idle",
+        }
+        _cancel_requested.clear()
+
+        # Force memory cleanup
+        gc.collect()
+        _inference_lock.release()
+
+        mem = _get_memory_mb()
+        logger.info("Job finished. Lock released. RSS=%.1fMB", mem)
+
+
+# ── App Factory ──────────────────────────────────────────────────────────────
 
 def create_app(settings: Settings | None = None, load_model_on_startup: bool = False) -> FastAPI:
     resolved_settings = settings or get_settings()
@@ -87,16 +250,31 @@ def create_app(settings: Settings | None = None, load_model_on_startup: bool = F
             scout_service=ScoutService(resolved_settings, supabase_service),
         )
         app.state.backend = app_state
-        # Model is lazy-loaded on first inference request to avoid startup memory spike
+
+        # Clean up any jobs left in "processing" from a previous crash
+        _cleanup_stale_jobs(supabase_service)
+
         if load_model_on_startup:
             try:
                 _load_model(app_state)
-            except Exception as exc:  # pragma: no cover - depends on external model file
+            except Exception as exc:  # pragma: no cover
                 app_state.model_error = str(exc)
-        logger.info("NeuroSentinel backend started (model will load on first request)")
+
+        logger.info("NeuroSentinel backend started (model loads on first request)")
         yield
 
     app = FastAPI(title="NeuroSentinel Backend", lifespan=lifespan)
+
+    # CORS — allow the Vercel frontend to reach the backend
+    from fastapi.middleware.cors import CORSMiddleware
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
     security = HTTPBearer(auto_error=False)
 
     def get_backend_state(request: Request) -> BackendState:
@@ -113,13 +291,17 @@ def create_app(settings: Settings | None = None, load_model_on_startup: bool = F
         except Exception as exc:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid session: {exc}") from exc
 
+    # ── Health ───────────────────────────────────────────────────────────
     @app.get("/health")
     async def health(state: BackendState = Depends(get_backend_state)) -> dict[str, Any]:
+        mem = _get_memory_mb()
         return {
             "service": "ok",
             "model_ready": state.model is not None,
             "model_error": state.model_error,
-            "model_path": str(state.settings.model_path),
+            "memory_mb": round(mem, 1),
+            "inference_busy": _current_job["status"] == "running",
+            "current_job": _current_job.get("report_id"),
         }
 
     @app.get("/api/v1/model/info")
@@ -132,27 +314,82 @@ def create_app(settings: Settings | None = None, load_model_on_startup: bool = F
             "error": state.model_error,
         }
 
+    # ── Job Status ───────────────────────────────────────────────────────
+    @app.get("/api/v1/job/status")
+    async def job_status() -> dict[str, Any]:
+        """Check if the backend is busy with a job."""
+        elapsed = None
+        if _current_job["started_at"]:
+            elapsed = round(time.time() - _current_job["started_at"], 1)
+        return {
+            "status": _current_job["status"],
+            "report_id": _current_job.get("report_id"),
+            "filename": _current_job.get("filename"),
+            "elapsed_seconds": elapsed,
+            "memory_mb": round(_get_memory_mb(), 1),
+        }
+
+    # ── Cancel Job ───────────────────────────────────────────────────────
+    @app.post("/api/v1/job/cancel")
+    async def cancel_job(
+        state: BackendState = Depends(get_backend_state),
+    ) -> dict[str, Any]:
+        """Cancel the current running job and release the system."""
+        if _current_job["status"] != "running":
+            return {"status": "no_job_running"}
+
+        report_id = _current_job.get("report_id")
+        _cancel_requested.set()
+
+        # Mark the job as failed in DB
+        if report_id:
+            try:
+                state.analysis_service.supabase_service.update_report(report_id, {
+                    "status": "failed",
+                    "error_message": "Analysis was cancelled by the user.",
+                    "report_json": {"error": "Cancelled"},
+                })
+            except Exception:
+                pass
+
+        # Force garbage collection
+        gc.collect()
+
+        return {
+            "status": "cancel_requested",
+            "report_id": report_id,
+            "note": "The current job will terminate shortly. You can upload a new file.",
+        }
+
+    # ── Analyze (direct upload) ──────────────────────────────────────────
     @app.post("/api/v1/analyze")
     async def analyze(
         file: UploadFile = File(...),
         user: AuthenticatedUser = Depends(get_authenticated_user),
         state: BackendState = Depends(get_backend_state),
     ) -> dict[str, Any]:
-        # Lazy-load model on first request
+        # Check if system is busy
+        if _current_job["status"] == "running":
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Another analysis is already running. Please wait for it to complete.",
+            )
+
+        # Lazy-load model
         try:
             _ensure_model(state)
         except Exception:
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Model is not ready: {state.model_error or 'unknown error'}")
+
         if not file.filename or not file.filename.lower().endswith(".edf"):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only .edf files are supported.")
 
         file_name = file.filename
 
-        # Stream upload directly to disk — never buffer entire file in RAM
-        suffix = ".edf"
+        # Stream upload to disk — never buffer in RAM
         temp_path: str | None = None
         total_written = 0
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".edf") as handle:
             temp_path = handle.name
             while True:
                 chunk = await file.read(8192)
@@ -167,45 +404,26 @@ def create_app(settings: Settings | None = None, load_model_on_startup: bool = F
                 handle.write(chunk)
         await file.close()
 
-        # Create the report record immediately so the frontend can track it
-        from uuid import uuid4
+        # Create report record
         report_id = str(uuid4())
-        state.analysis_service.supabase_service.insert_report(
-            {
-                "id": report_id,
-                "user_id": user.id,
-                "filename": file_name,
-                "storage_path": None,
-                "status": "processing",
-                "error_message": None,
-                "summary": "Your EEG file has been received. Analysis is running in the background — you can safely close this page.",
-                "report_json": None,
-            }
+        state.analysis_service.supabase_service.insert_report({
+            "id": report_id,
+            "user_id": user.id,
+            "filename": file_name,
+            "storage_path": None,
+            "status": "processing",
+            "error_message": None,
+            "summary": "Your EEG file has been received. Analysis is running in the background — you can safely close this page.",
+            "report_json": None,
+        })
+
+        # Run in background thread (not asyncio task — avoids event loop issues)
+        thread = threading.Thread(
+            target=_run_analysis_sync,
+            args=(state, user.id, file_name, temp_path, report_id),
+            daemon=True,
         )
-
-        # Run the heavy analysis in a background thread
-        import asyncio
-
-        async def _run_analysis_background():
-            try:
-                await asyncio.to_thread(
-                    state.analysis_service.run_analysis_upload_for_report,
-                    model=state.model,
-                    device=state.device,
-                    user_id=user.id,
-                    file_name=file_name,
-                    edf_path=temp_path,
-                    report_id=report_id,
-                    batch_size=state.settings.analysis_batch_size,
-                )
-            except Exception as exc:
-                logger.exception("Background analysis failed for report %s", report_id)
-            finally:
-                if temp_path and os.path.exists(temp_path):
-                    os.remove(temp_path)
-                gc.collect()
-
-        asyncio.create_task(_run_analysis_background())
+        thread.start()
 
         return {
             "report_id": report_id,
@@ -213,15 +431,22 @@ def create_app(settings: Settings | None = None, load_model_on_startup: bool = F
             "summary": "Your EEG file has been received. Analysis is running in the background — you can safely close this page.",
         }
 
+    # ── Analyze URL (Supabase Storage) ───────────────────────────────────
     @app.post("/api/v1/analyze-url")
     async def analyze_url(
         payload: AnalyzeUrlRequest,
         user: AuthenticatedUser = Depends(get_authenticated_user),
         state: BackendState = Depends(get_backend_state),
     ) -> dict[str, Any]:
-        """Accept a Supabase Storage URL (file already uploaded by the frontend)
-        and run the EEG analysis pipeline. This avoids Vercel's body-size limit."""
-        # Lazy-load model on first request
+        """Accept a Supabase Storage URL and run analysis."""
+        # Check if system is busy
+        if _current_job["status"] == "running":
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Another analysis is already running. Please wait for it to complete.",
+            )
+
+        # Lazy-load model
         try:
             _ensure_model(state)
         except Exception:
@@ -233,13 +458,12 @@ def create_app(settings: Settings | None = None, load_model_on_startup: bool = F
         if not file_name.lower().endswith(".edf"):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only .edf files are supported.")
 
-        # Stream download directly to disk — never buffer entire file in RAM
+        # Stream download to disk
         import httpx as _httpx
 
-        suffix = ".edf"
         temp_path: str | None = None
         try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".edf") as handle:
                 temp_path = handle.name
                 total_written = 0
                 async with _httpx.AsyncClient(timeout=300) as client:
@@ -251,7 +475,6 @@ def create_app(settings: Settings | None = None, load_model_on_startup: bool = F
                                 raise ValueError(f"File exceeds {MAX_UPLOAD_BYTES // (1024*1024)}MB limit")
                             handle.write(chunk)
         except Exception as dl_exc:
-            # Clean up partial download
             if temp_path and os.path.exists(temp_path):
                 os.remove(temp_path)
             raise HTTPException(
@@ -259,45 +482,26 @@ def create_app(settings: Settings | None = None, load_model_on_startup: bool = F
                 detail=f"Failed to download file from storage: {dl_exc}",
             )
 
-        # Create the report record immediately so the frontend can track it
-        from uuid import uuid4 as _uuid4
-        report_id = str(_uuid4())
-        state.analysis_service.supabase_service.insert_report(
-            {
-                "id": report_id,
-                "user_id": user.id,
-                "filename": file_name,
-                "storage_path": file_url,
-                "status": "processing",
-                "error_message": None,
-                "summary": "Your EEG file has been received. Analysis is running in the background — you can safely close this page.",
-                "report_json": None,
-            }
+        # Create report record
+        report_id = str(uuid4())
+        state.analysis_service.supabase_service.insert_report({
+            "id": report_id,
+            "user_id": user.id,
+            "filename": file_name,
+            "storage_path": file_url,
+            "status": "processing",
+            "error_message": None,
+            "summary": "Your EEG file has been received. Analysis is running in the background — you can safely close this page.",
+            "report_json": None,
+        })
+
+        # Run in background thread
+        thread = threading.Thread(
+            target=_run_analysis_sync,
+            args=(state, user.id, file_name, temp_path, report_id),
+            daemon=True,
         )
-
-        # Run the heavy analysis in a background thread
-        import asyncio as _asyncio
-
-        async def _run_url_analysis_background():
-            try:
-                await _asyncio.to_thread(
-                    state.analysis_service.run_analysis_upload_for_report,
-                    model=state.model,
-                    device=state.device,
-                    user_id=user.id,
-                    file_name=file_name,
-                    edf_path=temp_path,
-                    report_id=report_id,
-                    batch_size=state.settings.analysis_batch_size,
-                )
-            except Exception as exc:
-                logger.exception("Background analysis failed for report %s", report_id)
-            finally:
-                if temp_path and os.path.exists(temp_path):
-                    os.remove(temp_path)
-                gc.collect()
-
-        _asyncio.create_task(_run_url_analysis_background())
+        thread.start()
 
         return {
             "report_id": report_id,
@@ -305,6 +509,7 @@ def create_app(settings: Settings | None = None, load_model_on_startup: bool = F
             "summary": "Your EEG file has been received. Analysis is running in the background — you can safely close this page.",
         }
 
+    # ── SCOUT Chat ───────────────────────────────────────────────────────
     @app.post("/api/v1/scout/chat")
     async def scout_chat(
         payload: ScoutChatRequest,
