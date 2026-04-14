@@ -22,6 +22,9 @@ from app.services.supabase import AuthenticatedUser, SupabaseService
 
 logger = logging.getLogger(__name__)
 
+# Hard cap: 150MB — beyond this, free-tier crash is guaranteed regardless of optimizations
+MAX_UPLOAD_BYTES = 150 * 1024 * 1024
+
 
 @dataclass
 class BackendState:
@@ -148,12 +151,19 @@ def create_app(settings: Settings | None = None, load_model_on_startup: bool = F
         # Stream upload directly to disk — never buffer entire file in RAM
         suffix = ".edf"
         temp_path: str | None = None
+        total_written = 0
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
             temp_path = handle.name
             while True:
                 chunk = await file.read(8192)
                 if not chunk:
                     break
+                total_written += len(chunk)
+                if total_written > MAX_UPLOAD_BYTES:
+                    handle.close()
+                    os.remove(temp_path)
+                    await file.close()
+                    raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail=f"File exceeds {MAX_UPLOAD_BYTES // (1024*1024)}MB limit.")
                 handle.write(chunk)
         await file.close()
 
@@ -231,10 +241,14 @@ def create_app(settings: Settings | None = None, load_model_on_startup: bool = F
         try:
             with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
                 temp_path = handle.name
+                total_written = 0
                 async with _httpx.AsyncClient(timeout=300) as client:
                     async with client.stream("GET", file_url) as dl_response:
                         dl_response.raise_for_status()
                         async for chunk in dl_response.aiter_bytes(chunk_size=8192):
+                            total_written += len(chunk)
+                            if total_written > MAX_UPLOAD_BYTES:
+                                raise ValueError(f"File exceeds {MAX_UPLOAD_BYTES // (1024*1024)}MB limit")
                             handle.write(chunk)
         except Exception as dl_exc:
             # Clean up partial download

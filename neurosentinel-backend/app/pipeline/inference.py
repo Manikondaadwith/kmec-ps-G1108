@@ -232,7 +232,7 @@ def infer_from_data_chunked(
     metadata: dict[str, Any],
     device: torch.device | None = None,
     batch_size: int = 64,
-    max_windows_per_chunk: int = 300,
+    max_windows_per_chunk: int = 150,
 ) -> dict[str, Any]:
     """Run inference on preprocessed data without materializing all windows at once.
 

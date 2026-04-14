@@ -185,7 +185,7 @@ class AnalysisService:
                     inference_result = infer_from_data_chunked(
                         model, data, channel_mask, metadata,
                         device=device, batch_size=max(1, effective_batch_size // 2),
-                        max_windows_per_chunk=200,
+                        max_windows_per_chunk=100,
                     )
 
             if inference_result.get("status") != "ok":
