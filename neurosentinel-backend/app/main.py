@@ -47,24 +47,33 @@ _cancel_requested = threading.Event()
 
 
 def _get_memory_mb() -> float:
-    """Get current CGROUP memory usage in MB (what Render actually measures).
+    """Get actual non-reclaimable memory in MB (what causes Render OOM kills).
 
-    VmRSS overcounts because it includes shared/mmap'd library pages.
-    Cgroup memory is the REAL usage that triggers Render's OOM kill.
+    memory.current includes page cache (reclaimable) → inflated number.
+    memory.stat → anon field = actual anonymous allocations (non-reclaimable).
+    This is the REAL metric that determines whether Render will kill us.
     """
-    # Priority 1: cgroup v2 (modern Linux / Render)
-    for path in ("/sys/fs/cgroup/memory.current", "/sys/fs/cgroup/memory/memory.usage_in_bytes"):
-        try:
-            with open(path) as f:
-                return int(f.read().strip()) / (1024 * 1024)
-        except (FileNotFoundError, OSError, ValueError):
-            continue
-
-    # Priority 2: /proc/self/statm (resident pages × page size) — still better than VmRSS text parsing
+    # Priority 1: cgroup v2 memory.stat → anon (BEST metric)
     try:
-        with open("/proc/self/statm") as f:
-            pages = int(f.read().split()[1])  # resident pages
-            return pages * os.sysconf("SC_PAGE_SIZE") / (1024 * 1024)
+        with open("/sys/fs/cgroup/memory.stat") as f:
+            for line in f:
+                if line.startswith("anon "):
+                    return int(line.split()[1]) / (1024 * 1024)
+    except (FileNotFoundError, OSError, ValueError):
+        pass
+
+    # Priority 2: cgroup v1 → usage - cache
+    try:
+        usage = 0
+        cache = 0
+        with open("/sys/fs/cgroup/memory/memory.usage_in_bytes") as f:
+            usage = int(f.read().strip())
+        with open("/sys/fs/cgroup/memory/memory.stat") as f:
+            for line in f:
+                if line.startswith("cache "):
+                    cache = int(line.split()[1])
+                    break
+        return (usage - cache) / (1024 * 1024)
     except (FileNotFoundError, OSError, ValueError):
         pass
 
