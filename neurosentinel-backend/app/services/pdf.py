@@ -765,26 +765,7 @@ class _MedicalReportPDF:
         else:
             report_uid = str(report_uid)[:8].upper()
 
-        # Recording date from EDF metadata (if available)
-        recording_date = ""
-        if isinstance(raw_meta, dict):
-            recording_date = raw_meta.get("recording_date") or raw_meta.get("meas_date") or ""
-        # Validate recording date — many EDF files have placeholder dates (e.g., 1985, 1900)
-        if recording_date:
-            try:
-                rd_str = str(recording_date).strip()
-                # Strip time portion — only keep date (YYYY-MM-DD)
-                if " " in rd_str:
-                    rd_str = rd_str.split(" ")[0]
-                if "T" in rd_str:
-                    rd_str = rd_str.split("T")[0]
-                year = int(rd_str[:4]) if len(rd_str) >= 4 else 0
-                if year < 2000 or year > 2099:
-                    recording_date = ""  # Likely placeholder
-                else:
-                    recording_date = rd_str  # Use clean date-only string
-            except (ValueError, TypeError):
-                recording_date = ""
+
 
         # ─ HEADER ─
         self._draw_header()
@@ -795,8 +776,7 @@ class _MedicalReportPDF:
             self._section_header("Report Information", "§0")
             self._field_row("Report ID", f"NS-{report_uid}")
             self._field_row("EEG File", filename)
-            if recording_date:
-                self._field_row("Recording Date", str(recording_date))
+
             self._field_row("Report Date", timestamp_str)
             user_email = self.user_profile.get("email") or ""
             if user_email:
@@ -813,8 +793,7 @@ class _MedicalReportPDF:
             self._section_header("Report Information", "§0")
             self._field_row("Report ID", f"NS-{report_uid}")
             self._field_row("EEG File", filename)
-            if recording_date:
-                self._field_row("Recording Date", str(recording_date))
+
             self._field_row("Report Date", timestamp_str)
             self._field_row("Referring Clinician", "Per institutional records")
             self._field_row("Institution", "Per institutional records")
@@ -830,8 +809,7 @@ class _MedicalReportPDF:
             self._field_row("Report ID", f"NS-{report_uid}")
             self._field_row("EDF Filename", filename)
             self._field_row("Dataset Source", _infer_dataset_source(filename))
-            if recording_date:
-                self._field_row("Recording Date", str(recording_date))
+
             self._field_row("Pipeline Version", meta.get("tool", "NeuroSentinel AI v4"))
             self._field_row("Run Timestamp", timestamp_str)
 

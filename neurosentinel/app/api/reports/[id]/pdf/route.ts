@@ -525,25 +525,7 @@ class MedicalPDFBuilder {
     const uidSrc = `${filename}:${createdAt}`
     const reportUid = createHash('sha256').update(uidSrc).digest('hex').slice(0, 8).toUpperCase()
 
-    // Extract recording date from metadata (validate year 2000-2099, date only)
-    let recordingDate = ''
-    if (rawMeta) {
-      recordingDate = rawMeta.recording_date || rawMeta.meas_date || ''
-    }
-    if (recordingDate) {
-      try {
-        let rdStr = String(recordingDate).trim()
-        // Strip time portion — only keep date (YYYY-MM-DD)
-        if (rdStr.includes(' ')) rdStr = rdStr.split(' ')[0]
-        if (rdStr.includes('T')) rdStr = rdStr.split('T')[0]
-        const year = parseInt(rdStr.slice(0, 4), 10)
-        if (isNaN(year) || year < 2000 || year > 2099) {
-          recordingDate = ''
-        } else {
-          recordingDate = rdStr
-        }
-      } catch { recordingDate = '' }
-    }
+
 
     // ─ HEADER ─
     this.drawHeader(filename, createdAt)
@@ -553,7 +535,7 @@ class MedicalPDFBuilder {
       this.sectionHeader('Report Information', '§0')
       this.fieldRow('Report ID', `NS-${reportUid}`)
       this.fieldRow('EEG File', filename)
-      if (recordingDate) this.fieldRow('Recording Date', recordingDate)
+
       this.fieldRow('Report Date', createdAt)
       if (userProfile?.email) this.fieldRow('Registered Email', userProfile.email)
       this.fieldRow('User Role', displayRoleLabel(userProfile?.role || undefined))
@@ -563,7 +545,7 @@ class MedicalPDFBuilder {
       this.sectionHeader('Report Information', '§0')
       this.fieldRow('Report ID', `NS-${reportUid}`)
       this.fieldRow('EEG File', filename)
-      if (recordingDate) this.fieldRow('Recording Date', recordingDate)
+
       this.fieldRow('Report Date', createdAt)
       this.fieldRow('Referring Clinician', 'Per institutional records')
       this.fieldRow('Institution', 'Per institutional records')
@@ -574,7 +556,7 @@ class MedicalPDFBuilder {
       this.fieldRow('Report ID', `NS-${reportUid}`)
       this.fieldRow('EDF Filename', filename)
       this.fieldRow('Dataset Source', inferDatasetSource(filename))
-      if (recordingDate) this.fieldRow('Recording Date', recordingDate)
+
       this.fieldRow('Pipeline Version', meta.tool || 'NeuroSentinel AI v4')
       this.fieldRow('Run Timestamp', createdAt)
     }
