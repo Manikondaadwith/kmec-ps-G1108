@@ -45,7 +45,13 @@ def compute_channel_importance(model: torch.nn.Module, x: torch.Tensor, target_c
     gradient = x_input.grad
     importance = (gradient * x_input).abs().mean(dim=2)
     importance = importance / (importance.sum(dim=1, keepdim=True) + 1e-8)
-    return importance.detach().cpu().numpy()[0]
+    result = importance.detach().cpu().numpy()[0]
+    # Free the gradient computation graph — this is a major hidden memory consumer
+    del logits, target_score, gradient, importance, x_input
+    model.zero_grad(set_to_none=True)
+    import gc
+    gc.collect()
+    return result
 
 
 def map_channel_importance_to_regions(channel_importance: np.ndarray, channel_mask: np.ndarray) -> dict[str, float]:

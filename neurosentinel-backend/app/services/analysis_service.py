@@ -38,14 +38,14 @@ class AnalysisService:
             torch.backends.mkldnn.enabled = previous
 
     def _resolve_chunk_batch_size(self, n_windows: int, requested_batch_size: int) -> int:
-        """Reduce batch size for very large recordings to avoid CPU memory spikes."""
+        """Aggressively reduce batch size to survive 512MB RAM limit."""
         if n_windows >= 1500:
-            return min(requested_batch_size, 4)
+            return 1
         if n_windows >= 800:
-            return min(requested_batch_size, 8)
+            return 2
         if n_windows >= 300:
-            return min(requested_batch_size, 12)
-        return min(requested_batch_size, 16)
+            return 2
+        return min(requested_batch_size, 4)
 
     def _send_completion_email(
         self,
@@ -165,7 +165,7 @@ class AnalysisService:
 
             effective_batch_size = self._resolve_chunk_batch_size(n_windows, batch_size)
 
-            # --- Stage 2: Chunked inference (only ~26 MiB window memory at a time) ---
+            # --- Stage 2: Chunked inference (~4 MiB window memory at a time) ---
             self._set_stage(report_id, f"Running model inference across {n_windows} EEG window(s) in memory-safe mode.")
             inference_mode = "chunked-primary"
 
@@ -173,7 +173,7 @@ class AnalysisService:
                 inference_result = infer_from_data_chunked(
                     model, data, channel_mask, metadata,
                     device=device, batch_size=effective_batch_size,
-                    max_windows_per_chunk=150,
+                    max_windows_per_chunk=50,
                 )
             except RuntimeError as exc:
                 if "could not execute a primitive" not in str(exc).lower():
@@ -185,7 +185,7 @@ class AnalysisService:
                     inference_result = infer_from_data_chunked(
                         model, data, channel_mask, metadata,
                         device=device, batch_size=max(1, effective_batch_size // 2),
-                        max_windows_per_chunk=100,
+                        max_windows_per_chunk=30,
                     )
 
             if inference_result.get("status") != "ok":

@@ -156,7 +156,8 @@ def domain_adaptive_post_process(probabilities: np.ndarray, domain_shift: float,
 
 
 @torch.no_grad()
-def infer_probabilities(model: torch.nn.Module, windows: np.ndarray, device: torch.device, batch_size: int = 64) -> np.ndarray:
+def infer_probabilities(model: torch.nn.Module, windows: np.ndarray, device: torch.device, batch_size: int = 4) -> np.ndarray:
+    """Run model inference on windows. Memory-safe: deletes tensors after each batch."""
     chunks: list[np.ndarray] = []
     model.eval()
     for start in range(0, len(windows), batch_size):
@@ -164,6 +165,8 @@ def infer_probabilities(model: torch.nn.Module, windows: np.ndarray, device: tor
         logits = model(batch)
         probabilities = torch.softmax(logits, dim=1)[:, 1].cpu().numpy()
         chunks.append(probabilities)
+        # Explicitly free GPU/CPU tensors to prevent accumulation
+        del batch, logits
     return np.concatenate(chunks)
 
 
@@ -231,8 +234,8 @@ def infer_from_data_chunked(
     channel_mask: np.ndarray,
     metadata: dict[str, Any],
     device: torch.device | None = None,
-    batch_size: int = 64,
-    max_windows_per_chunk: int = 150,
+    batch_size: int = 4,
+    max_windows_per_chunk: int = 50,
 ) -> dict[str, Any]:
     """Run inference on preprocessed data without materializing all windows at once.
 
@@ -241,8 +244,11 @@ def infer_from_data_chunked(
     extracts windows in small chunks of `max_windows_per_chunk` and streams them
     through the model. Only the probabilities (one float per window) are kept.
 
-    The preprocessing pipeline, model, and post-processing logic are IDENTICAL
-    to the non-chunked path — only memory management changes.
+    Memory discipline:
+    - Only `max_windows_per_chunk` windows exist at any time (~4MB for 50 windows)
+    - Each chunk's tensors are deleted immediately after inference
+    - gc.collect() is called after EVERY chunk to force release
+    - Quality samples capped at 10 (not 50) to avoid accumulation
     """
     if device is None:
         device = next(model.parameters()).device
@@ -279,7 +285,7 @@ def infer_from_data_chunked(
         )
         windows = view.copy().astype(np.float32)
 
-        # Run inference on this chunk
+        # Run inference on this chunk (batch_size=4 inside)
         probs = infer_probabilities(model, windows, device, batch_size)
         all_probs.append(probs)
 
@@ -289,13 +295,15 @@ def infer_from_data_chunked(
             max_prob = float(probs[chunk_max_idx])
             representative_window = windows[chunk_max_idx].copy()
 
-        # Sample windows for quality assessment (keep up to 50)
-        if len(quality_samples) < 50:
-            for i in range(0, len(windows), max(1, len(windows) // 5)):
-                if len(quality_samples) < 50:
+        # Sample windows for quality assessment (keep up to 10 — not 50)
+        if len(quality_samples) < 10:
+            sample_step = max(1, len(windows) // 3)
+            for i in range(0, len(windows), sample_step):
+                if len(quality_samples) < 10:
                     quality_samples.append(windows[i].copy())
 
-        del windows, chunk_data, view
+        # CRITICAL: free this chunk's memory before next iteration
+        del windows, chunk_data, view, probs
         gc.collect()
 
     raw_probabilities = np.concatenate(all_probs)
@@ -330,3 +338,4 @@ def infer_from_data_chunked(
         "quality_samples": np.stack(quality_samples) if quality_samples else None,
     }
     return result
+
