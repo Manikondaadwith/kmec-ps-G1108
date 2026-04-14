@@ -107,14 +107,16 @@ def _make_guard_fn(job_start_time: float) -> "Callable[[], None]":
         if elapsed > JOB_TIMEOUT_SECONDS:
             raise JobAborted(f"Job timeout: exceeded {JOB_TIMEOUT_SECONDS}s")
 
-        # 3. MEMORY CHECK — approaching container limit (cgroup-based)
+        # 3. MEMORY LOGGING (informational only — NOT an abort trigger)
+        #    PyTorch + model baseline is ~460MB anon. The real protection against
+        #    memory blowout is the batch/chunk size caps (max 4 / max 50), not
+        #    a hard threshold that false-positives on every request.
         mem = _get_memory_mb()
         if mem > 0 and mem > MEMORY_THRESHOLD_MB:
-            # Force gc before giving up — may reclaim enough
             gc.collect()
             mem = _get_memory_mb()
             if mem > MEMORY_THRESHOLD_MB:
-                raise JobAborted(f"Memory threshold exceeded: {mem:.0f}MB > {MEMORY_THRESHOLD_MB}MB")
+                logger.warning("Memory high: %.0fMB (threshold %dMB) — continuing with gc", mem, MEMORY_THRESHOLD_MB)
 
     return guard
 
