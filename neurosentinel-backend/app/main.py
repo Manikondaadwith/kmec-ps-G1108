@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import gc
+import logging
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 import os
@@ -18,6 +20,8 @@ from app.services.analysis_service import AnalysisService
 from app.services.scout.service import ScoutContext, ScoutService
 from app.services.supabase import AuthenticatedUser, SupabaseService
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class BackendState:
@@ -32,22 +36,42 @@ class BackendState:
 
 
 def _load_model(state: BackendState) -> None:
+    """Load the model weights. Designed to be called lazily on first request."""
     model = build_model()
     # Download from Supabase if no local path, or local path doesn't exist
     if state.settings.model_path and state.settings.model_path.exists():
         model_path = str(state.settings.model_path)
     else:
         model_path = download_model_if_needed()
-    weights = torch.load(model_path, map_location=state.device, weights_only=True)
+    # Force CPU to minimize memory overhead on free-tier hosting
+    weights = torch.load(model_path, map_location="cpu", weights_only=True)
     model.load_state_dict(weights)
+    # Free the weights dict immediately — model already has the parameters
+    del weights
+    gc.collect()
     model.to(state.device)
     model.eval()
     state.model = model
     state.model_parameter_count = parameter_count(model)
     state.model_error = None
+    logger.info("Model loaded successfully (%d parameters)", state.model_parameter_count)
 
 
-def create_app(settings: Settings | None = None, load_model_on_startup: bool = True) -> FastAPI:
+def _ensure_model(state: BackendState) -> None:
+    """Lazy-load model on first request. Avoids startup memory spike."""
+    if state.model is not None:
+        return
+    if state.model_error:
+        raise RuntimeError(f"Model previously failed to load: {state.model_error}")
+    try:
+        _load_model(state)
+    except Exception as exc:
+        state.model_error = str(exc)
+        logger.exception("Lazy model load failed")
+        raise
+
+
+def create_app(settings: Settings | None = None, load_model_on_startup: bool = False) -> FastAPI:
     resolved_settings = settings or get_settings()
 
     @asynccontextmanager
@@ -60,11 +84,13 @@ def create_app(settings: Settings | None = None, load_model_on_startup: bool = T
             scout_service=ScoutService(resolved_settings, supabase_service),
         )
         app.state.backend = app_state
+        # Model is lazy-loaded on first inference request to avoid startup memory spike
         if load_model_on_startup:
             try:
                 _load_model(app_state)
             except Exception as exc:  # pragma: no cover - depends on external model file
                 app_state.model_error = str(exc)
+        logger.info("NeuroSentinel backend started (model will load on first request)")
         yield
 
     app = FastAPI(title="NeuroSentinel Backend", lifespan=lifespan)
@@ -109,22 +135,27 @@ def create_app(settings: Settings | None = None, load_model_on_startup: bool = T
         user: AuthenticatedUser = Depends(get_authenticated_user),
         state: BackendState = Depends(get_backend_state),
     ) -> dict[str, Any]:
-        if state.model is None:
+        # Lazy-load model on first request
+        try:
+            _ensure_model(state)
+        except Exception:
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Model is not ready: {state.model_error or 'unknown error'}")
         if not file.filename or not file.filename.lower().endswith(".edf"):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only .edf files are supported.")
 
-        # Read the file into memory first so we can return immediately
-        file_bytes = await file.read()
-        await file.close()
         file_name = file.filename
 
-        # Write to temp file for the analysis pipeline
+        # Stream upload directly to disk — never buffer entire file in RAM
         suffix = ".edf"
         temp_path: str | None = None
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
             temp_path = handle.name
-            handle.write(file_bytes)
+            while True:
+                chunk = await file.read(8192)
+                if not chunk:
+                    break
+                handle.write(chunk)
+        await file.close()
 
         # Create the report record immediately so the frontend can track it
         from uuid import uuid4
@@ -158,11 +189,11 @@ def create_app(settings: Settings | None = None, load_model_on_startup: bool = T
                     batch_size=state.settings.analysis_batch_size,
                 )
             except Exception as exc:
-                import logging
-                logging.getLogger(__name__).exception("Background analysis failed for report %s", report_id)
+                logger.exception("Background analysis failed for report %s", report_id)
             finally:
                 if temp_path and os.path.exists(temp_path):
                     os.remove(temp_path)
+                gc.collect()
 
         asyncio.create_task(_run_analysis_background())
 
@@ -180,7 +211,10 @@ def create_app(settings: Settings | None = None, load_model_on_startup: bool = T
     ) -> dict[str, Any]:
         """Accept a Supabase Storage URL (file already uploaded by the frontend)
         and run the EEG analysis pipeline. This avoids Vercel's body-size limit."""
-        if state.model is None:
+        # Lazy-load model on first request
+        try:
+            _ensure_model(state)
+        except Exception:
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Model is not ready: {state.model_error or 'unknown error'}")
 
         file_url = payload.file_url
@@ -189,29 +223,27 @@ def create_app(settings: Settings | None = None, load_model_on_startup: bool = T
         if not file_name.lower().endswith(".edf"):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only .edf files are supported.")
 
-        # Download the file from Supabase Storage
+        # Stream download directly to disk — never buffer entire file in RAM
         import httpx as _httpx
 
+        suffix = ".edf"
+        temp_path: str | None = None
         try:
-            async with _httpx.AsyncClient(timeout=300) as client:
-                dl_response = await client.get(file_url)
-                dl_response.raise_for_status()
-                file_bytes = dl_response.content
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
+                temp_path = handle.name
+                async with _httpx.AsyncClient(timeout=300) as client:
+                    async with client.stream("GET", file_url) as dl_response:
+                        dl_response.raise_for_status()
+                        async for chunk in dl_response.aiter_bytes(chunk_size=8192):
+                            handle.write(chunk)
         except Exception as dl_exc:
+            # Clean up partial download
+            if temp_path and os.path.exists(temp_path):
+                os.remove(temp_path)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Failed to download file from storage: {dl_exc}",
             )
-
-        # Write to temp file for the analysis pipeline
-        suffix = ".edf"
-        temp_path: str | None = None
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
-            temp_path = handle.name
-            handle.write(file_bytes)
-
-        # Free the in-memory copy
-        del file_bytes
 
         # Create the report record immediately so the frontend can track it
         from uuid import uuid4 as _uuid4
@@ -245,11 +277,11 @@ def create_app(settings: Settings | None = None, load_model_on_startup: bool = T
                     batch_size=state.settings.analysis_batch_size,
                 )
             except Exception as exc:
-                import logging
-                logging.getLogger(__name__).exception("Background analysis failed for report %s", report_id)
+                logger.exception("Background analysis failed for report %s", report_id)
             finally:
                 if temp_path and os.path.exists(temp_path):
                     os.remove(temp_path)
+                gc.collect()
 
         _asyncio.create_task(_run_url_analysis_background())
 

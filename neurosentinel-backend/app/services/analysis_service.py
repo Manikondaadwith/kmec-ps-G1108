@@ -38,14 +38,14 @@ class AnalysisService:
             torch.backends.mkldnn.enabled = previous
 
     def _resolve_chunk_batch_size(self, n_windows: int, requested_batch_size: int) -> int:
-        """Reduce batch size for very large recordings to avoid GPU/CPU memory spikes."""
+        """Reduce batch size for very large recordings to avoid CPU memory spikes."""
         if n_windows >= 1500:
-            return min(requested_batch_size, 8)
+            return min(requested_batch_size, 4)
         if n_windows >= 800:
-            return min(requested_batch_size, 16)
+            return min(requested_batch_size, 8)
         if n_windows >= 300:
-            return min(requested_batch_size, 32)
-        return requested_batch_size
+            return min(requested_batch_size, 12)
+        return min(requested_batch_size, 16)
 
     def _send_completion_email(
         self,
@@ -173,7 +173,7 @@ class AnalysisService:
                 inference_result = infer_from_data_chunked(
                     model, data, channel_mask, metadata,
                     device=device, batch_size=effective_batch_size,
-                    max_windows_per_chunk=300,
+                    max_windows_per_chunk=150,
                 )
             except RuntimeError as exc:
                 if "could not execute a primitive" not in str(exc).lower():
@@ -210,6 +210,10 @@ class AnalysisService:
             channel_importance = compute_channel_importance(model, tensor_window)
             attention_weights = extract_attention_maps(model, tensor_window)
 
+            # Free explainability intermediaries
+            del tensor_window
+            gc.collect()
+
             # --- Stage 4: Report generation ---
             # build_full_report_payload expects `windows` for quality assessment.
             # We provide the sampled quality windows instead of all 7000+ windows.
@@ -223,6 +227,11 @@ class AnalysisService:
                 channel_importance=channel_importance,
                 attention_weights=attention_weights,
             )
+
+            # Free large intermediaries now that report is built
+            del inference_result, report_windows, quality_samples, representative_window
+            del channel_importance, attention_weights, channel_mask
+            gc.collect()
 
             # --- Stage 5: PDF generation + upload (non-fatal) ---
             self._set_stage(report_id, "Rendering the NeuroSentinel AI report PDF and finalising results.")
@@ -260,6 +269,10 @@ class AnalysisService:
             # --- Stage 6: Email notification (non-fatal) ---
             self._send_completion_email(user_id, file_name, updates, pdf_bytes)
 
+            # Final cleanup — free PDF bytes and report payload
+            del pdf_bytes
+            gc.collect()
+
             return {
                 "report_id": report_id,
                 "status": "completed",
@@ -269,5 +282,6 @@ class AnalysisService:
         except Exception as exc:  # pragma: no cover - exercised by integration tests with mocks
             logger.exception("Report %s failed during analysis.", report_id)
             self.supabase_service.update_report(report_id, {"status": "failed", "error_message": str(exc), "report_json": {"error": str(exc)}})
+            gc.collect()  # Clean up even on failure
             raise
 

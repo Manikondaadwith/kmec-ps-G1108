@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     scout_report_limit: int = 8
 
     backend_timeout_seconds: float = 60.0
-    analysis_batch_size: int = 64
+    analysis_batch_size: int = 16  # Low default for Render free-tier (512MB RAM)
 
     # Email notification settings (optional — set RESEND_API_KEY or SMTP_* to enable)
     resend_api_key: str | None = Field(default=None, alias="RESEND_API_KEY")

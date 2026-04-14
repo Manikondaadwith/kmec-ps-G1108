@@ -10,14 +10,17 @@ LOCAL_MODEL_PATH = f"/tmp/{MODEL_FILENAME}"  # IMPORTANT: only safe writable pat
 
 
 def download_model_if_needed() -> str:
-    """Download the model weights from Supabase Storage if not already cached locally."""
+    """Download the model weights from Supabase Storage if not already cached locally.
+
+    Uses streaming HTTP download to avoid buffering the entire model file in RAM.
+    """
     if os.path.exists(LOCAL_MODEL_PATH):
         print("✅ Model already exists locally")
         return LOCAL_MODEL_PATH
 
-    print("⬇️ Downloading model from Supabase...")
+    print("⬇️ Downloading model from Supabase (streaming)...")
 
-    from supabase import create_client, Client
+    import requests
 
     supabase_url = os.getenv("SUPABASE_URL")
     supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
@@ -25,14 +28,21 @@ def download_model_if_needed() -> str:
     if not supabase_url or not supabase_key:
         raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set to download the model.")
 
-    supabase: Client = create_client(supabase_url, supabase_key)
+    # Build the direct storage URL and stream download chunk-by-chunk
+    download_url = f"{supabase_url}/storage/v1/object/{BUCKET_NAME}/{MODEL_FILENAME}"
+    headers = {
+        "Authorization": f"Bearer {supabase_key}",
+        "apikey": supabase_key,
+    }
 
-    res = supabase.storage.from_(BUCKET_NAME).download(MODEL_FILENAME)
+    response = requests.get(download_url, headers=headers, stream=True, timeout=300)
+    response.raise_for_status()
 
     with open(LOCAL_MODEL_PATH, "wb") as f:
-        f.write(res)
+        for chunk in response.iter_content(chunk_size=8192):
+            f.write(chunk)
 
-    print("✅ Model downloaded successfully")
+    print("✅ Model downloaded successfully (streamed to disk)")
 
     return LOCAL_MODEL_PATH
 
