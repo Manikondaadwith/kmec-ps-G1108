@@ -4,6 +4,8 @@ import { createClient } from '@/lib/supabase/server'
 import { Sidebar } from './_components/sidebar'
 import { ensureUserProfile } from '@/lib/user-profile'
 import { getRoleLabel } from '@/lib/scout-guide'
+import { ScoutTour } from './_components/scout-tour'
+import './dashboard.css'
 
 export default async function DashboardLayout({
   children,
@@ -21,13 +23,14 @@ export default async function DashboardLayout({
   } catch {}
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
+    <div className="clinical-dashboard flex h-screen overflow-hidden">
       {/* ── Left: Sidebar ── */}
       <Sidebar userEmail={user.email ?? ''} userRole={userRole} />
 
       {/* ── Center: page content ── */}
-      <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
+      <main className="flex-1 min-w-0 flex flex-col overflow-hidden relative">
         {children}
+        <ScoutTour />
       </main>
     </div>
   )

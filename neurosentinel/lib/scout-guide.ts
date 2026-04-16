@@ -1,5 +1,5 @@
 export type ScoutRole = 'clinician' | 'researcher' | 'patient' | null
-export type ScoutPageContext = 'dashboard' | 'report' | 'onboarding' | 'settings' | 'general'
+export type ScoutPageContext = 'dashboard' | 'report' | 'onboarding' | 'settings' | 'history' | 'general'
 
 type ScoutReportContext = {
   fileName?: string
@@ -22,17 +22,19 @@ type ScoutResponseOptions = {
 
 export const DESIGN_PHILOSOPHY = {
   title: '7.1 Design Philosophy',
-  statement: 'Clinical precision meets cinematic aesthetics.',
-  summary: 'Dark command-centre styling, dense signal-rich surfaces, and a guide that feels helpful instead of noisy.',
+  statement: 'Clinical precision and structured intelligence.',
+  summary: 'Clean white-themed clinical aesthetics, focusing on clarity, trust, and professional efficiency.',
 }
 
-export const SCOUT_FULL_NAME = 'SCOUT — Signal Capture & Observation Unified Tool'
+export const SCOUT_FULL_NAME = 'SCOUT • Clinical Assistant'
 
 export const COLOUR_PALETTE = [
-  { name: 'Near Black', value: '#0A0A0F' },
-  { name: 'Cyan Accent', value: '#00F0FF' },
-  { name: 'Amber Signal', value: '#FFB800' },
-  { name: 'Critical Red', value: '#FF3366' },
+  { name: 'Pure White', value: '#FFFFFF' },
+  { name: 'Light Gray', value: '#F9FAFB' },
+  { name: 'Clinical Blue', value: '#3B82F6' },
+  { name: 'Clinical Teal', value: '#14B8A6' },
+  { name: 'Text Primary', value: '#1E293B' },
+  { name: 'Text Secondary', value: '#64748B' },
 ]
 
 export const SCOUT_GUIDE_REFERENCES = [
@@ -63,12 +65,12 @@ export const SCOUT_PLACEMENT_RULES = [
 ]
 
 export const SCOUT_CHAT_DIALOG_SPEC = {
-  width: 360,
-  height: 460,
-  minWidth: 280,
-  minHeight: 320,
-  maxWidth: 560,
-  maxHeight: '78vh',
+  width: 380,
+  height: 520,
+  minWidth: 320,
+  minHeight: 420,
+  maxWidth: 600,
+  maxHeight: '80vh',
 }
 
 export const SCOUT_GUARDRAILS = [
@@ -142,10 +144,11 @@ export const SCOUT_ONBOARDING_TOUR = [
 ]
 
 export const SCOUT_QUICK_PROMPTS = {
-  dashboard: ['Upload help', 'Recent reports', 'SCOUT memory'],
-  report: ['Summarize report', 'Explain risk', 'Next review step'],
-  settings: ['Preferences', 'Privacy', 'Memory'],
-  general: ['Quick tour', 'Upload help', 'Recent reports'],
+  dashboard: ['Upload EEG', 'View latest report', 'Clinical tour'],
+  report: ['Explain risk', 'Summarize report', 'Next steps'],
+  settings: ['Update profile', 'Account security', 'Privacy controls'],
+  history: ['Filter reports', 'Search guide', 'Export reports'],
+  general: ['Upload help', 'Clinical tour', 'Recent reports'],
 }
 
 function matches(message: string, keywords: string[]) {
@@ -180,6 +183,7 @@ export function getQuickPrompts(page: ScoutPageContext = 'general') {
   if (page === 'dashboard') return SCOUT_QUICK_PROMPTS.dashboard
   if (page === 'report') return SCOUT_QUICK_PROMPTS.report
   if (page === 'settings') return SCOUT_QUICK_PROMPTS.settings
+  if (page === 'history') return SCOUT_QUICK_PROMPTS.history
   return SCOUT_QUICK_PROMPTS.general
 }
 
@@ -263,18 +267,10 @@ export function getScoutInitialMessage(role: ScoutRole, page: ScoutPageContext =
   }
 
   if (page === 'report') {
-    return 'SCOUT report explainer online. I can summarize this report, explain the risk cues, or walk you through the structured findings.'
+    return 'SCOUT report explainer online. How can I help you analyze this EEG recording?'
   }
 
-  if (page === 'dashboard') {
-    return getDefaultRoleMessage(role)
-  }
-
-  if (page === 'settings') {
-    return 'SCOUT online. I can explain your preferences, privacy controls, or memory settings.'
-  }
-
-  return getDefaultRoleMessage(role)
+  return 'SCOUT online. How can I assist your clinical workflow today?'
 }
 
 export function getRoleLabel(role: ScoutRole) {
@@ -292,35 +288,23 @@ export function getRoleToneSummary(role: ScoutRole) {
 
 export function getReportExplainerOpening(role: ScoutRole, report?: ScoutReportContext | null) {
   if (report?.status === 'pending') {
-    return 'The report has been created and is queued for backend analysis. I can explain what happens next while the upload waits to be processed.'
+    return 'The report is queued for backend analysis. I’ll notify you once the processing completes.'
   }
 
   if (report?.status === 'processing') {
-    return 'Analysis is in progress. The backend is preprocessing the EDF, running V4 inference, and generating the structured report.'
+    return 'Analysis in progress. I’m currently processing the signal and generating your clinical briefing.'
   }
 
   if (report?.status === 'failed') {
-    return report.summary || 'This report failed during backend analysis. I can help explain the failure state or guide the next upload.'
+    return report.summary || 'This report failed during analysis. I can help investigate the error or guide your next upload.'
   }
 
-  // For completed reports: return a brief "preparing" message.
-  // The auto-summarize flow will fire immediately and produce the real detailed summary.
-  // This avoids showing a stale one-line DB summary as the initial message.
+  // --- Completed Report Summary ---
   const fileName = report?.fileName ? ` (${report.fileName})` : ''
+  const result = report?.result || 'Analysis complete'
+  const risk = report?.riskLevel ? ` with ${report.riskLevel.toLowerCase()} risk` : ''
 
-  if (role === 'patient') {
-    return `I've loaded your EEG recording${fileName}. Give me a moment — I'm reading through the full analysis and putting together a detailed explanation for you.`
-  }
-
-  if (role === 'researcher') {
-    return `Report loaded${fileName}. Analysing the full output data — I'll have a comprehensive technical breakdown ready in a moment.`
-  }
-
-  if (role === 'clinician') {
-    return `Clinical report loaded${fileName}. Processing the full analysis — your detailed clinical briefing is being generated now.`
-  }
-
-  return `Report loaded${fileName}. I'm reviewing the complete analysis and preparing a detailed summary for you now.`
+  return `I’ve analyzed your EEG recording${fileName}. ${result}${risk}. I’m preparing a detailed summary for you now.`
 }
 
 export function buildScoutResponse({ lastMessage, role = null, page = 'general', report = null }: ScoutResponseOptions) {
@@ -383,5 +367,17 @@ export function buildScoutResponse({ lastMessage, role = null, page = 'general',
     return `I am tracking ${formatReportStatus(report?.result)}. I can summarize it or explain the attention map.`
   }
 
-  return `I am tracking the ${page} context. I can help with uploads, results, or ${formatReportStatus(report?.result)}.`
+  if (page === 'dashboard') {
+    return "Upload an EEG file to begin clinical analysis, or open an existing report from your history."
+  }
+
+  if (page === 'history') {
+    return "I can help you filter, search, or review previous clinical reports."
+  }
+
+  if (page === 'settings') {
+    return "I can guide you through managing your profile identity, preferences, or account security."
+  }
+
+  return 'How can I assist you today?'
 }

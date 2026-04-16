@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { ensureUserProfile } from '@/lib/user-profile'
 import { getRoleLabel } from '@/lib/scout-guide'
+import Link from 'next/link'
 import { SettingsClient } from './settings-client'
 
 export const metadata = {
@@ -20,14 +21,19 @@ export default async function SettingsPage() {
 
   return (
     <>
-      <header
-        className="flex shrink-0 items-center justify-between border-b px-6 py-3"
-        style={{ background: 'rgba(10,10,15,0.9)', backdropFilter: 'blur(16px)', borderColor: 'var(--border-subtle)' }}
-      >
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] font-mono uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>NeuroSentinel AI</span>
-          <span style={{ color: 'var(--border-default)' }}>/</span>
-          <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)', fontFamily: "'Outfit',sans-serif" }}>Settings</span>
+      <header className="clinical-header">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/dashboard"
+            className="text-[12px] font-medium transition-colors hover:text-[var(--accent-primary)]"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            NeuroSentinel AI
+          </Link>
+          <span className="text-[10px]" style={{ color: 'var(--border-strong)' }}>&gt;</span>
+          <span className="text-[14px] font-semibold" style={{ color: 'var(--text-heading)' }}>
+            Settings
+          </span>
         </div>
       </header>
 

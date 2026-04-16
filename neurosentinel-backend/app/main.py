@@ -28,8 +28,8 @@ from app.services.supabase import AuthenticatedUser, SupabaseService
 logger = logging.getLogger(__name__)
 
 # ── Hard limits ──────────────────────────────────────────────────────────────
-MAX_UPLOAD_BYTES = 150 * 1024 * 1024       # 150MB file cap
-JOB_TIMEOUT_SECONDS = 600                  # 10 min max per job
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024       # 50MB file cap (Supabase free tier max)
+JOB_TIMEOUT_SECONDS = 3600                  # 1 hour max per job
 MEMORY_THRESHOLD_MB = 450                  # Abort job if RSS exceeds this
 STALE_JOB_CLEANUP_SECONDS = 300            # Clean up "processing" jobs older than 5 min on startup
 
@@ -102,7 +102,7 @@ def _make_guard_fn(job_start_time: float) -> "Callable[[], None]":
         if _cancel_requested.is_set():
             raise JobAborted("Job cancelled by user")
 
-        # 2. TIMEOUT CHECK — job running too long
+        # 2. TIMEOUT CHECK — recording too long/complex
         elapsed = time.time() - job_start_time
         if elapsed > JOB_TIMEOUT_SECONDS:
             raise JobAborted(f"Job timeout: exceeded {JOB_TIMEOUT_SECONDS}s")
@@ -267,12 +267,22 @@ def _run_analysis_sync(
 
     except Exception as exc:
         logger.exception("Analysis failed for report %s", report_id)
+        
+        # Determine error message
+        error_msg = str(exc)
+        is_timeout = "timeout" in error_msg.lower()
+        
         try:
             state.analysis_service.supabase_service.update_report(report_id, {
                 "status": "failed",
-                "error_message": str(exc)[:500],
-                "report_json": {"error": str(exc)[:500]},
+                "error_message": error_msg[:500],
+                "report_json": {"error": error_msg[:500]},
             })
+            
+            # If it was a timeout, send a specific email notification
+            if is_timeout:
+                state.analysis_service.send_timeout_notification(user_id, file_name)
+                
         except Exception:
             logger.error("Failed to update report status for %s", report_id)
 

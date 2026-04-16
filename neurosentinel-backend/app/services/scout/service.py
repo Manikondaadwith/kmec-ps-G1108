@@ -20,7 +20,6 @@ logger = logging.getLogger(__name__)
 
 AUTO_SUMMARY_PREFIX = "__SCOUT_AUTO_SUMMARY__"
 TRUNCATION_MARKERS = (
-    "constraints",
     "too lengthy",
     "too long",
     "continue if you want",
@@ -466,42 +465,42 @@ def _build_clinician_summary(
     recommendations: list,
     probability_summary: dict,
 ) -> str:
-    """Concise, metric-dense structured summary for clinicians."""
+    """Concise, metric-dense structured summary for clinicians formatted for Markdown."""
     lines: list[str] = []
 
-    lines.append(f"Report: {details['filename']}")
-    lines.append(f"Result: {details['result_label']} | Risk: {details['risk_level']} | Confidence: {details['confidence_text']} | Events: {details['event_count']}")
-    lines.append(f"Duration: {details['duration_text']} | Quality: {details['quality_grade']} ({details['quality_score']}/1.0)")
+    lines.append(f"- **Report:** {details['filename']}")
+    lines.append(f"- **Result:** {details['result_label']} | **Risk:** {details['risk_level']} | **Confidence:** {details['confidence_text']} | **Events:** {details['event_count']}")
+    lines.append(f"- **Duration:** {details['duration_text']} | **Quality:** {details['quality_grade']} ({details['quality_score']}/1.0)")
 
     if probability_summary:
         lines.append(
-            f"Probability: mean {probability_summary.get('mean', '?')}, "
+            f"- **Probability:** mean {probability_summary.get('mean', '?')}, "
             f"median {probability_summary.get('median', '?')}, "
             f"p99 {probability_summary.get('p99', '?')}, "
             f"max {probability_summary.get('max', '?')}"
         )
 
     if events:
-        lines.append(f"Primary event: {_format_event_brief(events[0])}")
+        lines.append(f"- **Primary event:** {_format_event_brief(events[0])}")
         if len(events) > 1:
-            lines.append(f"Additional events: {len(events) - 1} segment(s) flagged for review")
+            lines.append(f"- **Additional events:** {len(events) - 1} segment(s) flagged for review")
     else:
-        lines.append("Event burden: zero for the analyzed recording window")
+        lines.append("- **Event burden:** zero for the analyzed recording window")
 
     if top_channels:
         channel_text = ", ".join(f"{ch} ({sc:.3f})" for ch, sc in top_channels[:5])
-        lines.append(f"Top channels: {channel_text}")
+        lines.append(f"- **Top channels:** {channel_text}")
     elif details["channel_summary"] and details["channel_summary"] != "not reported":
-        lines.append(f"Channel summary: {details['channel_summary']}")
+        lines.append(f"- **Channel summary:** {details['channel_summary']}")
 
     if top_regions:
         if isinstance(top_regions[0], (list, tuple)):
             region_text = ", ".join(f"{name} ({score:.3f})" for name, score in top_regions[:4])
         else:
             region_text = ", ".join(str(r) for r in top_regions[:4])
-        lines.append(f"Active regions: {region_text}")
+        lines.append(f"- **Active regions:** {region_text}")
 
-    lines.append(f"Domain shift: {details['domain_shift']}")
+    lines.append(f"- **Domain shift:** {details['domain_shift']}")
 
     flags: list[str] = []
     if details["se_flag"]:
@@ -510,22 +509,22 @@ def _build_clinician_summary(
         flags.append("early warning signal")
     if details["events_per_hour"] is not None:
         flags.append(f"events/hr: {details['events_per_hour']}")
-    lines.append(f"Critical flags: {', '.join(flags) if flags else 'none'}")
+    lines.append(f"- **Critical flags:** {', '.join(flags) if flags else 'none'}")
 
     if details["trend"] and details["trend"].lower() != "no trend summary available.":
-        lines.append(f"Clinical summary: {details['trend']}")
+        lines.append(f"- **Clinical summary:** {details['trend']}")
 
     # Etiology & differential
-    lines.append(_get_etiology_clinician(top_regions))
+    lines.append(f"- **{_get_etiology_clinician(top_regions)}**")
 
     # Management guidance
-    lines.append(_get_severity_guidance_clinician(details["risk_level"], details["event_count"], details["se_flag"]))
+    lines.append(f"- **{_get_severity_guidance_clinician(details['risk_level'], details['event_count'], details['se_flag'])}**")
 
     if recommendations:
         for i, rec in enumerate(recommendations[:3], 1):
-            lines.append(f"Rec {i}: {rec}")
+            lines.append(f"- **Rec {i}:** {rec}")
 
-    return "\n".join(lines)
+    return "\n\n".join(lines)
 
 
 def _build_researcher_summary(
@@ -771,9 +770,21 @@ class ScoutService:
     ) -> str:
         role = _normalize_role(context.role or (user_profile or {}).get("role"))
         role_instructions = {
-            "clinician": "Be clinical, structured, and metric-dense. Use compact lines with pipe-separated values where possible. Lead with the key finding, then the action-oriented implication. Avoid lengthy prose — clinicians want data, not narrative.",
-            "researcher": "Be technical and methodological. Use a hybrid of narrative context and embedded metrics. Include confidence bounds, methodology cues, and domain shift notes. Balance readability with data density.",
-            "patient": "Be warm, calm, and conversational. Write in flowing paragraphs — NEVER use numbered lists, bullet points, or structured metric dumps. Explain everything in plain language as if speaking to someone with no medical background. Use short sentences and reassuring tone.",
+            "clinician": (
+                "Be clinical, structured, and metric-dense. Provide concise paragraph-style responses. Do not use bulleted lists or pipe-separated lines for regular responses unless explicitly requested. "
+                "MANDATORY: Provide strict HEALTH INTERPRETATION (explain significance of findings) and ACTIONABLE GUIDANCE (suggest what to do next, e.g., 'consider video-EEG monitoring'). "
+                "Focus purely on interpretation and next steps."
+            ),
+            "researcher": (
+                "Be technical and methodological. Use a hybrid of narrative context and embedded metrics. Include confidence bounds, methodology cues, and domain shift notes. Balance readability with data density."
+            ),
+            "patient": (
+                "Be warm, calm, and conversational. Write in flowing paragraphs — NEVER use numbered lists, bullet points, or structured metric dumps. Explain everything in plain language. "
+                "MANDATORY: Provide clear HEALTH INTERPRETATION (explain in simple terms what the result means and possible reasons like abnormal electrical activity or seizure patterns). "
+                "MANDATORY: Provide ACTIONABLE GUIDANCE (suggest what to do next and what kind of follow-up is needed, e.g., 'Consult your neurologist'). "
+                "MANDATORY: Include health tips about medication adherence, sleep hygiene, stress management, and trigger avoidance. "
+                "If past reports/trends are available, compare trends (e.g., 'Compared to your previous reports, activity appears stable')."
+            ),
         }
         history_lines = [f"{message['role']}: {message['content']}" for message in history[-8:]]
         reports_summary = [
@@ -819,22 +830,24 @@ class ScoutService:
         format_rules = {
             "patient": (
                 "FORMATTING RULES FOR PATIENT MODE:\n"
-                "- Write in warm, flowing paragraphs. NEVER use numbered lists, bullet points, or structured data dumps.\n"
+                "- Write in warm, clear language. NEVER use numbered lists, bullet points, or structured data dumps.\n"
                 "- Explain medical terms in simple words. Use analogies when helpful.\n"
                 "- Keep a calm and reassuring tone throughout.\n"
-                "- For follow-up questions, keep responses to 2-4 short paragraphs maximum but stay warm and detailed."
+                "- For normal chat, keep responses extremely precise and brief (1-3 sentences maximum)."
             ),
             "clinician": (
                 "FORMATTING RULES FOR CLINICIAN MODE:\n"
-                "- Use structured, metric-dense output with pipe-separated values.\n"
-                "- No excessive narrative — lead with data, follow with clinical implication.\n"
-                "- For follow-up questions, keep responses to 3-6 concise lines maximum."
+                "- Write in a professional, concise, and highly clinical tone.\n"
+                "- No excessive narrative — lead with core insights and data.\n"
+                "- NEVER format responses using pipe characters (|). Write in natural sentences.\n"
+                "- For normal chat, keep responses to 1-3 concise lines maximum."
             ),
             "researcher": (
                 "FORMATTING RULES FOR RESEARCHER MODE:\n"
-                "- Use a hybrid of narrative context with embedded metrics and methodology notes.\n"
-                "- Include confidence bounds, statistical measures, and domain shift context.\n"
-                "- For follow-up questions, keep responses to 3-5 lines or a short paragraph."
+                "- Focus on technical details, raw metrics, and methodology.\n"
+                "- Include confidence bounds and statistical measures.\n"
+                "- NEVER format responses using pipe characters (|). Write in natural sentences.\n"
+                "- For normal chat, keep responses to 1-3 concise lines maximum."
             ),
         }
 
@@ -842,16 +855,15 @@ class ScoutService:
             [
                 f"You are {SCOUT_FULL_NAME}, the bounded in-product assistant for NeuroSentinel AI.",
                 "You help with onboarding, product help, and report explanation.",
-                "Never mention token limits, constraints, or inability to send a long answer.",
                 "Never diagnose, prescribe, or recommend treatment changes.",
                 "If a value is missing from context, say it is unknown.",
                 f"User role: {role}",
                 f"Role instruction: {role_instructions[role]}",
                 format_rules[role],
                 f"CRITICAL: You MUST calibrate EVERY response for the '{role}' role. "
-                f"{'Write in paragraphs with plain, calm language. Avoid jargon. No numbered lists or bullets ever.' if role == 'patient' else 'Use precise clinical terminology with structured metric-dense findings.' if role == 'clinician' else 'Use technical, methodological language with metrics and confidence bounds in a narrative-metric hybrid.'}",
+                f"{'Write in plain, calm, and brief language. Avoid jargon. No numbered lists or bullets ever.' if role == 'patient' else 'Use precise clinical terminology with structured metric-dense findings.' if role == 'clinician' else 'Use technical, methodological language with metrics and confidence bounds.'}",
                 f"Current page: {context.page}",
-                "For follow-up questions after the initial summary, keep responses SHORT but maintain your role-appropriate tone and format.",
+                "GLOBAL RULE: Unless you are generating the initial comprehensive auto-summary of a new EEG report, YOUR RESPONSES MUST BE EXTREMELY CONCISE, PRECISE, AND STRAIGHT TO THE POINT. No filler words, no lengthy paragraphs.",
                 "--- CURRENT REPORT ---",
                 *report_context_lines,
                 "--- RECENT REPORTS ---",

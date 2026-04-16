@@ -23,6 +23,7 @@ _APP_URL = "https://neurosentinel.vercel.app"
 
 _SUBJECT_SEIZURE = "NeuroSentinel AI — Seizure Activity Detected in {filename}"
 _SUBJECT_NO_SEIZURE = "NeuroSentinel AI — No Seizure Activity Detected in {filename}"
+_SUBJECT_TIMEOUT = "NeuroSentinel AI — EEG Analysis Timed Out for {filename}"
 
 
 def _build_patient_email(report: dict[str, Any], filename: str) -> str:
@@ -152,6 +153,34 @@ def _build_researcher_email(report: dict[str, Any], filename: str) -> str:
 
     <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 24px 0;" />
     <p style="font-size: 11px; color: #565670; text-align: center; line-height: 1.6; margin: 0;">Model outputs are decision-support evidence. Cross-validate flagged segments against raw traces before drawing conclusions.</p>
+</div>
+"""
+
+
+def _build_timeout_email(filename: str) -> str:
+    return f"""
+<div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0A0A0F; color: #E8E8F0; padding: 32px; border-radius: 16px;">
+    <div style="text-align: center; margin-bottom: 24px;">
+        <h1 style="font-size: 20px; color: #00F0FF; margin: 0;">NeuroSentinel AI</h1>
+        <p style="font-size: 11px; color: #565670; letter-spacing: 2px; text-transform: uppercase; margin-top: 4px;">Analysis Halted</p>
+    </div>
+
+    <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 20px; margin-bottom: 20px;">
+        <p style="font-size: 14px; line-height: 1.7; color: #C8C8D4; margin: 0 0 16px 0;">
+            The analysis of your EEG recording <strong>{filename}</strong> has timed out after 1 hour of processing.
+        </p>
+        <p style="font-size: 14px; line-height: 1.7; color: #C8C8D4; margin: 0;">
+            This typically happens with exceptionally long or complex recordings that exceed our current automated processing limits. 
+            We recommend splitting the recording into smaller segments and re-uploading them, or contacting our technical support team for assistance.
+        </p>
+    </div>
+
+    <div style="text-align: center; margin: 24px 0;">
+        <a href="{_APP_URL}/dashboard" style="display: inline-block; background: rgba(255,255,255,0.08); color: #00F0FF; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 12px; text-decoration: none; border: 1px solid rgba(0,240,255,0.2);">Return to Dashboard</a>
+    </div>
+
+    <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 24px 0;" />
+    <p style="font-size: 11px; color: #565670; text-align: center; line-height: 1.6; margin: 0;">Automated notification from NeuroSentinel AI Clinical Intelligence System.</p>
 </div>
 """
 
@@ -332,4 +361,67 @@ def send_report_notification(
         )
 
     logger.info("No email provider configured (RESEND_API_KEY or SMTP_*). Skipping email notification for %s.", filename)
+    return False
+
+
+def send_timeout_notification(
+    *,
+    to_email: str,
+    filename: str,
+    resend_api_key: str | None = None,
+    resend_from_email: str = "NeuroSentinel AI <noreply@neurosentinel.app>",
+    smtp_host: str | None = None,
+    smtp_port: int = 587,
+    smtp_user: str | None = None,
+    smtp_password: str | None = None,
+    smtp_from_email: str | None = None,
+) -> bool:
+    """Send notification when analysis times out."""
+    if not to_email:
+        return False
+
+    subject = _SUBJECT_TIMEOUT.format(filename=filename)
+    html = _build_timeout_email(filename)
+
+    # Try Resend
+    if resend_api_key:
+        try:
+            response = httpx.post(
+                "https://api.resend.com/emails",
+                headers={
+                    "Authorization": f"Bearer {resend_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "from": resend_from_email,
+                    "to": [to_email],
+                    "subject": subject,
+                    "html": html,
+                },
+                timeout=30.0,
+            )
+            return response.status_code in (200, 201)
+        except Exception:
+            pass
+
+    # Try SMTP
+    if smtp_host and smtp_user and smtp_password:
+        try:
+            msg = MIMEMultipart("mixed")
+            msg["From"] = smtp_from_email or smtp_user
+            msg["To"] = to_email
+            msg["Subject"] = subject
+            msg.attach(MIMEText(html, "html", "utf-8"))
+
+            server = smtplib.SMTP(smtp_host, smtp_port, timeout=30)
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+            server.login(smtp_user, smtp_password)
+            server.send_message(msg)
+            server.quit()
+            return True
+        except Exception:
+            pass
+
     return False

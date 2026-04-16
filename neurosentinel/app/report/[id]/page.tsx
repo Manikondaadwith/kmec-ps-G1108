@@ -2,12 +2,14 @@
 
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { ScoutPanel } from '@/app/components/scout-panel'
-import { getReportExplainerOpening, type ScoutRole } from '@/lib/scout-guide'
+import { ScoutAvatar } from '@/app/components/scout-avatar'
+import { useScoutConversation } from '@/app/components/scout-provider'
+import { getReportExplainerOpening, getRoleLabel, type ScoutRole } from '@/lib/scout-guide'
 import { ensureUserProfile } from '@/lib/user-profile'
-import { formatConfidence, formatDurationMinutes, normalizeReport, normalizeReportStatus, type ReportRecord } from '@/lib/neurosentinel/types'
+import { normalizeReport, normalizeReportStatus, type ReportRecord } from '@/lib/neurosentinel/types'
 
 import { ProbabilityTimeline } from '../_components/probability-timeline'
 import { EventCards } from '../_components/event-cards'
@@ -16,16 +18,131 @@ import { BandPowerChart } from '../_components/band-power-chart'
 import { DataQualityPanel } from '../_components/data-quality-panel'
 import { ClinicalMetrics } from '../_components/clinical-metrics'
 
-/* ─── Helpers ─── */
-function statusChip(status: string) {
-  if (status === 'completed') return { background: 'rgba(0,255,157,0.08)', color: 'var(--accent-success)' }
-  if (status === 'failed') return { background: 'rgba(255,51,102,0.08)', color: 'var(--accent-danger)' }
-  return { background: 'rgba(0,240,255,0.08)', color: 'var(--accent-primary)' }
+/* ─── Utils ─── */
+function cleanMarkdown(text: string): string {
+  if (!text) return ''
+  return text
+    .replace(/#{1,6}\s*/g, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/_([^_]+)_/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/^[-*+]\s+/gm, '• ')
+    .replace(/^\d+\.\s+/gm, (match) => match)
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
 }
 
-function buildReportAutoPrompt(role: ScoutRole, filename?: string | null) {
-  const subject = filename ? `"${filename}"` : 'this report'
-  return `Summarize ${subject} for me in detail.`
+/* ─── SCOUT Interpretation Card ─── */
+function ScoutInterpretationCard({ 
+  report, 
+  role, 
+  initialMessage, 
+  autoPrompt 
+}: { 
+  report: ReportRecord
+  role: ScoutRole
+  initialMessage: string
+  autoPrompt: any
+}) {
+  const { messages, loading } = useScoutConversation({
+    page: 'report',
+    role,
+    reportId: report.id,
+    currentReport: report,
+    initialMessage,
+  })
+
+  // We want the latest assistant message that isn't the first greeting, specifically for this context
+  const latestAssistantMessage = [...messages].reverse().find(m => 
+    m.role === 'assistant' && 
+    m.content !== initialMessage &&
+    m.reportId === report.id
+  )
+  if (loading && !latestAssistantMessage) {
+    return (
+      <div className="relative overflow-hidden rounded-[32px] border border-blue-100 bg-white p-8 shadow-sm">
+        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-cyan-400" />
+        <div className="flex items-center gap-3">
+          <div className="flex gap-1.5 px-2">
+            {[0, 1, 2].map((d) => (
+              <div 
+                key={d} 
+                className="h-1.5 w-1.5 rounded-full bg-blue-400" 
+                style={{ animation: 'bounce 1.2s infinite', animationDelay: `${d * 0.15}s` }}
+              />
+            ))}
+          </div>
+          <p className="text-[15px] font-semibold text-blue-600">
+            SCOUT is analyzing the EEG report...
+          </p>
+        </div>
+        <style jsx>{`
+          @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-3px); }
+          }
+        `}</style>
+      </div>
+    )
+  }
+
+  return (
+    <div 
+      className="relative overflow-hidden rounded-[32px] border border-blue-100 bg-white p-8 shadow-sm transition-all hover:shadow-md"
+      style={{
+        boxShadow: '0 4px 24px rgba(59, 130, 246, 0.04), inset 0 0 12px rgba(59, 130, 246, 0.02)'
+      }}
+    >
+      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-cyan-400" />
+      <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center gap-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50">
+            <span className="text-sm">✨</span>
+          </div>
+          <div>
+            <h3 className="text-sm font-black uppercase tracking-widest text-[#1E293B]">SCOUT Clinical Interpretation</h3>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-tight">Signal Capture & Observation Unified Tool</p>
+          </div>
+        </div>
+        {!loading && (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[9px] font-black text-emerald-700 uppercase tracking-wider ring-1 ring-inset ring-emerald-100">
+            Analysis Verified
+          </span>
+        )}
+      </div>
+
+      <div className="prose prose-sm max-w-none">
+        {latestAssistantMessage ? (
+          <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-gray-700 font-medium">
+            {cleanMarkdown(latestAssistantMessage.content)}
+          </p>
+        ) : (
+          <div className="flex items-center gap-3">
+            <div className="flex gap-1.5 px-2">
+              {[0, 1, 2].map((d) => (
+                <div 
+                  key={d} 
+                  className="h-1.5 w-1.5 rounded-full bg-blue-400" 
+                  style={{ animation: 'bounce 1.2s infinite', animationDelay: `${d * 0.15}s` }}
+                />
+              ))}
+            </div>
+            <p className="text-[15px] font-semibold text-blue-600 animate-pulse">
+              SCOUT is analyzing the EEG report...
+            </p>
+          </div>
+        )}
+      </div>
+      <style jsx>{`
+        @keyframes bounce {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-3px); }
+        }
+      `}</style>
+    </div>
+  )
 }
 
 /* ─── Page ─── */
@@ -37,6 +154,14 @@ export default function ReportPage() {
   const [role, setRole] = useState<ScoutRole>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [showChat, setShowChat] = useState(true)
+  const [panelDismissed, setPanelDismissed] = useState(false)
+
+  /* ─ Auth & Session check ─ */
+  useEffect(() => {
+    // SCOUT now auto-opens by default on every load as requested.
+    setShowChat(true)
+  }, [reportId])
 
   /* ─ Load report ─ */
   useEffect(() => {
@@ -90,8 +215,6 @@ export default function ReportPage() {
     return () => window.clearInterval(interval)
   }, [report, supabase])
 
-  /* ─ Auto-trigger SCOUT summary ─ */
-
   /* ─ SCOUT context ─ */
   const scoutInitialMessage = useMemo(() => {
     return getReportExplainerOpening(role, {
@@ -110,12 +233,12 @@ export default function ReportPage() {
   const scoutAutoPrompt = useMemo(() => {
     if (!report || normalizeReportStatus(report.status) !== 'completed') return null
     return {
-      content: buildReportAutoPrompt(role, report.filename),
+      content: `Summarize "${report.filename || 'this report'}" for me in detail.`,
       visible: false,
     }
-  }, [report, role])
+  }, [report])
 
-  /* ─ Derived data from report_json ─ */
+  /* ─ Render Logic ─ */
   const reportJson = report?.report_json
   const status = normalizeReportStatus(report?.status)
   const recommendations = Array.isArray(reportJson?.clinical_report?.recommendations) ? reportJson.clinical_report.recommendations : []
@@ -124,411 +247,355 @@ export default function ReportPage() {
   const events = useMemo(() => Array.isArray(reportJson?.events) ? reportJson.events : [], [reportJson])
   const quality: any = reportJson?.quality || reportJson?.signal_quality || {}
   const modelOutputs: any = reportJson?.model_outputs || {}
-  const metadata: any = reportJson?.metadata || {}
-  const clinicalReport = reportJson?.clinical_report || {}
-  const executiveSummary = reportJson?.executive_summary || clinicalReport?.executive_summary || report?.summary || ''
-  const earlyWarning = reportJson?.early_warning ?? false
-  const seFlag = reportJson?.se_flag ?? false
-  const trendSummary = reportJson?.trend_summary || ''
   const probabilityTimeline = modelOutputs?.probability_timeline
-  const missingChannels = Array.isArray(quality?.missing_channels) ? quality.missing_channels : (Array.isArray(reportJson?.missing_channels) ? reportJson.missing_channels : [])
 
-  // Compute background band powers (average across events or from quality)
-  const backgroundBandPowers = useMemo((): Record<string, number> | undefined => {
-    // Try to get from report-level
-    if (reportJson?.background_band_powers) return reportJson.background_band_powers as Record<string, number>
-    // Average from events
-    if (events.length > 0) {
-      const acc: Record<string, number[]> = {}
-      for (const e of events) {
-        const bp = e.band_powers || {}
-        for (const [band, val] of Object.entries(bp)) {
-          if (!acc[band]) acc[band] = []
-          acc[band].push(val as number)
-        }
-      }
-      const avg: Record<string, number> = {}
-      for (const [band, vals] of Object.entries(acc)) {
-        avg[band] = vals.reduce((a, b) => a + b, 0) / vals.length
-      }
-      return Object.keys(avg).length ? avg : undefined
+  const reliability = (() => {
+    const conf = report?.confidence_score || 0
+    const dur = report?.duration_minutes || 0
+    const qual = report?.quality_grade || 'Unknown'
+    const isGoodQual = qual === 'A' || qual === 'B' || qual === 'Good' || qual === 'Excellent' || qual === 'High'
+
+    if (conf >= 80 && dur >= 20 && isGoodQual) {
+      return { level: 'High', reason: 'sufficient recording duration and good signal quality.' }
+    } else if ((conf >= 60 && conf < 80) || (dur >= 20 && conf >= 60 && !isGoodQual)) {
+      return { level: 'Moderate', reason: 'moderate confidence or minor signal limitations.' }
+    } else {
+      return { level: 'Low', reason: dur < 20 ? 'recording duration being below the 20-minute minimum.' : 'low model confidence in the detected patterns.' }
     }
-    return undefined
-  }, [reportJson, events])
-
-  const riskColor = (() => {
-    const r = (report?.risk_level || '').toLowerCase()
-    if (r === 'high' || r === 'critical') return '#FF3366'
-    if (r === 'moderate' || r === 'medium') return '#FFB800'
-    if (r === 'low') return '#00FF9D'
-    return '#8888A0'
   })()
 
-  const createdDate = report?.created_at ? new Date(report.created_at) : null
+  const riskClasses = (() => {
+    const r = (report?.risk_level || '').toLowerCase()
+    if (r === 'high' || r === 'critical') return { bg: 'bg-red-500', text: 'text-red-500', gradient: 'from-red-600 to-orange-500', icon: '⚠️' }
+    if (r === 'moderate' || r === 'medium') return { bg: 'bg-amber-500', text: 'text-amber-500', gradient: 'from-amber-500 to-orange-400', icon: '⚡' }
+    if (r === 'low') return { bg: 'bg-emerald-500', text: 'text-emerald-500', gradient: 'from-emerald-500 to-teal-400', icon: '🧠' }
+    return { bg: 'bg-gray-500', text: 'text-gray-500', gradient: 'from-gray-500 to-slate-400', icon: '📊' }
+  })()
 
-  // Top-line stats for header
-  const meanEventDuration = events.length > 0
-    ? events.reduce((a: number, e: any) => a + (e.duration_sec || 0), 0) / events.length
-    : 0
+  if (loading) {
+     return (
+       <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50">
+         <div className="flex h-12 w-12 animate-spin items-center justify-center rounded-full border-4 border-blue-500 border-t-transparent" />
+         <p className="mt-4 text-sm font-bold text-gray-500 uppercase tracking-widest">Constructing Interpretation Feed...</p>
+       </div>
+     )
+  }
 
+  if (error || !report) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 p-6 text-center">
+        <h1 className="text-2xl font-black text-gray-900">Report Unavailable</h1>
+        <p className="mt-2 text-gray-500 max-w-sm">{error || 'This report could not be found or processed.'}</p>
+        <Link href="/dashboard/eeg-reports" className="mt-6 rounded-full bg-gray-900 px-8 py-3 text-sm font-black text-white transition-all hover:scale-105 active:scale-95">Return to Archive</Link>
+      </div>
+    )
+  }
 
-  /* ═══════════════════════════════════════════════════════════════ */
-  /*  RENDER                                                        */
-  /* ═══════════════════════════════════════════════════════════════ */
+  const handleToggleChat = () => {
+    const next = !showChat
+    setShowChat(next)
+    if (!next) {
+      // User manually closed it, set session flag
+      sessionStorage.setItem(`scoutDismissed:${reportId}`, 'true')
+    }
+  }
+
   return (
-    <main className="min-h-dvh" style={{ background: '#0A0A0F' }}>
-
-      {/* ════════════════════════ HEADER ════════════════════════ */}
-      <header className="sticky top-0 z-30 flex items-center justify-between border-b px-6 py-3" style={{ background: 'rgba(10,10,15,0.92)', backdropFilter: 'blur(16px)', borderColor: 'rgba(255,255,255,0.06)' }}>
-        <div className="flex items-center gap-2">
-          <Link href="/dashboard" className="text-[11px] font-mono uppercase tracking-widest transition-colors hover:text-[#00F0FF]" style={{ color: 'var(--text-muted)' }}>NeuroSentinel AI</Link>
-          <span style={{ color: 'rgba(255,255,255,0.12)' }}>/</span>
-          <Link href="/dashboard" className="text-[11px] font-mono uppercase tracking-widest transition-colors hover:text-[#00F0FF]" style={{ color: 'var(--text-muted)' }}>Dashboard</Link>
-          <span style={{ color: 'rgba(255,255,255,0.12)' }}>/</span>
-          <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)', fontFamily: "'Outfit', sans-serif" }}>Clinical Report</span>
+    <div className="min-h-screen bg-[#F8FAFC]">
+      <header className="clinical-header sticky top-0 z-[60] px-8 h-16 flex justify-between items-center bg-white/95 backdrop-blur-sm border-b border-gray-200 shadow-sm">
+        {/* LEFT GROUP (Breadcrumbs) */}
+        <div className="flex items-center">
+          <Link
+            href="/dashboard"
+            className="text-[15px] font-medium transition-colors hover:text-[var(--accent-primary)]"
+            style={{ color: '#6B7280' }}
+          >
+            NeuroSentinel AI
+          </Link>
+          <span className="text-[15px] mx-2 select-none" style={{ color: '#9CA3AF' }}>&gt;</span>
+          <span className="text-[14px] font-semibold" style={{ color: '#111827' }}>
+            Clinical Viewer
+          </span>
         </div>
+
+        {/* RIGHT GROUP (Actions) */}
         <div className="flex items-center gap-3">
-          {report ? (
-            <a href={`/api/reports/${report.id}/pdf`} target="_blank" rel="noopener noreferrer" className="rounded-full border px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] transition-all hover:bg-[rgba(255,184,0,0.08)]" style={{ borderColor: 'rgba(255,184,0,0.2)', color: '#FFB800' }}>↓ Download PDF</a>
-          ) : null}
-          <Link href="/dashboard/eeg-reports" className="rounded-full border px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] transition-all hover:bg-[rgba(0,240,255,0.06)]" style={{ borderColor: 'rgba(0,240,255,0.16)', color: '#00F0FF' }}>All Reports</Link>
+          <a
+            href={`/api/reports/${report.id}/pdf`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex h-9 items-center rounded-lg border border-[#E5E7EB] bg-white px-[14px] text-[14px] font-medium text-[#111827] transition-all hover:bg-[#F9FAFB]"
+          >
+            Download PDF
+          </a>
+          
+          <button
+            onClick={handleToggleChat}
+            className="flex h-9 items-center rounded-lg border border-transparent bg-[var(--accent-primary)] px-[14px] text-[14px] font-medium text-white shadow-sm transition-all hover:bg-[#0C6680] active:scale-95"
+          >
+            {showChat ? 'Hide SCOUT' : 'Open SCOUT'}
+          </button>
+
+          <div className="inline-flex items-center h-9 px-3 rounded-full bg-[#F3F4F6]">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#0D9488] mr-[6px]" />
+            <span className="text-[14px] font-medium text-[#111827] leading-none">
+              Patient
+            </span>
+          </div>
         </div>
       </header>
 
-      <div className="p-6">
-        {/* ════════════════════════ LOADING ════════════════════════ */}
-        {loading ? (
-          <div className="flex min-h-[70vh] items-center justify-center">
-            <div className="flex flex-col items-center gap-4">
-              <div className="h-10 w-10 animate-spin rounded-full border-2 border-t-transparent" style={{ borderColor: '#00F0FF transparent transparent transparent' }} />
-              <span className="text-sm" style={{ color: 'var(--text-muted)' }}>Loading clinical report...</span>
-            </div>
-          </div>
-
-        /* ════════════════════════ ERROR ════════════════════════ */
-        ) : error || !report ? (
-          <div className="mx-auto max-w-2xl rounded-[30px] border px-6 py-10 text-center" style={{ borderColor: 'rgba(255,255,255,0.06)', background: '#12121A' }}>
-            <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)', fontFamily: "'Outfit', sans-serif" }}>Report unavailable</h1>
-            <p className="mt-3 text-sm leading-7" style={{ color: 'var(--text-secondary)' }}>{error || 'The requested report could not be loaded.'}</p>
-            <Link href="/dashboard/eeg-reports" className="mt-6 inline-flex rounded-2xl px-4 py-3 text-sm font-semibold" style={{ background: 'linear-gradient(135deg, #00F0FF, #818CF8)', color: '#0A0A0F' }}>Back to reports</Link>
-          </div>
-
-        /* ════════════════════════ REPORT BODY ════════════════════════ */
-        ) : (
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-            <div className="space-y-5">
-
-              {/* ─── § 1  SUMMARY BANNER ─── */}
-              <section className="overflow-hidden rounded-[28px] border" style={{ background: 'linear-gradient(180deg, rgba(18,18,26,0.95), rgba(12,12,18,0.97))', borderColor: 'rgba(255,255,255,0.06)', boxShadow: '0 8px 40px rgba(0,0,0,0.4)' }}>
-                <div className="p-6 pb-0">
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3">
-                        <div className="h-2.5 w-2.5 rounded-full animate-pulse" style={{ background: riskColor, boxShadow: `0 0 14px ${riskColor}60` }} />
-                        <div className="text-[10px] font-semibold uppercase tracking-[0.2em]" style={{ color: riskColor }}>
-                          {report.risk_level || 'Unknown'} Risk — {report.result_label || 'Pending'}
-                        </div>
-                      </div>
-                      <h1 className="mt-3 text-2xl font-semibold leading-tight" style={{ color: '#E8E8F0', fontFamily: "'Outfit', sans-serif" }}>EEG Analysis Report</h1>
-                      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs" style={{ color: '#565670' }}>
-                        <span>📄 {report.filename}</span>
-                        {createdDate ? <span>📅 {createdDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })} at {createdDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span> : null}
-                        <span>🆔 {report.id.slice(0, 8).toUpperCase()}</span>
-                      </div>
-                    </div>
-                    <span className="shrink-0 rounded-full px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em]" style={statusChip(status)}>{status}</span>
+      <div className="mx-auto max-w-[1280px] px-6 py-8">
+        <div className="grid gap-8 lg:grid-cols-[1fr_minmax(0,1fr)_1fr] xl:grid-cols-[1fr_3fr_1fr]">
+          
+          {/* ════════════ MAIN CONTENT FEED ════════════ */}
+          <div className="lg:col-start-1 lg:col-end-3 xl:col-start-1 xl:col-end-3 space-y-8">
+            
+            {/* ─── § 1  DOMINANT STATUS HERO ─── */}
+            <section className="relative overflow-hidden rounded-[40px] border border-transparent bg-white shadow-2xl shadow-blue-100/20">
+              <div className={`absolute inset-0 opacity-10 bg-gradient-to-br ${riskClasses.gradient}`} />
+              <div className="relative flex flex-col items-center justify-center p-12 text-center sm:flex-row sm:items-start sm:text-left gap-8">
+                <div className={`flex h-24 w-24 shrink-0 items-center justify-center rounded-[32px] text-4xl shadow-xl ring-4 ring-white transition-transform hover:rotate-6 ${riskClasses.bg} text-white`}>
+                  {riskClasses.icon}
+                </div>
+                <div className="flex-1">
+                  <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3">
+                    <span className={`inline-flex items-center rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest bg-white ${riskClasses.text} shadow-sm ring-1 ring-inset ring-gray-100`}>
+                      {report.risk_level || 'Unknown'} Risk Detected
+                    </span>
+                    <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-gray-400">
+                      Conf: {report.confidence_score?.toFixed(1) || '0'}%{ (report?.duration_minutes ?? 0) > 0 && (report?.duration_minutes ?? 0) < 20 ? ' (Low)' : ''}
+                    </span>
+                    <span className={`inline-flex items-center rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ring-1 ring-inset shadow-sm ${
+                      reliability.level === 'High' ? 'bg-emerald-50 text-emerald-700 ring-emerald-500/30' :
+                      reliability.level === 'Moderate' ? 'bg-amber-50 text-amber-700 ring-amber-500/30' :
+                      'bg-red-50 text-red-700 ring-red-500/30'
+                    }`}>
+                      Reliability: {reliability.level} {reliability.level === 'Low' || reliability.level === 'Moderate' ? '⚠️' : '✓'}
+                    </span>
                   </div>
-                </div>
-
-                {/* Top-line stats bar */}
-                <div className="mt-5 grid grid-cols-2 border-t sm:grid-cols-4 lg:grid-cols-6" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
-                  {[
-                    { label: 'Seizures', value: `${report.event_count ?? events.length ?? 0}`, color: events.length > 0 ? '#FF3366' : '#00FF88', icon: '⚡' },
-                    { label: 'Confidence', value: formatConfidence(report.confidence_score), color: '#00F0FF', icon: '📊' },
-                    { label: 'Mean Duration', value: events.length > 0 ? `${meanEventDuration.toFixed(1)}s` : '—', color: '#E8E8F0', icon: '⏱️' },
-                    { label: 'Quality', value: report.quality_grade || 'Unknown', color: report.quality_grade?.toLowerCase() === 'good' ? '#00FF88' : '#FFB800', icon: '📶' },
-                    { label: 'Risk', value: report.risk_level || 'Unknown', color: riskColor, icon: '🛡️' },
-                    { label: 'Duration', value: formatDurationMinutes(report.duration_minutes), color: '#8888A0', icon: '🧠' },
-                  ].map((item, idx) => (
-                    <div key={item.label} className="border-r px-4 py-3.5 transition-colors hover:bg-[rgba(255,255,255,0.015)]" style={{ borderColor: 'rgba(255,255,255,0.04)', borderRight: idx === 5 ? 'none' : undefined }}>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs">{item.icon}</span>
-                        <span className="text-[8px] font-bold uppercase tracking-[0.2em]" style={{ color: '#565670' }}>{item.label}</span>
-                      </div>
-                      <div className="mt-1 text-base font-bold" style={{ color: item.color, fontFamily: "'JetBrains Mono', monospace" }}>{item.value}</div>
+                  <div className="mt-3 flex flex-col gap-0.5">
+                    <div className="text-[12px] text-gray-500 font-medium">
+                      <span className="text-gray-900 font-bold">Reliability is {reliability.level}</span> due to {reliability.reason}
                     </div>
-                  ))}
-                </div>
-              </section>
-
-              {status === 'completed' ? (
-                <>
-                  {/* ─── § 2  EXECUTIVE SUMMARY ─── */}
-                  {executiveSummary ? (
-                    <section className="rounded-[28px] border p-6" style={{ background: 'rgba(18,18,26,0.7)', borderColor: 'rgba(255,255,255,0.06)', backdropFilter: 'blur(12px)' }}>
-                      <div className="flex items-center gap-2">
-                        <div className="h-1 w-5 rounded-full" style={{ background: '#00F0FF' }} />
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: '#00F0FF' }}>Executive Summary</div>
-                      </div>
-                      <p className="mt-4 text-sm leading-7" style={{ color: 'var(--text-secondary)' }}>{executiveSummary}</p>
-                      {trendSummary ? (
-                        <div className="mt-3 rounded-xl border px-4 py-2.5" style={{ borderColor: 'rgba(255,255,255,0.05)', background: 'rgba(255,255,255,0.015)' }}>
-                          <span className="text-[9px] font-bold uppercase tracking-[0.18em]" style={{ color: '#565670' }}>Trend: </span>
-                          <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{trendSummary}</span>
-                        </div>
-                      ) : null}
-                    </section>
-                  ) : null}
-
-                  {/* ─── CLINICAL ALERTS ─── */}
-                  {(earlyWarning || seFlag) ? (
-                    <section className="grid gap-3 md:grid-cols-2">
-                      {seFlag ? (
-                        <div className="rounded-[28px] border p-5" style={{ borderColor: 'rgba(255,51,102,0.25)', background: 'rgba(255,51,102,0.06)', boxShadow: '0 0 20px rgba(255,51,102,0.08)' }}>
-                          <div className="flex items-center gap-2">
-                            <span className="text-base">🚨</span>
-                            <div className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: '#FF3366' }}>Status Epilepticus Flag <span className="text-[8px] font-normal opacity-50">[HEURISTIC]</span></div>
-                          </div>
-                          <p className="mt-2 text-xs leading-5" style={{ color: '#FF3366' }}>Continuous or rapidly recurring seizure activity detected. Immediate neurologist review required.</p>
-                        </div>
-                      ) : null}
-                      {earlyWarning ? (
-                        <div className="rounded-[28px] border p-5" style={{ borderColor: 'rgba(255,184,0,0.25)', background: 'rgba(255,184,0,0.06)' }}>
-                          <div className="flex items-center gap-2">
-                            <span className="text-base">⚠️</span>
-                            <div className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: '#FFB800' }}>Early Warning Signal</div>
-                          </div>
-                          <p className="mt-2 text-xs leading-5" style={{ color: '#FFB800' }}>Pre-ictal activity detected in this recording. Monitor patient closely.</p>
-                        </div>
-                      ) : null}
-                    </section>
-                  ) : null}
-
-                  {/* ─── § 2  PROBABILITY TIMELINE ─── */}
-                  <section className="rounded-[28px] border p-6" style={{ background: 'rgba(18,18,26,0.7)', borderColor: 'rgba(255,255,255,0.06)', backdropFilter: 'blur(12px)' }}>
-                    <div className="flex items-center gap-2">
-                      <div className="h-1 w-5 rounded-full" style={{ background: '#00F0FF' }} />
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: '#00F0FF' }}>EEG Probability Timeline</div>
-                    </div>
-                    <div className="mt-4">
-                      <ProbabilityTimeline
-                        probabilityTimeline={probabilityTimeline}
-                        events={events}
-                        thresholdHigh={modelOutputs?.threshold_high}
-                        thresholdLow={modelOutputs?.threshold_low}
-                      />
-                    </div>
-                  </section>
-
-                  {/* ─── § 3  SEIZURE EVENT CARDS ─── */}
-                  <section className="rounded-[28px] border p-6" style={{ background: 'rgba(18,18,26,0.7)', borderColor: 'rgba(255,255,255,0.06)', backdropFilter: 'blur(12px)' }}>
-                    <div className="flex items-center gap-2">
-                      <div className="h-1 w-5 rounded-full" style={{ background: events.length > 0 ? '#FF3366' : '#00FF88' }} />
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: events.length > 0 ? '#FF3366' : '#00FF88' }}>
-                        Seizure Events — {events.length > 0 ? `${events.length} Detected` : 'None Detected'}
-                      </div>
-                    </div>
-                    <div className="mt-4">
-                      <EventCards events={events} />
-                    </div>
-                  </section>
-
-                  {/* ─── § 4  BRAIN HEATMAP + CHANNEL IMPORTANCE ─── */}
-                  <section className="grid gap-4 md:grid-cols-2">
-                    {/* Brain Heatmap */}
-                    <div className="rounded-[28px] border p-5" style={{ background: 'rgba(18,18,26,0.7)', borderColor: 'rgba(255,255,255,0.06)', backdropFilter: 'blur(12px)' }}>
-                      <div className="flex items-center gap-2">
-                        <div className="h-1 w-5 rounded-full" style={{ background: '#A78BFA' }} />
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: '#A78BFA' }}>Brain Region Heatmap</div>
-                      </div>
-                      <div className="mt-4">
-                        <BrainHeatmap topChannels={topChannels} />
-                      </div>
-                    </div>
-
-                    {/* Channel Importance Bars */}
-                    <div className="rounded-[28px] border p-5" style={{ background: 'rgba(18,18,26,0.7)', borderColor: 'rgba(255,255,255,0.06)', backdropFilter: 'blur(12px)' }}>
-                      <div className="flex items-center gap-2">
-                        <div className="h-1 w-5 rounded-full" style={{ background: 'var(--accent-secondary, #818CF8)' }} />
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: '#818CF8' }}>Channel Importance</div>
-                      </div>
-                      <div className="mt-4 space-y-2">
-                        {topChannels.length > 0 ? topChannels.slice(0, 10).map(([channel, score]: [string, number]) => (
-                          <div key={channel} className="flex items-center gap-3">
-                            <span className="w-20 shrink-0 text-xs font-medium" style={{ color: 'var(--text-secondary)', fontFamily: "'JetBrains Mono', monospace" }}>{channel}</span>
-                            <div className="h-2 flex-1 overflow-hidden rounded-full" style={{ background: '#1A1A28' }}>
-                              <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.min(100, score * 100)}%`, background: 'linear-gradient(90deg, #818CF8, #00F0FF)' }} />
-                            </div>
-                            <span className="w-12 shrink-0 text-right text-[10px] font-mono" style={{ color: '#565670' }}>{score.toFixed(3)}</span>
-                          </div>
-                        )) : <div className="text-xs" style={{ color: '#565670' }}>Channel importance data unavailable.</div>}
-                      </div>
-                      {/* Top regions list */}
-                      {topRegions.length > 0 ? (
-                        <div className="mt-4 border-t pt-4" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
-                          <div className="text-[9px] font-bold uppercase tracking-[0.2em]" style={{ color: '#565670' }}>Top Brain Regions</div>
-                          <div className="mt-2 space-y-1.5">
-                            {topRegions.slice(0, 6).map(([region, score]: [string, number]) => (
-                              <div key={region} className="flex items-center gap-3">
-                                <span className="w-24 shrink-0 text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>{region}</span>
-                                <div className="h-2 flex-1 overflow-hidden rounded-full" style={{ background: '#1A1A28' }}>
-                                  <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.min(100, score * 100)}%`, background: 'linear-gradient(90deg, #A78BFA, #818CF8)' }} />
-                                </div>
-                                <span className="w-12 shrink-0 text-right text-[10px] font-mono" style={{ color: '#565670' }}>{score.toFixed(3)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-                  </section>
-
-                  {/* ─── § 5  BAND POWER + DATA QUALITY ─── */}
-                  <section className="grid gap-4 md:grid-cols-2">
-                    <div className="rounded-[28px] border p-5" style={{ background: 'rgba(18,18,26,0.7)', borderColor: 'rgba(255,255,255,0.06)', backdropFilter: 'blur(12px)' }}>
-                      <div className="flex items-center gap-2">
-                        <div className="h-1 w-5 rounded-full" style={{ background: '#FFB800' }} />
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: '#FFB800' }}>Band Power & Channels</div>
-                      </div>
-                      <div className="mt-4">
-                        <BandPowerChart
-                          bandPowers={backgroundBandPowers}
-                          missingChannels={missingChannels}
-                          artifactPercent={quality.artifact_frac}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="rounded-[28px] border p-5" style={{ background: 'rgba(18,18,26,0.7)', borderColor: 'rgba(255,255,255,0.06)', backdropFilter: 'blur(12px)' }}>
-                      <div className="flex items-center gap-2">
-                        <div className="h-1 w-5 rounded-full" style={{ background: '#00F0FF' }} />
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: '#00F0FF' }}>Signal Quality</div>
-                      </div>
-                      <div className="mt-4">
-                        <DataQualityPanel
-                          qualityScore={quality.mean_quality_score ?? quality.quality_score}
-                          qualityGrade={report.quality_grade || quality.grade}
-                          snrDb={quality.snr_db}
-                          flatlineFrac={quality.flatline_frac}
-                          artifactPercent={quality.artifact_frac}
-                          missingChannels={missingChannels}
-                        />
-                      </div>
-                    </div>
-                  </section>
-
-                  {/* ─── § 7  CLINICAL METRICS ─── */}
-                  <section className="grid gap-4 md:grid-cols-2">
-                    <div className="rounded-[28px] border p-5" style={{ background: 'rgba(18,18,26,0.7)', borderColor: 'rgba(255,255,255,0.06)', backdropFilter: 'blur(12px)' }}>
-                      <div className="flex items-center gap-2">
-                        <div className="h-1 w-5 rounded-full" style={{ background: '#00FF88' }} />
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: '#00FF88' }}>Detection Metrics</div>
-                      </div>
-                      <div className="mt-4">
-                        <ClinicalMetrics role={role} report={report} reportJson={reportJson} events={events} />
-                      </div>
-                    </div>
-
-                    {/* Recommendations */}
-                    <div className="rounded-[28px] border p-5" style={{ background: 'rgba(18,18,26,0.7)', borderColor: 'rgba(255,255,255,0.06)', backdropFilter: 'blur(12px)' }}>
-                      <div className="flex items-center gap-2">
-                        <div className="h-1 w-5 rounded-full" style={{ background: '#FFB800' }} />
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: '#FFB800' }}>Clinical Recommendations</div>
-                      </div>
-                      <div className="mt-4 space-y-2">
-                        {recommendations.length > 0 ? recommendations.map((item: string, idx: number) => (
-                          <div key={item} className="flex gap-3 rounded-xl border px-4 py-3" style={{ borderColor: 'rgba(255,184,0,0.1)', background: 'rgba(255,184,0,0.03)' }}>
-                            <span className="shrink-0 text-sm font-bold" style={{ color: '#FFB800', fontFamily: "'Outfit', sans-serif" }}>{idx + 1}.</span>
-                            <span className="text-xs leading-5" style={{ color: 'var(--text-secondary)' }}>{item}</span>
-                          </div>
-                        )) : (
-                          <div className="rounded-xl border px-4 py-3 text-xs" style={{ borderColor: 'rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)', color: '#565670' }}>
-                            Recommendations will appear once the clinical report has been generated.
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </section>
-
-                  {/* ─── § 8  POST-ICTAL + SPREAD PATTERN ─── */}
-                  {(reportJson?.post_ictal_detected || reportJson?.seizure_spread_pattern) ? (
-                    <section className="grid gap-4 md:grid-cols-2">
-                      {reportJson.post_ictal_detected ? (
-                        <div className="rounded-[28px] border p-5" style={{ borderColor: 'rgba(167,139,250,0.15)', background: 'rgba(167,139,250,0.04)' }}>
-                          <div className="flex items-center gap-2">
-                            <div className="h-1 w-5 rounded-full" style={{ background: '#A78BFA' }} />
-                            <div className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: '#A78BFA' }}>Post-Ictal Detection <span className="text-[8px] font-normal opacity-50">[HEURISTIC]</span></div>
-                          </div>
-                          <p className="mt-3 text-xs leading-5" style={{ color: 'var(--text-secondary)' }}>Amplitude suppression detected in the 60s post-offset window, consistent with post-ictal state.</p>
-                        </div>
-                      ) : null}
-                      {Array.isArray(reportJson.seizure_spread_pattern) && reportJson.seizure_spread_pattern.length > 0 ? (
-                        <div className="rounded-[28px] border p-5" style={{ borderColor: 'rgba(255,255,255,0.06)', background: 'rgba(18,18,26,0.7)' }}>
-                          <div className="flex items-center gap-2">
-                            <div className="h-1 w-5 rounded-full" style={{ background: '#818CF8' }} />
-                            <div className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: '#818CF8' }}>Seizure Spread Pattern <span className="text-[8px] font-normal opacity-50">[HEURISTIC]</span></div>
-                          </div>
-                          <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                            {(reportJson.seizure_spread_pattern as string[]).map((ch: string, i: number, arr: string[]) => (
-                              <div key={i} className="flex items-center gap-1.5">
-                                <span className="rounded-lg border px-2 py-1 text-[10px] font-mono font-semibold" style={{ borderColor: 'rgba(129,140,248,0.2)', background: 'rgba(129,140,248,0.06)', color: '#818CF8' }}>{ch}</span>
-                                {i < arr.length - 1 ? <span className="text-[10px]" style={{ color: '#565670' }}>→</span> : null}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
-                    </section>
-                  ) : null}
-
-                  {/* ─── PIPELINE METADATA ─── */}
-                  <section className="rounded-[28px] border p-5" style={{ background: 'rgba(255,255,255,0.01)', borderColor: 'rgba(255,255,255,0.04)' }}>
-                    <div className="text-[9px] font-semibold uppercase tracking-[0.2em]" style={{ color: '#565670' }}>Pipeline & Model Metadata</div>
-                    <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-[10px] font-mono" style={{ color: '#4A4A60' }}>
-                      {metadata.sampling_rate_original ? <span>Original FS: {metadata.sampling_rate_original} Hz</span> : null}
-                      {metadata.sampling_rate_processed ? <span>Processed FS: {metadata.sampling_rate_processed} Hz</span> : null}
-                      {metadata.montage_type ? <span>Montage: {metadata.montage_type}</span> : null}
-                      {metadata.n_input_channels ? <span>Input Ch: {metadata.n_input_channels}</span> : null}
-                      {metadata.n_mapped ? <span>Mapped: {metadata.n_mapped}/22</span> : null}
-                      {metadata.n_windows ? <span>Windows: {metadata.n_windows}</span> : null}
-                      {metadata.powerline_hz ? <span>Powerline: {metadata.powerline_hz} Hz</span> : null}
-                      {metadata.inference_mode ? <span>Inference: {metadata.inference_mode}</span> : null}
-                      <span>Model: NeuroSentinel V4 MultiRepEEG</span>
-                    </div>
-                    <div className="mt-2 text-[9px]" style={{ color: 'rgba(74,74,96,0.6)' }}>
-                      ⚠️ This report is generated by an AI model. It is intended for research and clinical decision support only. It does not constitute a medical diagnosis. All [HEURISTIC] and [ESTIMATED] labels indicate rule-based estimates, not ground truth. Neurologist review required.
-                    </div>
-                  </section>
-                </>
-              ) : (
-                /* ─── IN PROGRESS / FAILED ─── */
-                <section className="rounded-[28px] border p-6" style={{ background: 'rgba(18,18,26,0.7)', borderColor: 'rgba(255,255,255,0.06)' }}>
-                  <div className="flex items-center gap-2">
-                    <div className="h-1 w-5 rounded-full" style={{ background: status === 'failed' ? '#FF3366' : '#00F0FF' }} />
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: status === 'failed' ? '#FF3366' : '#00F0FF' }}>
-                      {status === 'failed' ? 'Analysis Failed' : 'Analysis In Progress'}
+                    <div className="text-[10px] text-gray-400 font-medium">
+                      Confidence Guide: 0–60% → Low  |  60–80% → Moderate  |  80%+ → High
                     </div>
                   </div>
-                  <p className="mt-4 text-sm leading-7" style={{ color: 'var(--text-secondary)' }}>
-                    {status === 'failed' ? report.error_message || 'The backend could not complete analysis for this report.' : 'This report page will auto-refresh as the backend processes your EEG recording through the pipeline.'}
+                  <h1 className="mt-4 text-4xl sm:text-5xl font-black tracking-tight text-gray-900 antialiased">
+                    {report.result_label || 'Analysis Pending'}
+                  </h1>
+                  <p className="mt-3 text-lg font-bold text-gray-400 max-w-xl">
+                    Automated EEG signal processing completed. Patterns analyzed from {report.duration_minutes?.toFixed(1)} minutes of recorded data.
+                    {(report?.duration_minutes ?? 0) > 0 && (report?.duration_minutes ?? 0) < 20 && (
+                      <span> — results may have reduced confidence due to short recording duration.</span>
+                    )}
                   </p>
-                  {status !== 'failed' ? (
-                    <div className="mt-4 flex items-center gap-3">
-                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-t-transparent" style={{ borderColor: '#00F0FF transparent transparent transparent' }} />
-                      <span className="text-xs" style={{ color: '#565670' }}>Polling for updates every 5 seconds...</span>
+
+                  {(report?.duration_minutes ?? 0) > 0 && (report?.duration_minutes ?? 0) < 20 && (
+                    <div className="mt-6 rounded-2xl bg-amber-50/50 p-4 border border-amber-100 inline-block text-left w-full max-w-xl">
+                      <div className="text-[13px] font-bold text-amber-800 flex flex-col gap-1.5">
+                        <div className="flex items-center gap-2">⚠️ Low reliability detected. This result should not be considered conclusive.</div>
+                        <div className="text-[12px] font-bold text-amber-700">Recommended Action: Upload ≥20 minutes of EEG data for more reliable analysis.</div>
+                      </div>
+                      
+                      <div className="mt-4 grid sm:grid-cols-2 gap-4">
+                        <div>
+                          <div className="text-[11px] font-black uppercase tracking-widest text-[#1E293B] mb-2">Primary Limitation:</div>
+                          <ul className="text-[12px] text-gray-600 space-y-1 ml-1">
+                            <li>• Recording duration ({report?.duration_minutes?.toFixed(1)} min) is below recommended minimum (20 min)</li>
+                            <li>• Limited data reduces model certainty</li>
+                          </ul>
+                        </div>
+                        <div>
+                          <div className="text-[11px] font-black uppercase tracking-widest text-[#1E293B] mb-2">Confidence Factors:</div>
+                          <ul className="text-[12px] text-gray-600 space-y-1 ml-1">
+                            <li>• Recording Length: Low ⚠️</li>
+                            <li>• Signal Quality: {report.quality_grade === 'A' || report.quality_grade === 'B' || report.quality_grade === 'Good' ? 'Good ✓' : 'Poor ⚠️'}</li>
+                            <li>• Channel Coverage: Partial ⚠️</li>
+                          </ul>
+                        </div>
+                      </div>
                     </div>
-                  ) : null}
-                </section>
-              )}
+                  )}
+                </div>
+              </div>
+            </section>
+
+            {/* ─── § 2  SCOUT INTERPRETATION ─── */}
+            <ScoutInterpretationCard 
+              report={report} 
+              role={role} 
+              initialMessage={scoutInitialMessage} 
+              autoPrompt={scoutAutoPrompt} 
+            />
+
+            {/* ─── § 3  KEY METRICS STRIP ─── */}
+            <ClinicalMetrics report={report} events={events} />
+
+            {/* ─── § 4  CLINICAL RECOMMENDATIONS ─── */}
+            <section className="rounded-[32px] bg-white p-8 shadow-sm ring-1 ring-gray-100">
+              <div className="flex items-center gap-3 mb-6">
+                <span className="text-xl">📋</span>
+                <h2 className="text-sm font-black uppercase tracking-widest text-[#1E293B]">Clinical Recommendations</h2>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {recommendations.length > 0 ? (
+                  recommendations.map((rec: string, i: number) => (
+                    <div key={i} className="flex gap-4 rounded-[20px] bg-gray-50/50 p-4 ring-1 ring-inset ring-gray-100 transition-colors hover:bg-blue-50/30">
+                      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white text-[10px] font-black text-blue-600 shadow-sm ring-1 ring-blue-100">
+                        {i + 1}
+                      </div>
+                      <p className="text-[13px] font-bold leading-relaxed text-gray-700">{rec}</p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="col-span-2 text-sm text-gray-400 font-medium italic">Standard protocols follow neurologists review.</p>
+                )}
+              </div>
+            </section>
+
+            {/* ─── § 5  EEG PROBABILITY TIMELINE (EVIDENCE) ─── */}
+            <section className="rounded-[32px] bg-white p-8 shadow-sm ring-1 ring-gray-100">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">📉</span>
+                  <div>
+                    <h2 className="text-sm font-black uppercase tracking-widest text-[#1E293B]">Probability Timeline</h2>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-tight">Temporal signal distribution & thresholding</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-50 ring-1 ring-red-100">
+                    <div className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                    <span className="text-[9px] font-black text-red-700 uppercase">Detection Event</span>
+                  </div>
+                </div>
+              </div>
+              <ProbabilityTimeline
+                probabilityTimeline={probabilityTimeline}
+                events={events}
+                thresholdHigh={modelOutputs?.threshold_high}
+                thresholdLow={modelOutputs?.threshold_low}
+              />
+            </section>
+
+            {/* ─── § 6  BRAIN REGIONS & CHANNEL INFLUENCE ─── */}
+            <div className="grid gap-8 md:grid-cols-2">
+               <section className="rounded-[32px] bg-white p-8 shadow-sm ring-1 ring-gray-100">
+                 <div className="mb-6">
+                    <h2 className="text-sm font-black uppercase tracking-widest text-[#1E293B]">Affected Brain Regions</h2>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-tight">Spatial activation heatmap</p>
+                 </div>
+                 <div className="flex items-center justify-center py-4">
+                    <BrainHeatmap topChannels={topChannels} />
+                 </div>
+               </section>
+
+               <section className="rounded-[32px] bg-white p-8 shadow-sm ring-1 ring-gray-100">
+                 <div className="mb-6">
+                    <h2 className="text-sm font-black uppercase tracking-widest text-[#1E293B]">Most Active Channels</h2>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-tight">Feature importance attribution</p>
+                 </div>
+                 <div className="space-y-4">
+                    {topChannels.slice(0, 8).map(([ch, val]: [string, number]) => (
+                      <div key={ch} className="space-y-1.5">
+                        <div className="flex items-center justify-between text-[11px] font-black uppercase">
+                          <span className="text-gray-900">{ch}</span>
+                          <span className="text-blue-600">{(val * 100).toFixed(1)}%</span>
+                        </div>
+                        <div className="h-2 w-full overflow-hidden rounded-full bg-gray-50 ring-1 ring-inset ring-gray-100">
+                          <div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-400 transition-all duration-1000" style={{ width: `${val * 100}%` }} />
+                        </div>
+                      </div>
+                    ))}
+                 </div>
+               </section>
             </div>
 
-            {/* ─── § 9  SCOUT PANEL ─── */}
-            <div className="lg:sticky lg:top-[60px] lg:self-start" style={{ maxHeight: 'calc(100dvh - 76px)' }}>
-              <ScoutPanel page="report" role={role} collapsible width={320} initialMessage={scoutInitialMessage} report={report} autoPrompt={scoutAutoPrompt} resizable />
+            {/* ─── § 7  EVENT BREAKDOWN ─── */}
+            <section className="space-y-4">
+               <div className="flex items-center gap-3 px-2">
+                 <span className="text-xl">⚡</span>
+                 <h2 className="text-sm font-black uppercase tracking-widest text-[#1E293B]">Detailed Event Breakdown</h2>
+               </div>
+               <EventCards events={events} />
+            </section>
+
+            {/* ─── § 8  QUALITY & METADATA ─── */}
+            <div className="grid gap-8 md:grid-cols-2">
+               <section className="rounded-[32px] bg-white p-8 shadow-sm ring-1 ring-gray-100">
+                 <h2 className="text-sm font-black uppercase tracking-widest text-[#1E293B] mb-6">Pipeline Metadata</h2>
+                 <div className="grid grid-cols-2 gap-4">
+                   {[
+                     { l: 'Sampling', v: `${reportJson?.metadata?.sampling_rate_original || '256'}Hz` },
+                     { l: 'Montage', v: reportJson?.metadata?.montage_type || 'Bipolar' },
+                     { l: 'Channels', v: reportJson?.metadata?.n_mapped || '22' },
+                     { l: 'Provider', v: 'NeuroSentinel V4' },
+                   ].map(meta => (
+                     <div key={meta.l} className="flex flex-col rounded-2xl bg-gray-50 p-3 ring-1 ring-gray-100">
+                       <span className="text-[9px] font-black uppercase text-gray-400">{meta.l}</span>
+                       <span className="text-[11px] font-bold text-gray-900 font-mono mt-0.5">{meta.v}</span>
+                     </div>
+                   ))}
+                 </div>
+                 <p className="mt-6 text-[10px] font-bold leading-relaxed text-gray-400 italic">
+                    All findings are rule-based estimates processed through NeuroSentinel AI pipeline. Clinical correlation required.
+                 </p>
+               </section>
+
+               <section className="rounded-[32px] bg-white p-8 shadow-sm ring-1 ring-gray-100">
+                 <h2 className="text-sm font-black uppercase tracking-widest text-[#1E293B] mb-6">Signal Validation</h2>
+                 <DataQualityPanel 
+                   qualityScore={quality.mean_quality_score ?? quality.quality_score}
+                   qualityGrade={report.quality_grade || quality.grade}
+                   missingChannels={Array.isArray(quality?.missing_channels) ? quality.missing_channels : []}
+                 />
+               </section>
             </div>
+
+            {/* ─── TRUST DISCLAIMER ─── */}
+            <div className="text-center pb-2 pt-4">
+              <p className="text-[12px] font-medium text-gray-400">
+                This analysis is AI-assisted and intended for screening support only. Clinical validation is recommended.
+              </p>
+            </div>
+
           </div>
-        )}
+
+          {/* ════════════ SIDEBAR / CHAT ════════════ */}
+          <div 
+            className={`fixed right-0 top-[64px] bottom-0 z-[50] w-[400px] border-l bg-white shadow-2xl transition-transform duration-300 ease-in-out ${
+              showChat ? 'translate-x-0' : 'translate-x-full'
+            }`}
+          >
+            <ScoutPanel 
+              page="report" 
+              role={role} 
+              collapsible={false} 
+              width="100%" 
+              initialMessage={scoutInitialMessage} 
+              report={report} 
+              autoPrompt={scoutAutoPrompt}
+              onClose={handleToggleChat}
+            />
+          </div>
+
+          {!showChat && !loading && (
+            <button
+              onClick={handleToggleChat}
+              className="fixed bottom-6 right-6 z-[90] flex h-[62px] w-[62px] items-center justify-center rounded-full transition-all hover:scale-110 active:scale-95 animate-in fade-in slide-in-from-bottom-4 ring-4 ring-white shadow-xl"
+              style={{
+                background: 'linear-gradient(135deg, #3B82F6, #06B6D4)',
+              }}
+              title="Open SCOUT"
+            >
+              <ScoutAvatar size={38} variant="primary" />
+            </button>
+          )}
+
+        </div>
       </div>
-    </main>
+    </div>
   )
 }

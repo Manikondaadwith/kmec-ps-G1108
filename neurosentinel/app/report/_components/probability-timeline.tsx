@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
-  ReferenceLine, ReferenceArea, ResponsiveContainer,
+  ReferenceLine, ReferenceArea, ResponsiveContainer, Label,
 } from 'recharts'
 
 type Props = {
@@ -31,8 +31,8 @@ export function ProbabilityTimeline({ probabilityTimeline, events = [], threshol
 
   if (data.length === 0) {
     return (
-      <div className="flex items-center justify-center rounded-2xl border px-5 py-8" style={{ borderColor: 'rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}>
-        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Probability timeline data not available for this recording.</span>
+      <div className="flex items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-gray-50/30 px-5 py-12">
+        <span className="text-xs font-medium text-gray-400">EEG probability data unavailable for this session.</span>
       </div>
     )
   }
@@ -40,91 +40,101 @@ export function ProbabilityTimeline({ probabilityTimeline, events = [], threshol
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (!active || !payload?.[0]) return null
     return (
-      <div className="rounded-xl border px-3 py-2" style={{ background: 'rgba(10,10,15,0.95)', borderColor: 'rgba(0,240,255,0.2)', backdropFilter: 'blur(12px)' }}>
-        <div className="text-[10px] font-mono" style={{ color: 'var(--text-muted)' }}>
-          {formatTime(label)}
+      <div className="rounded-xl border border-blue-100 bg-white/95 p-3 shadow-xl backdrop-blur-md">
+        <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">
+          Offset Time: {formatTime(label)}
         </div>
-        <div className="text-sm font-bold font-mono" style={{ color: '#00F0FF' }}>
-          {(payload[0].value * 100).toFixed(1)}%
+        <div className="text-lg font-black tracking-tight text-blue-600 font-mono">
+          {(payload[0].value * 100).toFixed(1)}% <span className="text-[9px] font-bold text-gray-400">PROBABILITY</span>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="w-full" style={{ height: 260 }}>
+    <div className="w-full" style={{ height: 280 }}>
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={data} margin={{ top: 8, right: 12, left: -10, bottom: 4 }}>
+        <AreaChart data={data} margin={{ top: 20, right: 10, left: -20, bottom: 4 }}>
           <defs>
             <linearGradient id="probGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#00F0FF" stopOpacity={0.35} />
-              <stop offset="100%" stopColor="#00F0FF" stopOpacity={0.02} />
+              <stop offset="0%" stopColor="#3B82F6" stopOpacity={0.25} />
+              <stop offset="100%" stopColor="#3B82F6" stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+          <CartesianGrid strokeDasharray="4 4" stroke="#F1F5F9" vertical={false} />
           <XAxis
             dataKey="time"
             tickFormatter={formatTime}
-            tick={{ fill: '#565670', fontSize: 9, fontFamily: "'JetBrains Mono', monospace" }}
-            stroke="rgba(255,255,255,0.06)"
+            tick={{ fill: '#94A3B8', fontSize: 10, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}
+            stroke="#F1F5F9"
             tickLine={false}
-            interval="preserveStartEnd"
+            axisLine={false}
+            minTickGap={30}
           />
           <YAxis
             domain={[0, 1]}
-            ticks={[0, 0.25, 0.5, 0.75, 1.0]}
+            ticks={[0, 0.5, 1.0]}
             tickFormatter={(v: number) => `${(v * 100).toFixed(0)}%`}
-            tick={{ fill: '#565670', fontSize: 9, fontFamily: "'JetBrains Mono', monospace" }}
-            stroke="rgba(255,255,255,0.06)"
+            tick={{ fill: '#94A3B8', fontSize: 10, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}
+            stroke="#F1F5F9"
             tickLine={false}
-            width={42}
+            axisLine={false}
+            width={50}
           />
-          <Tooltip content={<CustomTooltip />} />
+          <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#3B82F6', strokeWidth: 1, strokeDasharray: '4 4' }} />
 
-          {/* Seizure event shaded zones */}
+          {/* Seizure event shaded zones with labels */}
           {events.map((evt: any, i: number) => (
             <ReferenceArea
               key={`evt-${i}`}
               x1={evt.onset_sec}
               x2={evt.offset_sec}
-              fill="#FF336620"
-              stroke="#FF336640"
-              strokeDasharray="2 2"
-            />
+              fill="#EF4444"
+              fillOpacity={0.08}
+              stroke="#EF4444"
+              strokeOpacity={0.2}
+              strokeDasharray="3 3"
+            >
+              <Label 
+                value="Detection Event" 
+                position="top" 
+                fill="#EF4444" 
+                fontSize={9} 
+                fontWeight={800} 
+                textAnchor="middle" 
+                className="uppercase tracking-widest"
+              />
+            </ReferenceArea>
           ))}
 
           {/* Threshold lines */}
           {typeof thresholdHigh === 'number' ? (
             <ReferenceLine
               y={thresholdHigh}
-              stroke="#FF336680"
-              strokeDasharray="6 3"
-              label={{ value: `Threshold ${(thresholdHigh * 100).toFixed(0)}%`, fill: '#FF336680', fontSize: 9, position: 'right' }}
-            />
+              stroke="#EF4444"
+              strokeOpacity={0.4}
+              strokeDasharray="6 4"
+            >
+              <Label 
+                value={`Trigger Threshold ${(thresholdHigh * 100).toFixed(0)}%`} 
+                position="right" 
+                fill="#EF4444" 
+                fontSize={9} 
+                fontWeight={700}
+                className="uppercase tracking-widest opacity-60"
+              />
+            </ReferenceLine>
           ) : null}
-          {typeof thresholdLow === 'number' ? (
-            <ReferenceLine y={thresholdLow} stroke="#FFB80040" strokeDasharray="4 4" />
-          ) : null}
-
-          {/* Onset markers */}
-          {events.map((evt: any, i: number) => (
-            <ReferenceLine
-              key={`onset-${i}`}
-              x={evt.onset_sec}
-              stroke="#FF3366"
-              strokeWidth={1.5}
-              strokeDasharray="2 2"
-            />
-          ))}
 
           <Area
             type="monotone"
             dataKey="probability"
-            stroke="#00F0FF"
-            strokeWidth={1.5}
+            stroke="#3B82F6"
+            strokeWidth={2}
             fill="url(#probGradient)"
             dot={false}
-            animationDuration={1200}
+            animationDuration={1500}
+            isAnimationActive={true}
           />
         </AreaChart>
       </ResponsiveContainer>

@@ -9,63 +9,6 @@ import { getRoleLabel } from '@/lib/scout-guide'
 import { ensureUserProfile } from '@/lib/user-profile'
 import { getReportHeadline, normalizeReport, normalizeReportStatus, type ReportRecord, type ScoutRole } from '@/lib/neurosentinel/types'
 
-function SignalBackdrop() {
-  return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[30px]" aria-hidden="true">
-      <div
-        className="absolute inset-y-0 right-0 w-[48%] opacity-40"
-        style={{
-          background:
-            'radial-gradient(circle at top right, rgba(0,240,255,0.18), transparent 46%), radial-gradient(circle at bottom right, rgba(255,184,0,0.14), transparent 34%)',
-        }}
-      />
-      <svg className="absolute bottom-0 right-0 h-full w-[58%] opacity-55" viewBox="0 0 600 340" fill="none">
-        <path
-          d="M12 198C42 198 55 106 85 106C115 106 130 240 160 240C190 240 206 86 236 86C266 86 281 196 311 196C341 196 356 126 386 126C416 126 430 220 460 220C490 220 504 152 534 152C564 152 575 202 596 202"
-          stroke="rgba(0,240,255,0.85)"
-          strokeWidth="4"
-          strokeLinecap="round"
-        />
-        <path
-          d="M20 246C62 246 70 192 104 192C138 192 146 266 180 266C214 266 224 170 258 170C292 170 300 218 334 218C368 218 374 188 408 188C442 188 448 240 482 240C516 240 522 210 556 210"
-          stroke="rgba(255,184,0,0.55)"
-          strokeWidth="3"
-          strokeLinecap="round"
-        />
-        {[['F3', 368, 72], ['F4', 426, 92], ['T3', 332, 156], ['T4', 458, 168], ['Pz', 392, 218]].map(([label, x, y]) => (
-          <g key={label}>
-            <circle cx={Number(x)} cy={Number(y)} r="12" fill="rgba(0,240,255,0.16)" stroke="rgba(0,240,255,0.4)" />
-            <text x={Number(x)} y={Number(y) + 4} textAnchor="middle" fontSize="10" fill="rgba(232,232,240,0.92)">
-              {label}
-            </text>
-          </g>
-        ))}
-      </svg>
-    </div>
-  )
-}
-
-function statusBadge(status: string) {
-  if (status === 'completed') {
-    return {
-      background: 'rgba(0,255,157,0.12)',
-      color: 'var(--accent-success)',
-    }
-  }
-
-  if (status === 'failed') {
-    return {
-      background: 'rgba(255,51,102,0.12)',
-      color: 'var(--accent-danger)',
-    }
-  }
-
-  return {
-    background: 'rgba(0,240,255,0.12)',
-    color: 'var(--accent-primary)',
-  }
-}
-
 export default function DashboardPage() {
   const supabase = createClient()
   const [latestAnalysis, setLatestAnalysis] = useState<ReportRecord | null>(null)
@@ -136,50 +79,53 @@ export default function DashboardPage() {
 
   return (
     <>
-      <header
-        className="flex shrink-0 items-center justify-between border-b px-6 py-3"
-        style={{
-          background: 'rgba(10,10,15,0.9)',
-          backdropFilter: 'blur(16px)',
-          borderColor: 'var(--border-subtle)',
-        }}
-      >
-        <div className="flex items-center gap-2">
-          <Link href="/dashboard" className="text-[11px] font-mono tracking-widest transition-colors hover:text-[#00F0FF]" style={{ color: '#8888A0' }}>NeuroSentinel AI</Link>
-          <span style={{ color: 'var(--border-default)' }}>/</span>
-          <span className="text-sm font-medium text-[#E8E8F0]" style={{ fontFamily: "'Outfit', sans-serif" }}>
-            Command Centre
+      {/* ── Top Header Bar ── */}
+      <header className="clinical-header">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/dashboard"
+            className="text-[12px] font-medium transition-colors hover:text-[var(--accent-primary)]"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            NeuroSentinel AI
+          </Link>
+          <span className="text-[10px]" style={{ color: 'var(--border-strong)' }}>&gt;</span>
+          <span className="text-[14px] font-semibold" style={{ color: 'var(--text-heading)' }}>
+            Dashboard
           </span>
         </div>
         <div className="flex items-center gap-3">
-          <div className="h-1.5 w-1.5 rounded-full" style={{ background: '#00F0FF', boxShadow: '0 0 8px rgba(0,240,255,0.65)' }} />
-          <span className="text-[11px] font-mono tracking-widest text-[#8888A0]">{getRoleLabel(role)}</span>
+          <div className="flex items-center gap-2 rounded-full px-3 py-1.5" style={{ background: 'var(--accent-primary-light)', border: '1px solid rgba(14, 116, 144, 0.08)' }}>
+            <span className="clinical-dot clinical-dot-primary" style={{ width: 6, height: 6 }} />
+            <span className="text-[12px] font-semibold" style={{ color: 'var(--accent-primary)' }}>
+              {getRoleLabel(role)}
+            </span>
+          </div>
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto p-6" style={{ animation: 'fadeInUp 0.55s ease forwards' }}>
-        <div className="space-y-6">
-          <section
-            className="relative overflow-hidden rounded-[30px] border px-6 py-7"
-            style={{ background: 'linear-gradient(180deg, rgba(16,18,26,0.95), rgba(11,13,18,0.96))', borderColor: 'rgba(255,255,255,0.06)' }}
-          >
-            <SignalBackdrop />
+      {/* ── Page Content — layered background ── */}
+      <div className="clinical-fade-in clinical-page-content">
+        <div className="clinical-page-container space-y-8">
 
-            <div className="relative z-10 grid gap-6 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-end">
-              <div>
-                <div className="text-xs font-medium tracking-widest text-[#8888A0]">Clinical EEG Intelligence</div>
-                <h1 className="mt-3 max-w-4xl text-3xl font-bold leading-tight md:text-4xl" style={{ color: 'var(--text-primary)', fontFamily: "'Outfit', sans-serif" }}>
+          {/* ── Hero Section — elevated with depth ── */}
+          <section className="clinical-hero">
+            <div className="relative z-10 grid gap-12 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-end">
+              <div className="clinical-hero-text-block">
+                <div className="clinical-hero-tagline">Clinical EEG Intelligence</div>
+                <h1 className="clinical-hero-title">
                   Upload your EEG.
                   <br />
                   Detect seizures.
                   <br />
-                  <span style={{ color: 'var(--accent-primary)' }}>Understand every finding.</span>
+                  <span>Understand every finding.</span>
                 </h1>
-                <p className="mt-4 max-w-sm text-sm leading-relaxed text-[#8888A0]">
+                <p className="clinical-hero-desc">
                   NeuroSentinel AI analyses your EEG file, detects seizure events, maps brain activity, and generates a structured clinical report — then SCOUT walks you through every result in plain language.
                 </p>
               </div>
 
+              {/* ── Status Indicators ── */}
               <div className="grid gap-3">
                 {[
                   { label: 'Current role', value: getRoleLabel(role) },
@@ -192,13 +138,14 @@ export default function DashboardPage() {
                 ].map((item) => {
                   const isActive = item.label === 'Latest status' && (uploadState === 'uploading' || uploadState === 'processing')
                   return (
-                    <div key={item.label} className="rounded-2xl border px-4 py-3" style={{ borderColor: isActive ? 'rgba(0,240,255,0.28)' : 'rgba(0,240,255,0.16)', background: isActive ? 'rgba(0,240,255,0.04)' : 'rgba(255,255,255,0.03)' }}>
-                      <div className="text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ color: '#8888A0' }}>
-                        {item.label}
-                      </div>
-                      <div className="mt-1 flex items-center gap-2 text-sm font-semibold" style={{ color: isActive ? 'var(--accent-primary)' : '#E8E8F0', fontFamily: "'Outfit', sans-serif" }}>
-                        {isActive ? <span className="h-2 w-2 shrink-0 animate-pulse rounded-full" style={{ background: 'var(--accent-primary)', boxShadow: '0 0 8px rgba(0,240,255,0.5)' }} /> : null}
-                        {item.value}
+                    <div
+                      key={item.label}
+                      className={`clinical-status-pill ${isActive ? 'active' : ''}`}
+                    >
+                      <div className="clinical-metric-label">{item.label}</div>
+                      <div className="mt-2 flex items-center gap-2 text-[14px] font-semibold" style={{ color: isActive ? 'var(--accent-primary)' : 'var(--text-heading)' }}>
+                        {isActive ? <span className="clinical-dot clinical-dot-primary clinical-dot-pulse" /> : null}
+                        <span className="truncate">{item.value}</span>
                       </div>
                     </div>
                   )
@@ -207,11 +154,19 @@ export default function DashboardPage() {
             </div>
           </section>
 
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-            <section className="rounded-[30px] border px-5 py-5" style={{ background: 'var(--bg-secondary)', borderColor: 'rgba(255,255,255,0.06)' }}>
-              <div className="mb-4">
-                <div className="text-xs font-medium tracking-widest text-[#8888A0]">Upload EEG</div>
-                <p className="mt-1 text-sm text-[#8888A0]">Start a new asynchronous analysis and let SCOUT track the result as it completes.</p>
+          {/* ── Two-Column: Upload + Analysis ── */}
+          <div className="grid gap-7 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
+
+            {/* ── Upload Card ── */}
+            <section id="tour-step-upload" className="clinical-card px-7 py-7">
+              <div className="mb-6">
+                <div className="flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
+                  <div className="clinical-section-label">Upload EEG</div>
+                </div>
+                <p className="clinical-section-desc mt-1">
+                  Start a new analysis and let SCOUT track the result as it completes.
+                </p>
               </div>
 
               <UploadZone
@@ -227,20 +182,34 @@ export default function DashboardPage() {
               />
             </section>
 
-            <section className="rounded-[30px] border px-5 py-5" style={{ background: 'var(--bg-secondary)', borderColor: 'rgba(255,255,255,0.06)' }}>
-              <div className="mb-3 flex items-center justify-between gap-4">
+            {/* ── Latest Analysis Card ── */}
+            <section id="tour-step-latest" className="clinical-card px-7 py-7">
+              <div className="mb-5 flex items-start justify-between gap-4">
                 <div>
-                  <div className="text-xs font-medium tracking-widest text-[#8888A0]">Latest Analysis</div>
-                  <p className="mt-1 text-sm text-[#8888A0]">
+                  <div className="flex items-center gap-2">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>
+                    <div className="clinical-section-label">Latest Analysis</div>
+                  </div>
+                  <p className="clinical-section-desc mt-1">
                     {(uploadState === 'uploading' || uploadState === 'processing') ? 'Current upload in progress' : 'Your most recent EEG analysis'}
                   </p>
                 </div>
                 {(uploadState === 'uploading' || uploadState === 'processing') ? (
-                  <span className="rounded-full px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide" style={statusBadge('processing')}>
+                  <span className="clinical-badge clinical-badge-processing">
+                    <span className="clinical-dot clinical-dot-primary clinical-dot-pulse" style={{ width: 6, height: 6 }} />
                     {uploadState === 'uploading' ? 'uploading' : 'analysing'}
                   </span>
                 ) : latestAnalysis ? (
-                  <span className="rounded-full px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide" style={statusBadge(latestStatus)}>
+                  <span className={`clinical-badge ${
+                    latestStatus === 'completed' ? 'clinical-badge-success' :
+                    latestStatus === 'failed' ? 'clinical-badge-danger' :
+                    'clinical-badge-processing'
+                  }`}>
+                    <span className={`clinical-dot ${
+                      latestStatus === 'completed' ? 'clinical-dot-success' :
+                      latestStatus === 'failed' ? 'clinical-dot-danger' :
+                      'clinical-dot-primary'
+                    }`} style={{ width: 6, height: 6 }} />
                     {latestStatus}
                   </span>
                 ) : null}
@@ -248,21 +217,29 @@ export default function DashboardPage() {
 
               <AnalysisResults data={latestAnalysis} uploadState={uploadState} uploadFilename={uploadFilename} />
 
-              <div className="mt-5 flex flex-wrap gap-3">
-                <Link href="/dashboard/eeg-reports" className="rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em]" style={{ borderColor: 'rgba(0,240,255,0.16)', color: 'var(--accent-primary)' }}>
-                  Open Analysis History
+              <div className="mt-6 pt-5" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+                <Link href="/dashboard/eeg-reports" className="clinical-link">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>
+                  View Analysis History
                 </Link>
               </div>
             </section>
           </div>
 
+          {/* ── Loading / Sign-in fallback ── */}
           {reportsLoading ? (
-            <div className="rounded-[30px] border px-5 py-5 text-sm text-[#8888A0]" style={{ background: 'var(--bg-secondary)', borderColor: 'rgba(255,255,255,0.06)' }}>
-              Loading your latest analysis...
+            <div className="clinical-card px-7 py-6 flex items-center gap-3">
+              <div className="clinical-spinner-sm" />
+              <span className="text-[14px]" style={{ color: 'var(--text-secondary)' }}>
+                Loading your latest analysis...
+              </span>
             </div>
           ) : userId ? null : (
-            <div className="rounded-[30px] border px-5 py-5 text-sm text-[#8888A0]" style={{ background: 'var(--bg-secondary)', borderColor: 'rgba(255,255,255,0.06)' }}>
-              Sign in to upload EEG files and track your analysis workflow.
+            <div className="clinical-card px-7 py-6 text-[14px]" style={{ color: 'var(--text-secondary)' }}>
+              <div className="flex items-center gap-3">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+                Sign in to upload EEG files and track your analysis workflow.
+              </div>
             </div>
           )}
         </div>

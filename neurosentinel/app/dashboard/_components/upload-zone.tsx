@@ -15,7 +15,7 @@ type State =
   | { s: 'complete'; file: File; reportId: string; msg: string }
   | { s: 'error'; file: File | null; msg: string }
 
-const MAX_FILE_SIZE_MB = 150
+const MAX_FILE_SIZE_MB = 50
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 const formatSize = (bytes: number) =>
@@ -40,6 +40,7 @@ export function UploadZone({
   const dragCount = useRef(0)
   const abortRef = useRef<AbortController | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const currentJobIdRef = useRef<string | null>(null)
   const router = useRouter()
   const { showNotification, dismissNotification } = useReportNotification()
 
@@ -99,6 +100,16 @@ export function UploadZone({
       abortRef.current.abort()
       abortRef.current = null
     }
+
+    // Call the backend cancellation API if we are in the processing state
+    if (state.s === 'processing' && state.reportId) {
+      void fetch('/api/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reportId: state.reportId }),
+      }).catch((err) => console.error('[UploadZone] Cancellation failed:', err))
+    }
+
     stopPolling()
     setUploadProgress(null)
     updateState({ s: 'idle' })
@@ -125,6 +136,7 @@ export function UploadZone({
         if (!report) return
 
         const status = normalizeReportStatus(report.status)
+        const jobId = currentJobIdRef.current || reportId
 
         if (status === 'completed') {
           stopPolling()
@@ -136,12 +148,13 @@ export function UploadZone({
           const onDashboard = window.location.pathname.startsWith('/dashboard') && !window.location.pathname.includes('/eeg-reports') && !window.location.pathname.includes('/settings')
 
           if (shouldAutoRedirect && onDashboard) {
-            // Auto-redirect to report page — dismiss toast since we're navigating directly
-            dismissNotification()
+            // Auto-redirect to report page — dismiss toast if we know its jobId, else dismiss all matching
+            dismissNotification(jobId)
             router.push(`/report/${normalized.id}`)
           } else {
             // Show "Report Ready" notification on other pages
             showNotification({
+              jobId, // Use the original jobId to update the existing notification
               reportId: normalized.id,
               filename: file.name,
               status: 'completed',
@@ -172,8 +185,12 @@ export function UploadZone({
     updateState({ s: 'uploading', file, msg: 'Uploading the EDF to NeuroSentinel AI for analysis...' })
     setUploadProgress(0)
 
+    const jobId = crypto.randomUUID()
+    currentJobIdRef.current = jobId
+
     // Show notification immediately so it persists cross-page even if user navigates away
     showNotification({
+      jobId,
       reportId: '',
       filename: file.name,
       status: 'uploading',
@@ -230,7 +247,7 @@ export function UploadZone({
           xhr.onabort = () => reject(new Error('Upload was cancelled.'))
           xhr.ontimeout = () => reject(new Error('Upload timed out. Please try again.'))
 
-          xhr.timeout = 600_000 // 10 min for large files
+          xhr.timeout = 1_800_000 // 30 min for very large files
           xhr.open('POST', uploadUrl)
           xhr.setRequestHeader('Authorization', `Bearer ${sess.access_token}`)
           xhr.setRequestHeader('apikey', supabaseAnonKey)
@@ -376,13 +393,8 @@ export function UploadZone({
     <section>
       <div
         id="upload-drop-zone"
-        className="relative overflow-hidden rounded-[28px] border px-6 py-8 transition-all duration-150 md:px-8 md:py-10"
+        className={`clinical-upload-zone ${dragging ? 'dragging' : ''}`}
         style={{
-          minHeight: 280,
-          borderStyle: 'dashed',
-          borderColor: dragging ? '#00F0FF' : 'rgba(0,240,255,0.18)',
-          background: dragging ? 'rgba(0,240,255,0.06)' : 'linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015))',
-          boxShadow: dragging ? '0 0 0 1px rgba(0,240,255,0.28), 0 0 24px rgba(0,240,255,0.2)' : 'inset 0 0 30px rgba(0,240,255,0.03)',
           cursor: state.s === 'idle' || state.s === 'drag' ? 'pointer' : 'default',
         }}
         onDragEnter={(event) => {
@@ -420,42 +432,44 @@ export function UploadZone({
           }}
         />
 
+        {/* ── Idle / Drag State ── */}
         {(state.s === 'idle' || state.s === 'drag') && (
           <div className="flex h-full flex-col items-center justify-center text-center">
-            <div
-              className="flex h-20 w-20 items-center justify-center rounded-3xl border"
-              style={{ borderColor: 'rgba(0,240,255,0.18)', background: 'rgba(255,255,255,0.03)' }}
-            >
-              <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <div className="clinical-upload-icon">
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                 <polyline points="17 8 12 3 7 8" />
                 <line x1="12" y1="3" x2="12" y2="15" />
               </svg>
             </div>
-            <h3 className="mt-6 text-2xl font-semibold" style={{ color: dragging ? 'var(--accent-primary)' : 'var(--text-primary)', fontFamily: "'Outfit', sans-serif" }}>
+            <h3 className="mt-5 text-xl font-semibold" style={{ color: dragging ? 'var(--accent-primary)' : 'var(--text-heading)' }}>
               {dragging ? 'Release your EDF file here' : 'Drop your EDF file here'}
             </h3>
-            <p className="mt-2 text-base" style={{ color: 'var(--text-secondary)' }}>
+            <p className="mt-2 text-[14px]" style={{ color: 'var(--text-secondary)' }}>
               or click to browse
             </p>
-            <div className="mt-5 flex flex-wrap items-center justify-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
-              <span className="rounded-full border px-3 py-1" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>.edf</span>
-              <span>Up to {MAX_FILE_SIZE_MB} MB — uploads go directly to secure cloud storage.</span>
+            <div className="mt-5 flex flex-col items-center gap-1.5 text-[13px]" style={{ color: 'var(--text-muted)' }}>
+              <div className="flex items-center gap-2">
+                <span className="clinical-file-tag">.edf</span>
+                <span className="font-medium text-[#10B981]">Max file size: {MAX_FILE_SIZE_MB} MB</span>
+              </div>
+              <div>Recommended: 20–60 minutes of EEG data for better confidence.</div>
             </div>
           </div>
         )}
 
+        {/* ── Ready State ── */}
         {state.s === 'ready' && (
           <div className="flex h-full flex-col justify-between gap-8">
             <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--accent-primary)' }}>
+              <div className="clinical-section-label" style={{ color: 'var(--accent-primary)' }}>
                 Ready to analyse
               </div>
-              <div className="mt-3 text-2xl font-semibold" style={{ color: 'var(--text-primary)', fontFamily: "'Outfit', sans-serif" }}>
+              <div className="mt-3 text-xl font-semibold" style={{ color: 'var(--text-heading)' }}>
                 {state.file.name}
               </div>
-              <div className="mt-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                {formatSize(state.file.size)} | EDF recording detected
+              <div className="mt-2 text-[14px]" style={{ color: 'var(--text-secondary)' }}>
+                {formatSize(state.file.size)} · EDF recording detected
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-3">
@@ -465,8 +479,7 @@ export function UploadZone({
                   event.stopPropagation()
                   reset()
                 }}
-                className="rounded-xl border px-4 py-3 text-sm font-medium text-[#E8E8F0]"
-                style={{ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)' }}
+                className="clinical-btn-secondary"
               >
                 Choose another file
               </button>
@@ -477,39 +490,40 @@ export function UploadZone({
                   event.stopPropagation()
                   void analyse()
                 }}
-                className="rounded-xl px-4 py-3 text-sm font-semibold text-[#0A0A0F]"
-                style={{ background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-warning))', boxShadow: '0 0 16px rgba(0,240,255,0.18)' }}
+                className="clinical-btn-primary"
               >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>
                 Start Analysis
               </button>
             </div>
           </div>
         )}
 
+        {/* ── Uploading / Processing State ── */}
         {(state.s === 'uploading' || state.s === 'processing') && (
           <div className="flex h-full flex-col items-center justify-center text-center">
-            <div className="h-10 w-10 animate-spin rounded-full border-2 border-t-transparent" style={{ borderColor: '#00F0FF transparent transparent transparent' }} />
-            <div className="mt-5 text-xl font-semibold" style={{ color: 'var(--text-primary)', fontFamily: "'Outfit', sans-serif" }}>
+            <div className="clinical-spinner" />
+            <div className="mt-5 text-lg font-semibold" style={{ color: 'var(--text-heading)' }}>
               {state.s === 'processing' ? 'Analysing your EEG report' : 'Uploading your EEG file'}
             </div>
-            <div className="mt-2 max-w-md text-sm leading-7" style={{ color: 'var(--text-secondary)' }}>
+            <div className="mt-2 max-w-md text-[14px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
               {state.msg}
             </div>
 
             {uploadProgress !== null ? (
               <div className="mt-5 w-full max-w-md px-2">
-                <div className="mb-1.5 flex justify-between text-xs text-[#8888A0]">
+                <div className="mb-2 flex justify-between text-[12px]" style={{ color: 'var(--text-muted)' }}>
                   <span>{state.s === 'processing' ? 'Upload complete — analysing in background' : 'Uploading EDF to secure storage...'}</span>
-                  <span>{uploadProgress}%</span>
+                  <span className="font-medium" style={{ color: 'var(--accent-primary)' }}>{uploadProgress}%</span>
                 </div>
-                <div className="h-[2px] w-full overflow-hidden rounded-full bg-[#1A1A28]">
-                  <div className="h-full rounded-full bg-[#00F0FF] transition-all duration-200" style={{ width: `${uploadProgress}%` }} />
+                <div className="clinical-progress-track">
+                  <div className="clinical-progress-fill" style={{ width: `${uploadProgress}%` }} />
                 </div>
               </div>
             ) : state.s === 'processing' ? (
               <div className="mt-5 w-full max-w-md px-2">
-                <div className="h-[2px] w-full overflow-hidden rounded-full bg-[#1A1A28]">
-                  <div className="h-full rounded-full" style={{ background: 'linear-gradient(90deg, #00F0FF, rgba(255,184,0,0.8))', animation: 'progressIndeterminate 1.8s ease-in-out infinite', width: '50%' }} />
+                <div className="clinical-progress-track">
+                  <div className="clinical-progress-indeterminate" />
                 </div>
               </div>
             ) : null}
@@ -520,24 +534,24 @@ export function UploadZone({
                 event.stopPropagation()
                 cancelUpload()
               }}
-              className="mt-5 rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] transition-all hover:bg-[rgba(255,51,102,0.08)]"
-              style={{ borderColor: 'rgba(255,51,102,0.25)', color: '#FF3366' }}
+              className="clinical-btn-danger-outline mt-5"
             >
               Cancel
             </button>
           </div>
         )}
 
+        {/* ── Complete State ── */}
         {state.s === 'complete' && (
           <div className="flex h-full flex-col justify-between gap-8">
             <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--accent-success)' }}>
+              <div className="clinical-section-label" style={{ color: 'var(--accent-success)' }}>
                 Report ready
               </div>
-              <div className="mt-3 text-2xl font-semibold" style={{ color: 'var(--text-primary)', fontFamily: "'Outfit', sans-serif" }}>
+              <div className="mt-3 text-xl font-semibold" style={{ color: 'var(--text-heading)' }}>
                 {state.file.name}
               </div>
-              <div className="mt-2 text-sm leading-7" style={{ color: 'var(--text-secondary)' }}>
+              <div className="mt-2 text-[14px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
                 {state.msg}
               </div>
             </div>
@@ -548,9 +562,9 @@ export function UploadZone({
                   event.stopPropagation()
                   router.push(`/report/${state.reportId}`)
                 }}
-                className="rounded-xl px-4 py-3 text-sm font-semibold text-[#0A0A0F]"
-                style={{ background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-warning))', boxShadow: '0 0 16px rgba(0,240,255,0.18)' }}
+                className="clinical-btn-primary"
               >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></svg>
                 View Report
               </button>
               <button
@@ -559,8 +573,7 @@ export function UploadZone({
                   event.stopPropagation()
                   reset()
                 }}
-                className="rounded-xl border px-4 py-3 text-sm font-medium text-[#E8E8F0]"
-                style={{ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)' }}
+                className="clinical-btn-secondary"
               >
                 Upload another EDF
               </button>
@@ -568,15 +581,23 @@ export function UploadZone({
           </div>
         )}
 
+        {/* ── Error State ── */}
         {state.s === 'error' && (
           <div className="flex h-full flex-col items-center justify-center text-center">
-            <div className="text-xl font-semibold" style={{ color: 'var(--accent-danger)', fontFamily: "'Outfit', sans-serif" }}>
+            <div className="flex h-14 w-14 items-center justify-center rounded-full" style={{ background: 'var(--accent-danger-light)' }}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent-danger)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="15" y1="9" x2="9" y2="15" />
+                <line x1="9" y1="9" x2="15" y2="15" />
+              </svg>
+            </div>
+            <div className="mt-4 text-lg font-semibold" style={{ color: 'var(--accent-danger)' }}>
               Analysis failed
             </div>
-            <div className="mt-2 max-w-md text-sm leading-7" style={{ color: 'var(--text-secondary)' }}>
+            <div className="mt-2 max-w-md text-[14px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
               {state.msg}
             </div>
-            <div className="mt-4 flex items-center gap-3">
+            <div className="mt-5 flex items-center gap-3">
               <button
                 type="button"
                 onClick={(event) => {
@@ -585,7 +606,7 @@ export function UploadZone({
                   if (inputRef.current) inputRef.current.value = ''
                   window.setTimeout(() => inputRef.current?.click(), 50)
                 }}
-                className="whitespace-nowrap rounded border border-[#00F0FF]/40 px-3 py-1.5 text-xs text-[#00F0FF] transition-colors hover:bg-[#00F0FF]/10"
+                className="clinical-btn-outline"
               >
                 Try again
               </button>
@@ -595,8 +616,7 @@ export function UploadZone({
                   event.stopPropagation()
                   reset()
                 }}
-                className="rounded-xl border px-4 py-3 text-sm font-medium text-[#E8E8F0]"
-                style={{ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)' }}
+                className="clinical-btn-secondary"
               >
                 Clear
               </button>

@@ -14,154 +14,123 @@ function formatTimestamp(sec: number | undefined) {
 
 function riskBadgeStyle(risk: string) {
   const r = (risk || '').toLowerCase()
-  if (r === 'critical') return { bg: 'rgba(255,51,102,0.12)', color: '#FF3366', glow: '0 0 12px rgba(255,51,102,0.3)' }
-  if (r === 'high') return { bg: 'rgba(255,51,102,0.08)', color: '#FF3366', glow: 'none' }
-  if (r === 'medium' || r === 'moderate') return { bg: 'rgba(255,184,0,0.08)', color: '#FFB800', glow: 'none' }
-  if (r === 'low') return { bg: 'rgba(0,255,136,0.08)', color: '#00FF88', glow: 'none' }
-  return { bg: 'rgba(136,136,160,0.08)', color: '#8888A0', glow: 'none' }
+  if (r === 'critical' || r === 'high') return { bg: '#FEF2F2', border: '#FEE2E2', text: '#EF4444' }
+  if (r === 'medium' || r === 'moderate') return { bg: '#FFFBEB', border: '#FEF3C7', text: '#F59E0B' }
+  if (r === 'low') return { bg: '#F0FDF4', border: '#DCFCE7', text: '#10B981' }
+  return { bg: '#F9FAFB', border: '#F3F4F6', text: '#64748B' }
 }
 
 export function EventCards({ events }: Props) {
   if (events.length === 0) {
     return (
-      <div className="rounded-2xl border px-5 py-6" style={{ borderColor: 'rgba(0,255,136,0.15)', background: 'rgba(0,255,136,0.04)' }}>
-        <div className="flex items-center gap-2">
-          <div className="h-2 w-2 rounded-full" style={{ background: '#00FF88', boxShadow: '0 0 8px rgba(0,255,136,0.4)' }} />
-          <span className="text-sm font-semibold" style={{ color: '#00FF88', fontFamily: "'Outfit', sans-serif" }}>No Seizure Events Detected</span>
+      <div className="rounded-3xl border border-dashed border-gray-200 bg-gray-50/50 px-8 py-10 text-center">
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-gray-200 mb-4">
+          <span className="text-xl">✅</span>
         </div>
-        <p className="mt-2 text-xs leading-5" style={{ color: 'var(--text-muted)' }}>
-          The model did not detect any epileptiform activity above the confidence threshold for this recording.
+        <h3 className="text-base font-bold text-gray-900">No Seizure Events Detected</h3>
+        <p className="mt-1 text-sm text-gray-500 max-w-[280px] mx-auto">
+          The intelligence model did not identify any abnormal epileptiform patterns in this EEG recording.
         </p>
       </div>
     )
   }
 
   return (
-    <div className="grid gap-3 md:grid-cols-2">
+    <div className="space-y-4">
       {events.map((event: any, idx: number) => {
         const badge = riskBadgeStyle(event.risk_level || '')
-        const bp = event.band_powers || {}
-        const domBand = Object.keys(bp).length > 0
-          ? Object.entries(bp).sort((a: any, b: any) => b[1] - a[1])[0]?.[0]
-          : null
+        const idxDisplay = event.event_idx ?? idx + 1
 
         return (
           <div
             key={event.event_idx ?? idx}
-            className="group relative rounded-2xl border p-4 transition-all duration-300 hover:border-[rgba(255,255,255,0.12)]"
-            style={{
-              borderColor: 'rgba(255,255,255,0.06)',
-              background: 'rgba(255,255,255,0.02)',
-            }}
+            className="group relative flex flex-col overflow-hidden rounded-[24px] border border-gray-100 bg-white shadow-sm transition-all hover:shadow-md hover:border-blue-100"
           >
-            {/* Header row */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <span className="flex h-7 w-7 items-center justify-center rounded-lg text-xs font-bold" style={{ background: 'rgba(255,51,102,0.12)', color: '#FF3366', fontFamily: "'JetBrains Mono', monospace" }}>
-                  {event.event_idx ?? idx + 1}
-                </span>
-                <div>
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--text-muted)' }}>Event</div>
-                </div>
-              </div>
-              <span
-                className="rounded-full px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em]"
-                style={{ background: badge.bg, color: badge.color, boxShadow: badge.glow }}
-              >
-                {event.risk_level || 'Unknown'}
-              </span>
-            </div>
-
-            {/* Timing row */}
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              <div className="rounded-lg px-2.5 py-2" style={{ background: 'rgba(255,255,255,0.025)' }}>
-                <div className="text-[8px] font-bold uppercase tracking-[0.2em]" style={{ color: 'var(--text-muted)' }}>Onset</div>
-                <div className="mt-0.5 text-xs font-mono font-medium" style={{ color: 'var(--text-primary)' }}>{formatTimestamp(event.onset_sec)}</div>
-              </div>
-              <div className="rounded-lg px-2.5 py-2" style={{ background: 'rgba(255,255,255,0.025)' }}>
-                <div className="text-[8px] font-bold uppercase tracking-[0.2em]" style={{ color: 'var(--text-muted)' }}>Offset</div>
-                <div className="mt-0.5 text-xs font-mono font-medium" style={{ color: 'var(--text-primary)' }}>{formatTimestamp(event.offset_sec)}</div>
-              </div>
-              <div className="rounded-lg px-2.5 py-2" style={{ background: 'rgba(255,255,255,0.025)' }}>
-                <div className="text-[8px] font-bold uppercase tracking-[0.2em]" style={{ color: 'var(--text-muted)' }}>Duration</div>
-                <div className="mt-0.5 text-xs font-mono font-medium" style={{ color: 'var(--text-primary)' }}>
-                  {typeof event.duration_sec === 'number' ? `${event.duration_sec.toFixed(1)}s` : '—'}
-                </div>
-              </div>
-            </div>
-
-            {/* Confidence bar */}
-            <div className="mt-3">
-              <div className="flex items-center justify-between">
-                <span className="text-[8px] font-bold uppercase tracking-[0.18em]" style={{ color: 'var(--text-muted)' }}>Confidence</span>
-                <span className="text-xs font-mono font-bold" style={{ color: '#00F0FF' }}>
-                  {typeof event.mean_probability === 'number' ? `${(event.mean_probability * 100).toFixed(1)}%` : '—'}
-                </span>
-              </div>
-              <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
-                <div
-                  className="h-full rounded-full transition-all duration-700"
-                  style={{
-                    width: `${typeof event.mean_probability === 'number' ? Math.min(100, event.mean_probability * 100) : 0}%`,
-                    background: typeof event.mean_probability === 'number' && event.mean_probability > 0.7
-                      ? 'linear-gradient(90deg, #FF3366, #FF6B9D)'
-                      : 'linear-gradient(90deg, #00F0FF, #818CF8)',
-                  }}
-                />
-              </div>
-            </div>
-
-            {/* Severity ring */}
-            {event.severity_score != null ? (
-              <div className="mt-3 flex items-center gap-3">
-                <div className="relative flex h-10 w-10 items-center justify-center">
-                  <svg className="h-10 w-10 -rotate-90" viewBox="0 0 36 36">
-                    <circle cx="18" cy="18" r="15" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="3" />
-                    <circle
-                      cx="18" cy="18" r="15" fill="none"
-                      stroke={event.severity_score > 7 ? '#FF3366' : event.severity_score > 4 ? '#FFB800' : '#00FF88'}
-                      strokeWidth="3"
-                      strokeDasharray={`${(event.severity_score / 10) * 94.2} 94.2`}
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                  <span className="absolute text-[10px] font-bold font-mono" style={{ color: 'var(--text-primary)' }}>{event.severity_score}</span>
+            <div className="absolute left-0 top-0 bottom-0 w-1.5" style={{ background: badge.text }} />
+            
+            <div className="flex flex-col p-6 sm:flex-row sm:items-center sm:justify-between gap-6">
+              {/* Event ID and Basic Info */}
+              <div className="flex items-center gap-5">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gray-50 font-mono text-lg font-black text-gray-900 ring-1 ring-inset ring-gray-100 group-hover:bg-blue-50 group-hover:text-blue-700 transition-colors">
+                  {idxDisplay.toString().padStart(2, '0')}
                 </div>
                 <div>
-                  <div className="text-[8px] font-bold uppercase tracking-[0.18em]" style={{ color: 'var(--text-muted)' }}>Severity <span className="text-[7px] font-normal" style={{ color: 'rgba(136,136,160,0.5)' }}>[HEURISTIC]</span></div>
-                  <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>{event.severity_score}/10</div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-[#64748B]">Clinical Event</span>
+                    <span
+                      className="rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wider"
+                      style={{ background: badge.bg, color: badge.text, border: `1px solid ${badge.border}` }}
+                    >
+                      {event.risk_level || 'Unknown'} Risk
+                    </span>
+                  </div>
+                  <h3 className="mt-0.5 text-base font-bold text-gray-900">Seizure Waveform Detected</h3>
                 </div>
               </div>
-            ) : null}
 
-            {/* Tags row */}
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {event.pattern_type ? (
-                <span className="rounded-md px-2 py-0.5 text-[8px] font-semibold uppercase" style={{ background: 'rgba(167,139,250,0.1)', color: '#A78BFA' }}>
-                  {event.pattern_type} <span style={{ opacity: 0.5 }}>[H]</span>
-                </span>
-              ) : null}
-              {event.focal_vs_gen ? (
-                <span className="rounded-md px-2 py-0.5 text-[8px] font-semibold uppercase" style={{ background: 'rgba(0,240,255,0.08)', color: '#00F0FF' }}>
-                  {event.focal_vs_gen} <span style={{ opacity: 0.5 }}>[EST]</span>
-                </span>
-              ) : null}
-              {event.early_warning ? (
-                <span className="rounded-md px-2 py-0.5 text-[8px] font-semibold uppercase" style={{ background: 'rgba(255,184,0,0.1)', color: '#FFB800' }}>
-                  ⚠ Early Warning
-                </span>
-              ) : null}
-              {event.inter_seizure_interval != null ? (
-                <span className="rounded-md px-2 py-0.5 text-[8px] font-mono" style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--text-muted)' }}>
-                  ISI: {event.inter_seizure_interval}s
-                </span>
-              ) : null}
-              {domBand ? (
-                <span className="rounded-md px-2 py-0.5 text-[8px] font-mono" style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--text-muted)' }}>
-                  Band: {domBand}
-                </span>
-              ) : null}
+              {/* Timing Metadata */}
+              <div className="flex flex-wrap items-center gap-x-8 gap-y-4">
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Start Time</span>
+                  <span className="text-sm font-bold font-mono text-gray-900">{formatTimestamp(event.onset_sec)}</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">End Time</span>
+                  <span className="text-sm font-bold font-mono text-gray-900">{formatTimestamp(event.offset_sec)}</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Duration</span>
+                  <span className="text-sm font-bold font-mono text-blue-600">
+                    {typeof event.duration_sec === 'number' ? `${event.duration_sec.toFixed(1)}s` : '—'}
+                  </span>
+                </div>
+                
+                {/* Severity Score */}
+                {event.severity_score != null && (
+                  <div className="flex items-center gap-3 pl-4 border-l border-gray-100">
+                    <div className="flex flex-col text-right">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Severity</span>
+                      <span className="text-xs font-bold text-gray-600">{event.severity_score}/10 [H]</span>
+                    </div>
+                    <div className="relative flex h-10 w-10 items-center justify-center">
+                      <svg className="h-10 w-10 -rotate-90" viewBox="0 0 36 36">
+                        <circle cx="18" cy="18" r="16" fill="none" stroke="#F1F5F9" strokeWidth="4" />
+                        <circle
+                          cx="18" cy="18" r="16" fill="none"
+                          stroke={badge.text}
+                          strokeWidth="4"
+                          strokeDasharray={`${(event.severity_score / 10) * 100.5} 100.5`}
+                          strokeLinecap="round"
+                          className="transition-all duration-1000"
+                        />
+                      </svg>
+                      <span className="absolute text-[10px] font-black" style={{ color: badge.text }}>{event.severity_score}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
+
+            {/* Tags / Sub-details */}
+            {(event.pattern_type || event.focal_vs_gen || event.early_warning) && (
+              <div className="flex flex-wrap gap-2 px-6 pb-5">
+                {event.pattern_type && (
+                  <span className="inline-flex items-center rounded-lg bg-indigo-50 px-2.5 py-1 text-[10px] font-bold text-indigo-700 ring-1 ring-inset ring-indigo-200">
+                    Pattern: {event.pattern_type}
+                  </span>
+                )}
+                {event.focal_vs_gen && (
+                  <span className="inline-flex items-center rounded-lg bg-cyan-50 px-2.5 py-1 text-[10px] font-bold text-cyan-700 ring-1 ring-inset ring-cyan-200">
+                    Origin: {event.focal_vs_gen}
+                  </span>
+                )}
+                {event.early_warning && (
+                  <span className="inline-flex items-center rounded-lg bg-amber-50 px-2.5 py-1 text-[10px] font-bold text-amber-700 ring-1 ring-inset ring-amber-200">
+                    ⚠️ Early Warning Triggered
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         )
       })}

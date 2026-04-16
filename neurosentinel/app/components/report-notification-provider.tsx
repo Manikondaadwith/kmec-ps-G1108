@@ -2,22 +2,26 @@
 
 import { createContext, useCallback, useContext, useState } from 'react'
 
-type ReportNotification = {
-  reportId: string
+export type ReportNotification = {
+  jobId: string
+  reportId?: string
   filename: string
   status: 'uploading' | 'processing' | 'completed' | 'failed'
   timestamp: number
+  hasNotified?: boolean
 }
 
 type NotificationCtx = {
-  notification: ReportNotification | null
+  notifications: ReportNotification[]
   showNotification: (n: ReportNotification) => void
-  dismissNotification: () => void
+  updateNotification: (jobId: string, updates: Partial<ReportNotification>) => void
+  dismissNotification: (jobId: string) => void
 }
 
 const ReportNotificationContext = createContext<NotificationCtx>({
-  notification: null,
+  notifications: [],
   showNotification: () => {},
+  updateNotification: () => {},
   dismissNotification: () => {},
 })
 
@@ -26,18 +30,29 @@ export function useReportNotification() {
 }
 
 export function ReportNotificationProvider({ children }: { children: React.ReactNode }) {
-  const [notification, setNotification] = useState<ReportNotification | null>(null)
+  const [notifications, setNotifications] = useState<ReportNotification[]>([])
 
   const showNotification = useCallback((n: ReportNotification) => {
-    setNotification(n)
+    setNotifications(prev => {
+      // If job already exists, replace it
+      const exists = prev.find(p => p.jobId === n.jobId)
+      if (exists) {
+        return prev.map(p => p.jobId === n.jobId ? { ...p, ...n } : p)
+      }
+      return [...prev, n]
+    })
   }, [])
 
-  const dismissNotification = useCallback(() => {
-    setNotification(null)
+  const updateNotification = useCallback((jobId: string, updates: Partial<ReportNotification>) => {
+    setNotifications(prev => prev.map(p => p.jobId === jobId ? { ...p, ...updates } : p))
+  }, [])
+
+  const dismissNotification = useCallback((jobId: string) => {
+    setNotifications(prev => prev.filter(p => p.jobId !== jobId))
   }, [])
 
   return (
-    <ReportNotificationContext.Provider value={{ notification, showNotification, dismissNotification }}>
+    <ReportNotificationContext.Provider value={{ notifications, showNotification, updateNotification, dismissNotification }}>
       {children}
     </ReportNotificationContext.Provider>
   )

@@ -2,64 +2,608 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { normalizeReport, normalizeReportStatus, type ReportRecord } from '@/lib/neurosentinel/types'
 
-function statusColor(status: string) {
-  if (status === 'completed') return { color: 'var(--accent-success)', background: 'rgba(0,255,157,0.08)' }
-  if (status === 'failed') return { color: 'var(--accent-danger)', background: 'rgba(255,51,102,0.08)' }
-  return { color: 'var(--accent-primary)', background: 'rgba(0,240,255,0.08)' }
+/* ─────────────────────────────────────────────────────────────
+   Helpers
+───────────────────────────────────────────────────────────── */
+
+function getStatusMeta(status: string): {
+  label: string
+  badgeClass: string
+  dotClass: string
+  dotPulse: boolean
+} {
+  if (status === 'completed')
+    return {
+      label: 'Completed',
+      badgeClass: 'clinical-badge clinical-badge-success',
+      dotClass: 'clinical-dot clinical-dot-success',
+      dotPulse: false,
+    }
+  if (status === 'failed')
+    return {
+      label: 'Failed',
+      badgeClass: 'clinical-badge clinical-badge-danger',
+      dotClass: 'clinical-dot clinical-dot-danger',
+      dotPulse: false,
+    }
+  return {
+    label: 'Processing',
+    badgeClass: 'clinical-badge clinical-badge-processing',
+    dotClass: 'clinical-dot clinical-dot-primary clinical-dot-pulse',
+    dotPulse: true,
+  }
 }
 
-function getKeyResult(report: ReportRecord) {
-  if (normalizeReportStatus(report.status) === 'failed') {
-    return report.error_message || 'Analysis failed'
+function getRiskMeta(risk: string | null | undefined): {
+  label: string
+  color: string
+  bg: string
+  border: string
+} {
+  const r = (risk ?? '').toLowerCase()
+  if (r === 'high')
+    return {
+      label: 'High Risk',
+      color: 'var(--accent-danger)',
+      bg: 'var(--accent-danger-light)',
+      border: 'rgba(220,38,38,0.12)',
+    }
+  if (r === 'medium' || r === 'moderate')
+    return {
+      label: 'Medium Risk',
+      color: 'var(--accent-warning)',
+      bg: 'var(--accent-warning-light)',
+      border: 'rgba(217,119,6,0.12)',
+    }
+  if (r === 'low')
+    return {
+      label: 'Low Risk',
+      color: 'var(--accent-success)',
+      bg: 'var(--accent-success-light)',
+      border: 'rgba(22,163,74,0.12)',
+    }
+  return {
+    label: 'Unknown',
+    color: 'var(--text-muted)',
+    bg: 'rgba(148,163,184,0.06)',
+    border: 'rgba(148,163,184,0.15)',
+  }
+}
+
+function getKeyResult(report: ReportRecord): { primary: string; secondary: string; isSeizure: boolean } {
+  const status = normalizeReportStatus(report.status)
+
+  // ── FAILED STATE ──
+  if (status === 'failed') {
+    const msg = report.error_message || ''
+
+    // Memory Errors
+    if (msg.toLowerCase().includes('memory threshold')) {
+      const match = msg.match(/(\d+MB) > (\d+MB)/)
+      return {
+        primary: 'Processing failed due to memory limit',
+        secondary: match ? `${match[1]} used (limit: ${match[2]})` : 'Threshold exceeded',
+        isSeizure: false,
+      }
+    }
+
+    // Server Restarts
+    if (msg.toLowerCase().includes('server restarted')) {
+      return {
+        primary: 'Processing interrupted',
+        secondary: 'Server restarted during analysis — re-upload required',
+        isSeizure: false,
+      }
+    }
+
+    // Generic error
+    return {
+      primary: 'Processing failed',
+      secondary: msg || 'Encountered internal error',
+      isSeizure: false,
+    }
   }
 
-  if (normalizeReportStatus(report.status) !== 'completed') {
-    return 'Analysis in progress'
+  // ── ONGOING STATE ──
+  if (status !== 'completed') {
+    return {
+      primary: 'Analysis ongoing',
+      secondary: 'Processing EEG signal...',
+      isSeizure: false,
+    }
   }
 
+  // ── COMPLETED STATE ──
   if ((report.event_count ?? 0) > 0) {
-    return `${report.event_count ?? 0} seizure event(s) detected`
+    return {
+      primary: 'Seizure detected',
+      secondary: `${report.event_count} event${(report.event_count ?? 0) > 1 ? 's' : ''} identified`,
+      isSeizure: true,
+    }
   }
 
-  return report.result_label || 'No seizure activity detected'
+  // Clean
+  return {
+    primary: report.result_label || 'No activity detected',
+    secondary: 'Clinical baseline normal',
+    isSeizure: false,
+  }
 }
 
 function formatDate(dateStr: string) {
-  const d = new Date(dateStr)
-  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+  return new Date(dateStr).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  })
 }
 
 function formatTime(dateStr: string) {
-  const d = new Date(dateStr)
-  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
+  return new Date(dateStr).toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  })
+}
+
+function formatConfidence(score: number | null | undefined): string | null {
+  if (score == null) return null
+  let val = score
+  // Fix: handle both 0.889 and 88.9
+  if (val <= 1 && val > 0) {
+    val = val * 100
+  }
+  // Ensure we don't multiply twice if if's already around 80-100
+  // Handle edge cases where score might be slightly > 1 (e.g. 1.05) if any,
+  // but usually it's [0,1] or [0,100].
+  return `${val.toFixed(1)}%`
 }
 
 function formatDateISO(dateStr: string) {
   return new Date(dateStr).toISOString().split('T')[0]
 }
 
+/* ─────────────────────────────────────────────────────────────
+   SVG Icons (inline — no extra deps)
+───────────────────────────────────────────────────────────── */
+
+const IconEEG = ({ size = 16, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+  </svg>
+)
+const IconCalendar = ({ size = 11 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+  </svg>
+)
+const IconClock = ({ size = 11 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+  </svg>
+)
+const IconFile = ({ size = 28 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
+  </svg>
+)
+const IconSearch = ({ size = 14 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round">
+    <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+  </svg>
+)
+const IconReport = ({ size = 14 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
+  </svg>
+)
+const IconDownload = ({ size = 14 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+  </svg>
+)
+const IconChevron = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--border-strong)" strokeWidth="2" strokeLinecap="round">
+    <polyline points="9 18 15 12 9 6" />
+  </svg>
+)
+const IconUpload = ({ size = 14 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+  </svg>
+)
+const IconClose = ({ size = 12 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+  </svg>
+)
+const IconShield = ({ size = 16, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+  </svg>
+)
+const IconHistory = ({ size = 20, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 .49-4.98" />
+  </svg>
+)
+
+/* ─────────────────────────────────────────────────────────────
+   Skeleton loader for a single card
+───────────────────────────────────────────────────────────── */
+function SkeletonCard({ density = 'comfortable' }: { density?: 'comfortable' | 'compact' }) {
+  const isCompact = density === 'compact'
+  return (
+    <div
+      style={{
+        background: 'var(--bg-card)',
+        border: '1px solid var(--border-default)',
+        borderRadius: 'var(--radius-lg)',
+        boxShadow: 'var(--shadow-card)',
+        padding: isCompact ? '16px 20px' : '28px 32px',
+        animation: 'clinicalFadeIn 0.4s ease forwards',
+      }}
+    >
+      {/* top row */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: isCompact ? 12 : 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ width: 34, height: 34, borderRadius: 8, background: 'var(--bg-tertiary)' }} />
+          <div>
+            <div style={{ width: 180, height: 12, borderRadius: 4, background: 'var(--bg-tertiary)', marginBottom: 6 }} />
+            <div style={{ width: 120, height: 10, borderRadius: 4, background: 'var(--bg-tertiary)' }} />
+          </div>
+        </div>
+        <div style={{ width: 70, height: 24, borderRadius: 12, background: 'var(--bg-tertiary)' }} />
+      </div>
+      {!isCompact && (
+        <>
+          <div style={{ height: 1, background: 'var(--border-subtle)', marginBottom: 20 }} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+            {[0, 1, 2].map((i) => (
+              <div key={i} style={{ background: 'var(--bg-inset)', borderRadius: 'var(--radius-md)', padding: '12px 16px', border: '1px solid var(--border-subtle)' }}>
+                <div style={{ width: 40, height: 8, borderRadius: 3, background: 'var(--bg-tertiary)', marginBottom: 8 }} />
+                <div style={{ width: '60%', height: 12, borderRadius: 3, background: 'var(--bg-tertiary)' }} />
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Individual analysis card
+───────────────────────────────────────────────────────────── */
+function AnalysisCard({
+  report,
+  density = 'comfortable',
+  isAlternating = false,
+}: {
+  report: ReportRecord
+  density?: 'comfortable' | 'compact'
+  isAlternating?: boolean
+}) {
+  const router = useRouter()
+  const status = normalizeReportStatus(report.status)
+  const isFailed = status === 'failed'
+  const isProcessing = status === 'processing'
+  const isCompleted = status === 'completed'
+  const isCompact = density === 'compact'
+
+  const { label: statusLabel, badgeClass, dotClass } = getStatusMeta(status)
+  const { primary: primaryResult, secondary: secondaryResult, isSeizure } = getKeyResult(report)
+  const riskMeta = getRiskMeta(report.risk_level)
+
+  const confidenceDisplay = formatConfidence(report.confidence_score)
+  const durationDisplay = report.duration_minutes != null ? `${report.duration_minutes} min` : null
+
+  // Stripe Color logic
+  let stripeColor = 'var(--accent-primary)'
+  if (isFailed) stripeColor = 'var(--accent-danger)'
+  else if (riskMeta.label === 'High Risk') stripeColor = 'var(--accent-danger)'
+  else if (riskMeta.label === 'Medium Risk') stripeColor = 'var(--accent-warning)'
+  else if (isCompleted) stripeColor = 'var(--accent-success)'
+
+  const handleCardClick = () => {
+    router.push(`/report/${report.id}`)
+  }
+
+  return (
+    <article
+      style={{
+        background: isFailed ? 'rgba(220, 38, 38, 0.02)' : isAlternating ? '#FAFBFC' : 'var(--bg-card)',
+        border: isFailed ? '1px solid rgba(220, 38, 38, 0.15)' : '1px solid var(--border-default)',
+        borderRadius: 'var(--radius-lg)',
+        boxShadow: 'var(--shadow-card)',
+        padding: '0',
+        overflow: 'hidden',
+        transition: 'all 0.15s cubic-bezier(0.4, 0, 0.2, 1)',
+        animation: 'clinicalFadeIn 0.35s ease forwards',
+        position: 'relative',
+        display: 'flex',
+      }}
+      onMouseEnter={(e) => {
+        const el = e.currentTarget as HTMLElement
+        el.style.boxShadow = 'var(--shadow-card-hover)'
+        el.style.borderColor = isFailed ? 'rgba(220, 38, 38, 0.25)' : 'var(--border-strong)'
+      }}
+      onMouseLeave={(e) => {
+        const el = e.currentTarget as HTMLElement
+        el.style.boxShadow = 'var(--shadow-card)'
+        el.style.borderColor = isFailed ? 'rgba(220, 38, 38, 0.15)' : 'var(--border-default)'
+      }}
+    >
+      {/* ── Left accent bar ── */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: 4,
+          background: stripeColor,
+          opacity: isFailed ? 0.8 : 0.6,
+        }}
+      />
+
+      {/* ── Main Content Grid ── */}
+      <div style={{ padding: isCompact ? '16px 20px 16px 24px' : '24px 28px 24px 32px', width: '100%' }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: isCompact ? '1.2fr 2fr 1fr' : 'minmax(240px, 1.2fr) 2fr minmax(200px, 1fr)',
+            gap: isCompact ? 20 : 32,
+            alignItems: 'center',
+          }}
+        >
+          {/* ZONE 1 (LEFT): FILE & TIME */}
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: isCompact ? 4 : 8 }}>
+              <div
+                style={{
+                  flexShrink: 0,
+                  width: isCompact ? 30 : 34,
+                  height: isCompact ? 30 : 34,
+                  borderRadius: 8,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: 'var(--bg-inset)',
+                  border: '1px solid var(--border-subtle)',
+                }}
+              >
+                <IconEEG size={isCompact ? 14 : 16} color="var(--accent-primary)" />
+              </div>
+              <div
+                style={{
+                  fontSize: isCompact ? 14 : 15,
+                  fontWeight: 700,
+                  color: 'var(--text-heading)',
+                  letterSpacing: '-0.01em',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {report.filename || 'Unnamed EEG File'}
+              </div>
+            </div>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: isCompact ? 'row' : 'column',
+                gap: isCompact ? 12 : 4,
+                fontSize: 11,
+                color: 'var(--text-muted)',
+              }}
+            >
+              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <IconCalendar /> {formatDate(report.created_at)}
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <IconClock /> {formatTime(report.created_at)}
+              </span>
+              {!isCompact && (
+                <span style={{ opacity: 0.6, fontSize: 10, letterSpacing: '0.04em' }}>
+                  #{report.id.slice(0, 8).toUpperCase()}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* ZONE 2 (CENTER): KEY RESULT */}
+          <div
+            style={{
+              padding: isCompact ? '0 16px' : '0 24px',
+              borderLeft: '1px solid var(--border-subtle)',
+              borderRight: '1px solid var(--border-subtle)',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              minWidth: 0,
+              maxWidth: 400,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 9,
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.1em',
+                color: 'var(--text-faint)',
+                marginBottom: 6,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+              }}
+            >
+              <IconShield size={10} color="var(--text-faint)" />
+              Key Result
+            </div>
+            <div
+              style={{
+                fontSize: isCompact ? 15 : 16,
+                fontWeight: 700,
+                color: isFailed ? 'var(--accent-danger)' : isSeizure ? 'var(--accent-danger)' : 'var(--text-heading)',
+                letterSpacing: '-0.01em',
+                lineHeight: 1.25,
+                wordBreak: 'break-word',
+              }}
+            >
+              {primaryResult}
+            </div>
+            <div
+              style={{
+                fontSize: 12,
+                fontWeight: 500,
+                color: 'var(--text-muted)',
+                marginTop: 2,
+                wordBreak: 'break-word',
+              }}
+            >
+              {secondaryResult}
+            </div>
+          </div>
+
+          {/* ZONE 3 (RIGHT): BADGES & CONFIDENCE */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'flex-start' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {/* Status Badge */}
+              <span className={badgeClass} style={{ padding: isCompact ? '3px 10px' : '5px 14px', fontSize: 11 }}>
+                <span
+                  className={dotClass}
+                  style={{ width: 5, height: 5, display: 'inline-block', borderRadius: '50%' }}
+                />
+                {statusLabel}
+              </span>
+
+              {/* Risk Badge */}
+              {isCompleted && (
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: isCompact ? '3px 10px' : '5px 14px',
+                    borderRadius: 20,
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: riskMeta.color,
+                    background: riskMeta.bg,
+                    border: `1px solid ${riskMeta.border}`,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                  }}
+                >
+                  {riskMeta.label}
+                </span>
+              )}
+            </div>
+
+            {/* Confidence & Quick Meta */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              {isCompleted && confidenceDisplay && (
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase' }}>
+                    Confidence
+                  </span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent-primary)' }}>
+                    {confidenceDisplay}
+                  </span>
+                </div>
+              )}
+              {durationDisplay && !isCompact && (
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase' }}>
+                    Duration
+                  </span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>
+                    {durationDisplay}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Summary & Actions Row ── */}
+        {!isCompact && (
+          <div
+            style={{
+              marginTop: 18,
+              paddingTop: 16,
+              borderTop: '1px solid var(--border-subtle)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic', maxWidth: '60%' }}>
+              {report.summary && isCompleted ? (
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical' }}>
+                  {report.summary}
+                </span>
+              ) : null}
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {isProcessing && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginRight: 12 }}>
+                  <div className="clinical-spinner-sm" />
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 500 }}>Processing…</span>
+                </div>
+              )}
+              <Link
+                href={`/report/${report.id}`}
+                className="clinical-btn-primary"
+                onClick={(e) => e.stopPropagation()}
+                style={{ height: 32, padding: '0 14px', fontSize: 12, borderRadius: 6 }}
+              >
+                <IconReport size={13} /> View Report
+              </Link>
+              {isCompleted && (
+                <a
+                  href={`/api/reports/${report.id}/pdf`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="clinical-btn-outline"
+                  style={{ height: 32, padding: '0 14px', fontSize: 12, borderRadius: 6 }}
+                >
+                  <IconDownload size={13} /> Download PDF
+                </a>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </article>
+  )
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Main page
+───────────────────────────────────────────────────────────── */
 export default function AnalysisHistoryPage() {
   const [reports, setReports] = useState<ReportRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [dateFilter, setDateFilter] = useState('')
+  const [density, setDensity] = useState<'comfortable' | 'compact'>('comfortable')
   const supabase = createClient()
 
+  /* ── Initial fetch ── */
   useEffect(() => {
     async function fetchReports() {
       try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
-
-        if (!user) {
-          setReports([])
-          setLoading(false)
-          return
-        }
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) { setReports([]); setLoading(false); return }
 
         const { data, error } = await supabase
           .from('reports')
@@ -69,222 +613,439 @@ export default function AnalysisHistoryPage() {
 
         if (error) throw error
         setReports(Array.isArray(data) ? data.map(normalizeReport) : [])
-      } catch (fetchError) {
-        console.error('[History] Error fetching reports:', fetchError)
+      } catch (err) {
+        console.error('[History] Error fetching reports:', err)
         setReports([])
       } finally {
         setLoading(false)
       }
     }
-
     void fetchReports()
   }, [supabase])
 
+  /* ── Polling for in-progress reports ── */
   useEffect(() => {
-    const hasActiveWork = reports.some((report) => {
-      const status = normalizeReportStatus(report.status)
-      return status === 'pending' || status === 'processing'
+    const hasActiveWork = reports.some((r) => {
+      const s = normalizeReportStatus(r.status)
+      return s === 'pending' || s === 'processing'
     })
-
     if (!hasActiveWork) return
 
     const interval = window.setInterval(async () => {
       try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
-
+        const { data: { user } } = await supabase.auth.getUser()
         if (!user) return
-
         const { data, error } = await supabase
           .from('reports')
           .select('id, user_id, filename, status, summary, result_label, event_count, confidence_score, quality_grade, risk_level, duration_minutes, created_at, error_message')
           .eq('user_id', user.id)
           .order('created_at', { ascending: false })
-
         if (error) throw error
         setReports(Array.isArray(data) ? data.map(normalizeReport) : [])
-      } catch (error) {
-        console.error('[History] Polling error:', error)
+      } catch (err) {
+        console.error('[History] Polling error:', err)
       }
     }, 5000)
 
     return () => window.clearInterval(interval)
   }, [reports, supabase])
 
+  /* ── Filtered list ── */
   const filtered = useMemo(() => {
     let result = reports
 
-    // Filter by date
     if (dateFilter) {
-      result = result.filter((report) => formatDateISO(report.created_at) === dateFilter)
+      result = result.filter((r) => formatDateISO(r.created_at) === dateFilter)
     }
 
-    // Filter by text search
-    const query = search.trim().toLowerCase()
-    if (query) {
-      result = result.filter((report) => {
-        const dateStr = new Date(report.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
-        return [report.filename, report.status, report.result_label, report.summary, report.risk_level, dateStr]
-          .filter((value): value is string => typeof value === 'string')
-          .some((value) => value.toLowerCase().includes(query))
+    const q = search.trim().toLowerCase()
+    if (q) {
+      result = result.filter((r) => {
+        const dateStr = new Date(r.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+        return [r.filename, r.status, r.result_label, r.summary, r.risk_level, dateStr]
+          .filter((v): v is string => typeof v === 'string')
+          .some((v) => v.toLowerCase().includes(q))
       })
     }
 
     return result
   }, [reports, search, dateFilter])
 
+  /* ── Grouping ── */
+  const grouped = useMemo(() => {
+    const todayStr = new Date().toISOString().split('T')[0]
+    const yesterdayDate = new Date()
+    yesterdayDate.setDate(yesterdayDate.getDate() - 1)
+    const yesterdayStr = yesterdayDate.toISOString().split('T')[0]
+
+    const groups: { title: string; items: ReportRecord[] }[] = [
+      { title: 'Today', items: [] },
+      { title: 'Yesterday', items: [] },
+      { title: 'Older', items: [] },
+    ]
+
+    filtered.forEach((r) => {
+      const d = formatDateISO(r.created_at)
+      if (d === todayStr) groups[0].items.push(r)
+      else if (d === yesterdayStr) groups[1].items.push(r)
+      else groups[2].items.push(r)
+    })
+
+    return groups.filter((g) => g.items.length > 0)
+  }, [filtered])
+
+  const allFailed = filtered.length > 0 && filtered.every((r) => normalizeReportStatus(r.status) === 'failed')
+  const hasFilters = !!search || !!dateFilter
+
   return (
     <>
-      <header className="flex shrink-0 items-center justify-between border-b px-6 py-3" style={{ background: 'rgba(10,10,15,0.9)', backdropFilter: 'blur(16px)', borderColor: 'var(--border-subtle)' }}>
-        <div className="flex items-center gap-2">
-          <Link href="/dashboard" className="text-[11px] font-mono uppercase tracking-widest transition-colors hover:text-[#00F0FF]" style={{ color: 'var(--text-muted)' }}>
+      {/* ══════════════════════════════════════
+          HEADER — breadcrumb + count pill
+         ══════════════════════════════════════ */}
+      <header className="clinical-header">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/dashboard"
+            className="text-[12px] font-medium transition-colors hover:text-[var(--accent-primary)]"
+            style={{ color: 'var(--text-muted)' }}
+          >
             NeuroSentinel AI
           </Link>
-          <span style={{ color: 'var(--border-default)' }}>/</span>
-          <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)', fontFamily: "'Outfit', sans-serif" }}>
+          <span className="text-[10px]" style={{ color: 'var(--border-strong)' }}>&gt;</span>
+          <span className="text-[14px] font-semibold" style={{ color: 'var(--text-heading)' }}>
             Analysis History
           </span>
         </div>
-        <span className="text-[11px] font-mono uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-          {filtered.length} report(s)
-        </span>
+
+        {/* Report count pill */}
+        {!loading && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '5px 12px',
+              borderRadius: 20,
+              background: 'var(--bg-inset)',
+              border: '1px solid var(--border-default)',
+            }}
+          >
+            <IconHistory size={12} color="var(--text-muted)" />
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>
+              {filtered.length} {filtered.length === 1 ? 'report' : 'reports'}
+            </span>
+          </div>
+        )}
       </header>
 
-      <div className="flex-1 space-y-5 overflow-y-auto p-6" style={{ animation: 'fadeInUp 0.35s ease forwards' }}>
-        <section className="rounded-[30px] border px-5 py-5" style={{ background: 'var(--bg-secondary)', borderColor: 'rgba(255,255,255,0.06)' }}>
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--accent-primary)' }}>
-                Your EEG Analysis Archive
-              </div>
-              <h1 className="mt-2 text-3xl font-semibold" style={{ color: 'var(--text-primary)', fontFamily: "'Outfit', sans-serif" }}>
-                Past reports and current processing runs
-              </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-7" style={{ color: 'var(--text-secondary)' }}>
-                This history is scoped to your account only. Search by filename, date, status, or risk level.
-              </p>
-            </div>
+      {/* ══════════════════════════════════════
+          PAGE CONTENT
+         ══════════════════════════════════════ */}
+      <div className="clinical-fade-in clinical-page-content">
+        <div className="clinical-page-container" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
 
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-              <div className="relative w-full max-w-xs">
-                <div className="text-[9px] font-bold uppercase tracking-[0.18em] mb-1.5" style={{ color: 'var(--text-muted)' }}>Search</div>
-                <input
-                  type="text"
-                  placeholder="Filename, status, risk..."
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  className="h-11 w-full rounded-xl border bg-[var(--bg-secondary)] px-4 text-sm outline-none transition-all focus:border-[rgba(0,240,255,0.3)]"
-                  style={{ borderColor: 'rgba(255,255,255,0.08)', color: 'var(--text-primary)' }}
-                />
-              </div>
-              <div className="relative w-full max-w-[180px]">
-                <div className="text-[9px] font-bold uppercase tracking-[0.18em] mb-1.5" style={{ color: 'var(--text-muted)' }}>Filter by Date</div>
-                <input
-                  type="date"
-                  value={dateFilter}
-                  onChange={(event) => setDateFilter(event.target.value)}
-                  className="h-11 w-full rounded-xl border bg-[var(--bg-secondary)] px-3 text-sm outline-none transition-all focus:border-[rgba(0,240,255,0.3)]"
-                  style={{ borderColor: 'rgba(255,255,255,0.08)', color: 'var(--text-primary)', colorScheme: 'dark' }}
-                />
-              </div>
-              {dateFilter ? (
-                <button
-                  type="button"
-                  onClick={() => setDateFilter('')}
-                  className="h-11 rounded-xl border px-3 text-xs font-medium transition-all hover:bg-[rgba(255,255,255,0.04)]"
-                  style={{ borderColor: 'rgba(255,255,255,0.08)', color: 'var(--text-muted)' }}
+          {/* ══════════════════════════════════════
+              HERO — lighter version of dashboard hero
+             ══════════════════════════════════════ */}
+          <section
+            style={{
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-default)',
+              borderRadius: 'var(--radius-xl)',
+              boxShadow: '0 4px 16px rgba(15,23,42,0.06), 0 2px 6px rgba(15,23,42,0.03)',
+              padding: '32px 40px',
+              position: 'relative',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Subtle tint overlay */}
+            <div
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                inset: 0,
+                background: 'linear-gradient(135deg, rgba(14,116,144,0.028) 0%, rgba(13,148,136,0.018) 40%, transparent 75%)',
+                pointerEvents: 'none',
+              }}
+            />
+
+            <div
+              style={{
+                position: 'relative',
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'flex-end',
+                justifyContent: 'space-between',
+                gap: 28,
+              }}
+            >
+              {/* Title block */}
+              <div className="clinical-hero-text-block">
+                <div className="clinical-hero-tagline">EEG Analysis Archive</div>
+                <h1
+                  style={{
+                    fontSize: 24,
+                    fontWeight: 700,
+                    color: 'var(--text-heading)',
+                    letterSpacing: '-0.022em',
+                    marginTop: 10,
+                    lineHeight: 1.3,
+                  }}
                 >
-                  Clear
-                </button>
-              ) : null}
-            </div>
-          </div>
-        </section>
-
-        <section className="space-y-4">
-          {loading ? (
-            <div className="rounded-[30px] border px-5 py-16 text-center" style={{ background: 'var(--bg-secondary)', borderColor: 'rgba(255,255,255,0.06)' }}>
-              <div className="mx-auto h-6 w-6 animate-spin rounded-full border-2 border-t-transparent" style={{ borderColor: 'var(--accent-primary) transparent transparent transparent' }} />
-              <div className="mt-3 text-sm" style={{ color: 'var(--text-muted)' }}>
-                Loading your report history...
-              </div>
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="rounded-[30px] border px-5 py-16 text-center" style={{ background: 'var(--bg-secondary)', borderColor: 'rgba(255,255,255,0.06)' }}>
-              <div className="text-xl font-semibold" style={{ color: 'var(--text-primary)', fontFamily: "'Outfit', sans-serif" }}>
-                {reports.length > 0 ? 'No matching reports' : 'No reports yet'}
-              </div>
-              <div className="mt-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                {reports.length > 0 ? 'Try adjusting your search or date filter.' : 'Upload an EDF from the Command Centre to begin your first analysis.'}
-              </div>
-            </div>
-          ) : (
-            filtered.map((report) => {
-              const status = normalizeReportStatus(report.status)
-              const palette = statusColor(status)
-
-              return (
-                <article
-                  key={report.id}
-                  className="rounded-[30px] border px-5 py-5"
-                  style={{ background: 'var(--bg-secondary)', borderColor: 'rgba(255,255,255,0.06)' }}
+                  Analysis History
+                </h1>
+                <p
+                  style={{
+                    fontSize: 14,
+                    lineHeight: 1.72,
+                    color: 'var(--text-secondary)',
+                    maxWidth: 460,
+                    marginTop: 8,
+                  }}
                 >
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="truncate text-xl font-semibold" style={{ color: 'var(--text-primary)', fontFamily: "'Outfit', sans-serif" }}>
-                        {report.filename}
-                      </div>
-                      <div className="mt-2 flex items-center gap-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                        <span className="flex items-center gap-1.5">
-                          <span className="text-xs">📅</span>
-                          {formatDate(report.created_at)}
-                        </span>
-                        <span className="flex items-center gap-1.5">
-                          <span className="text-xs">🕐</span>
-                          {formatTime(report.created_at)}
-                        </span>
-                        <span className="text-[10px] font-mono" style={{ color: 'var(--text-muted)' }}>
-                          ID: {report.id.slice(0, 8).toUpperCase()}
-                        </span>
-                      </div>
-                    </div>
+                  Browse past EEG reports, track processing runs, and review clinical findings. Filter by filename, date, status, or risk level.
+                </p>
+              </div>
 
-                    <span className="rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ color: palette.color, background: palette.background }}>
-                      {status}
+              {/* ── Filter Controls ── */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: 12 }}>
+                {/* Search input */}
+                <div>
+                  <div className="clinical-metric-label" style={{ marginBottom: 6 }}>Search</div>
+                  <div style={{ position: 'relative' }}>
+                    <span
+                      style={{
+                        position: 'absolute',
+                        left: 11,
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        display: 'flex',
+                        pointerEvents: 'none',
+                      }}
+                    >
+                      <IconSearch />
                     </span>
+                    <input
+                      type="text"
+                      placeholder="Filename, status, risk…"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      style={{
+                        height: 38,
+                        width: 224,
+                        padding: '0 14px 0 36px',
+                        fontSize: 13,
+                        color: 'var(--text-primary)',
+                        background: 'var(--bg-card)',
+                        border: '1px solid var(--border-default)',
+                        borderRadius: 'var(--radius-sm)',
+                        outline: 'none',
+                        transition: 'border-color 0.15s',
+                        fontFamily: 'inherit',
+                      }}
+                      onFocus={(e) => (e.target.style.borderColor = 'rgba(14,116,144,0.4)')}
+                      onBlur={(e) => (e.target.style.borderColor = 'var(--border-default)')}
+                    />
                   </div>
+                </div>
 
-                  <div className="mt-5 grid gap-4 md:grid-cols-3">
-                    <div className="rounded-2xl border px-4 py-3" style={{ borderColor: 'rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}>
-                      <div className="text-[10px] uppercase tracking-[0.16em]" style={{ color: 'var(--text-muted)' }}>Key result</div>
-                      <div className="mt-2 text-sm" style={{ color: 'var(--text-primary)' }}>{getKeyResult(report)}</div>
-                    </div>
-                    <div className="rounded-2xl border px-4 py-3" style={{ borderColor: 'rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}>
-                      <div className="text-[10px] uppercase tracking-[0.16em]" style={{ color: 'var(--text-muted)' }}>Risk</div>
-                      <div className="mt-2 text-sm" style={{ color: 'var(--text-primary)' }}>{report.risk_level || 'Unknown'}</div>
-                    </div>
-                    <div className="rounded-2xl border px-4 py-3" style={{ borderColor: 'rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}>
-                      <div className="text-[10px] uppercase tracking-[0.16em]" style={{ color: 'var(--text-muted)' }}>Summary</div>
-                      <div className="mt-2 text-sm" style={{ color: 'var(--text-primary)' }}>{report.summary || 'Structured summary pending.'}</div>
-                    </div>
-                  </div>
+                {/* Date filter */}
+                <div>
+                  <div className="clinical-metric-label" style={{ marginBottom: 6 }}>Date</div>
+                  <input
+                    type="date"
+                    value={dateFilter}
+                    onChange={(e) => setDateFilter(e.target.value)}
+                    style={{
+                      height: 38,
+                      width: 162,
+                      padding: '0 12px',
+                      fontSize: 13,
+                      color: 'var(--text-primary)',
+                      background: 'var(--bg-card)',
+                      border: '1px solid var(--border-default)',
+                      borderRadius: 'var(--radius-sm)',
+                      outline: 'none',
+                      colorScheme: 'light',
+                      fontFamily: 'inherit',
+                      transition: 'border-color 0.15s',
+                    }}
+                    onFocus={(e) => (e.target.style.borderColor = 'rgba(14,116,144,0.4)')}
+                    onBlur={(e) => (e.target.style.borderColor = 'var(--border-default)')}
+                  />
+                </div>
 
-                  <div className="mt-5 flex flex-wrap gap-3">
-                    <Link href={`/report/${report.id}`} className="rounded-xl px-4 py-3 text-sm font-semibold" style={{ background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-warning))', color: '#0A0A0F' }}>
-                      View Report
-                    </Link>
-                    {status === 'completed' ? (
-                      <a href={`/api/reports/${report.id}/pdf`} target="_blank" rel="noopener noreferrer" className="rounded-xl border px-4 py-3 text-sm font-semibold" style={{ borderColor: 'rgba(255,184,0,0.22)', color: 'var(--accent-warning)' }}>
-                        Download PDF
-                      </a>
-                    ) : null}
+                {/* Clear filters */}
+                {hasFilters && (
+                  <button
+                    type="button"
+                    onClick={() => { setSearch(''); setDateFilter('') }}
+                    className="clinical-btn-secondary"
+                    style={{ height: 38, padding: '0 14px', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}
+                  >
+                    <IconClose size={11} />
+                    Clear
+                  </button>
+                )}
+
+                {/* Density Toggle */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    background: 'var(--bg-inset)',
+                    padding: 4,
+                    borderRadius: 8,
+                    border: '1px solid var(--border-default)',
+                    marginLeft: 8,
+                  }}
+                >
+                  {(['comfortable', 'compact'] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      onClick={() => setDensity(mode)}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: 11,
+                        fontWeight: 600,
+                        textTransform: 'capitalize',
+                        borderRadius: 6,
+                        border: 'none',
+                        cursor: 'pointer',
+                        background: density === mode ? 'var(--bg-card)' : 'transparent',
+                        color: density === mode ? 'var(--accent-primary)' : 'var(--text-muted)',
+                        boxShadow: density === mode ? 'var(--shadow-sm)' : 'none',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      {mode}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* ══════════════════════════════════════
+              ANALYSIS LIST — Grouped
+             ══════════════════════════════════════ */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: density === 'compact' ? 12 : 40, marginBottom: 80 }}>
+            {loading ? (
+              /* ── Loading skeletons ── */
+              [0, 1, 2].map((i) => <SkeletonCard key={i} density={density} />)
+            ) : filtered.length === 0 ? (
+              /* ── Empty state ── */
+              <div
+                style={{
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--border-default)',
+                  borderRadius: 'var(--radius-xl)',
+                  boxShadow: 'var(--shadow-card)',
+                  padding: '72px 40px',
+                  textAlign: 'center',
+                  animation: 'clinicalFadeIn 0.4s ease forwards',
+                }}
+              >
+                <div
+                  style={{
+                    width: 64,
+                    height: 64,
+                    borderRadius: 16,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: 'var(--bg-inset)',
+                    border: '1px solid var(--border-default)',
+                    margin: '0 auto 20px',
+                  }}
+                >
+                  <IconFile size={26} />
+                </div>
+                <h3 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-heading)', marginBottom: 8 }}>
+                  No analysis history yet
+                </h3>
+                <p style={{ fontSize: 14, color: 'var(--text-secondary)', maxWidth: 360, margin: '0 auto', lineHeight: 1.65 }}>
+                  Upload an EEG file to start analysis. Once processed, they will appear here in your clinical archive.
+                </p>
+                {hasFilters && (
+                  <button
+                    className="clinical-btn-secondary"
+                    style={{ marginTop: 20, fontSize: 13 }}
+                    onClick={() => {
+                      setSearch('')
+                      setDateFilter('')
+                    }}
+                  >
+                    Clear all filters
+                  </button>
+                )}
+              </div>
+            ) : (
+              /* ── Chronological Groups ── */
+              <>
+                {allFailed && (
+                  <div
+                    style={{
+                      padding: '12px 16px',
+                      background: 'var(--accent-danger-light)',
+                      border: '1px solid rgba(220, 38, 38, 0.1)',
+                      borderRadius: 'var(--radius-md)',
+                      color: 'var(--accent-danger)',
+                      fontSize: 13,
+                      fontWeight: 500,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      marginBottom: -10,
+                    }}
+                  >
+                    <IconShield size={16} color="var(--accent-danger)" />
+                    All recent analyses failed. Please check uploads or retry.
                   </div>
-                </article>
-              )
-            })
-          )}
-        </section>
+                )}
+                {grouped.map((group) => (
+                  <div key={group.title} style={{ display: 'flex', flexDirection: 'column', gap: density === 'compact' ? 8 : 16 }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
+                        padding: '0 4px',
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 700,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.12em',
+                          color: 'var(--text-faint)',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {group.title}
+                      </span>
+                      <div style={{ height: 1, flex: 1, background: 'var(--border-subtle)', opacity: 0.6 }} />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: density === 'compact' ? 8 : 16 }}>
+                      {group.items.map((r, idx) => (
+                        <AnalysisCard
+                          key={r.id}
+                          report={r}
+                          density={density}
+                          isAlternating={idx % 2 !== 0}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+
+          {/* Bottom spacer */}
+          <div style={{ height: 16 }} />
+        </div>
       </div>
     </>
   )

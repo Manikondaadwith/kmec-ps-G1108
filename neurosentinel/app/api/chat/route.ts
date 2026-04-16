@@ -71,7 +71,13 @@ export async function POST(req: Request) {
       })
     }
 
-    const assistantMessage = typeof payload?.message === 'string' && payload.message.trim() ? payload.message.trim() : 'I do not have a reliable answer yet.'
+    let assistantMessage = typeof payload?.message === 'string' && payload.message.trim() ? payload.message.trim() : 'I do not have a reliable answer yet.'
+
+    // If the backend threw provider failures, display a much cleaner error message
+    // instead of the bulky deterministic fallback text.
+    if (payload?.fallback && Array.isArray(payload?.provider_failures) && payload.provider_failures.length > 0) {
+      assistantMessage = "SCOUT intelligence modules are currently unresponsive. Please try again later."
+    }
 
     return NextResponse.json({
       message: assistantMessage,
@@ -85,7 +91,7 @@ export async function POST(req: Request) {
     const errorDetail = isTimeout
       ? 'The backend took too long to respond. Please try again.'
       : isNetwork
-        ? 'Could not connect to the NeuroSentinel backend. Make sure the backend server is running.'
+        ? 'Could not connect to the NeuroSentinel AI backend. Make sure the backend server is running.'
         : error?.message || 'SCOUT encountered an unexpected error.'
 
     console.error('[api/chat] Error:', errorDetail, error)

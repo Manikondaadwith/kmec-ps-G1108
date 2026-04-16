@@ -13,7 +13,7 @@ from app.pipeline.explainability import compute_channel_importance, extract_atte
 from app.pipeline.inference import GuardFn, JobAborted, infer_from_data_chunked
 from app.pipeline.preprocessing import preprocess_edf_to_data, extract_window_at
 from app.pipeline.reporting import build_full_report_payload
-from app.services.email import send_report_notification
+from app.services.email import send_report_notification, send_timeout_notification
 from app.services.pdf import generate_pdf
 from app.services.supabase import SupabaseService
 
@@ -102,6 +102,31 @@ class AnalysisService:
                 logger.info("Email notification skipped or failed for %s", filename)
         except Exception as email_exc:
             logger.warning("Email notification failed for %s (non-fatal): %s", filename, email_exc)
+
+    def send_timeout_notification(self, user_id: str, filename: str) -> None:
+        """Send notification when analysis times out."""
+        if not self.settings:
+            return
+        try:
+            user_profile = self.supabase_service.fetch_user_profile(user_id)
+            user_email = (user_profile or {}).get("email")
+            if not user_email:
+                return
+
+            send_timeout_notification(
+                to_email=user_email,
+                filename=filename,
+                resend_api_key=self.settings.resend_api_key,
+                resend_from_email=self.settings.resend_from_email,
+                smtp_host=self.settings.smtp_host,
+                smtp_port=self.settings.smtp_port,
+                smtp_user=self.settings.smtp_user,
+                smtp_password=self.settings.smtp_password,
+                smtp_from_email=self.settings.smtp_from_email,
+            )
+            logger.info("Timeout notification sent for %s to %s", filename, user_email)
+        except Exception as exc:
+            logger.warning("Timeout notification failed (non-fatal): %s", exc)
 
     def run_analysis_upload(
         self,

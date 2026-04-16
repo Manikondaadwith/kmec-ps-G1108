@@ -3,87 +3,71 @@
 type Props = {
   qualityScore?: number
   qualityGrade?: string
-  artifactPercent?: number
-  snrDb?: number
-  flatlineFrac?: number
-  channelReliability?: boolean[]
   missingChannels?: string[]
 }
 
 function gradeColor(grade: string) {
   const g = (grade || '').toLowerCase()
-  if (g === 'good' || g === 'a') return '#00FF88'
-  if (g === 'moderate' || g === 'b') return '#FFB800'
-  return '#FF3366'
+  if (g === 'good' || g === 'a') return '#10B981'
+  if (g === 'moderate' || g === 'b') return '#F59E0B'
+  return '#EF4444'
 }
 
-export function DataQualityPanel({ qualityScore, qualityGrade, artifactPercent, snrDb, flatlineFrac, channelReliability, missingChannels }: Props) {
+export function DataQualityPanel({ qualityScore, qualityGrade, missingChannels }: Props) {
   const score = typeof qualityScore === 'number' ? qualityScore : 0
   const grade = qualityGrade || 'Unknown'
   const color = gradeColor(grade)
-  const circumference = 2 * Math.PI * 42
+  const circumference = 2 * Math.PI * 38
   const strokeDashoffset = circumference - (score * circumference)
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col items-center justify-center space-y-6 py-4">
       {/* Quality gauge */}
-      <div className="flex items-center gap-5">
-        <div className="relative flex h-24 w-24 shrink-0 items-center justify-center">
-          <svg className="-rotate-90" width="96" height="96" viewBox="0 0 96 96">
-            <circle cx="48" cy="48" r="42" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="5" />
-            <circle
-              cx="48" cy="48" r="42"
-              fill="none"
-              stroke={color}
-              strokeWidth="5"
-              strokeDasharray={`${circumference}`}
-              strokeDashoffset={strokeDashoffset}
-              strokeLinecap="round"
-              style={{ transition: 'stroke-dashoffset 1s ease-in-out', filter: `drop-shadow(0 0 6px ${color}50)` }}
-            />
-          </svg>
-          <div className="absolute flex flex-col items-center">
-            <span className="text-lg font-bold font-mono" style={{ color, fontFamily: "'Outfit', sans-serif" }}>
-              {typeof qualityScore === 'number' ? qualityScore.toFixed(2) : '—'}
-            </span>
-            <span className="text-[7px] uppercase tracking-[0.2em]" style={{ color: 'var(--text-muted)' }}>/ 1.0</span>
-          </div>
-        </div>
-        <div>
-          <div className="text-[9px] font-bold uppercase tracking-[0.18em]" style={{ color: 'var(--text-muted)' }}>Signal Quality</div>
-          <div className="mt-1 text-xl font-bold" style={{ color, fontFamily: "'Outfit', sans-serif" }}>{grade}</div>
+      <div className="relative flex h-32 w-32 items-center justify-center">
+        <svg className="-rotate-90" width="128" height="128" viewBox="0 0 128 128">
+          <circle cx="64" cy="64" r="38" fill="none" stroke="#F1F5F9" strokeWidth="8" />
+          <circle
+            cx="64" cy="64" r="38"
+            fill="none"
+            stroke={color}
+            strokeWidth="8"
+            strokeDasharray={`${circumference}`}
+            strokeDashoffset={strokeDashoffset}
+            strokeLinecap="round"
+            className="transition-all duration-1000 ease-out"
+          />
+        </svg>
+        <div className="absolute flex flex-col items-center">
+          <span className="text-2xl font-black text-gray-900 leading-none antialiased">
+            {typeof qualityScore === 'number' ? (qualityScore * 100).toFixed(0) : '—'}
+          </span>
+          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">Score</span>
         </div>
       </div>
 
-      {/* Stats grid */}
-      <div className="grid grid-cols-2 gap-2">
-        {[
-          { label: 'SNR', value: typeof snrDb === 'number' ? `${snrDb.toFixed(1)} dB` : '—', icon: '📡' },
-          { label: 'Flatline', value: typeof flatlineFrac === 'number' ? `${(flatlineFrac * 100).toFixed(1)}%` : '—', icon: '📉' },
-          { label: 'Artifacts', value: typeof artifactPercent === 'number' ? `${(artifactPercent * 100).toFixed(1)}%` : '—', icon: '🔧' },
-          { label: 'Channels OK', value: channelReliability ? `${channelReliability.filter(Boolean).length}/22` : '—', icon: '📶' },
-        ].map(item => (
-          <div key={item.label} className="rounded-xl border px-3 py-2.5" style={{ borderColor: 'rgba(255,255,255,0.05)', background: 'rgba(255,255,255,0.015)' }}>
-            <div className="flex items-center gap-1">
-              <span className="text-[10px]">{item.icon}</span>
-              <span className="text-[8px] font-bold uppercase tracking-[0.18em]" style={{ color: 'var(--text-muted)' }}>{item.label}</span>
-            </div>
-            <div className="mt-1 text-sm font-bold font-mono" style={{ color: 'var(--text-primary)' }}>{item.value}</div>
-          </div>
-        ))}
+      <div className="text-center">
+        <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">Overall Signal Quality</div>
+        <div className="text-xl font-black antialiased" style={{ color }}>{grade}</div>
       </div>
 
-      {/* Missing channels */}
+      {/* Missing channels / Status indicator */}
       {missingChannels && missingChannels.length > 0 ? (
-        <div className="rounded-xl border px-3 py-2.5" style={{ borderColor: 'rgba(255,51,102,0.1)', background: 'rgba(255,51,102,0.03)' }}>
-          <div className="text-[8px] font-bold uppercase tracking-[0.18em]" style={{ color: '#FF3366' }}>Missing Channels</div>
-          <div className="mt-1 text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>
-            {missingChannels.join(', ')}
+        <div className="w-full rounded-2xl border border-red-50 bg-red-50/30 px-4 py-3">
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="text-xs text-red-500 font-bold uppercase tracking-widest">⚠️ Missing Channels</span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {missingChannels.map(ch => (
+              <span key={ch} className="rounded-md bg-white px-2 py-0.5 font-mono text-[10px] font-bold text-red-600 shadow-sm ring-1 ring-red-100 italic">
+                {ch}
+              </span>
+            ))}
           </div>
         </div>
       ) : (
-        <div className="rounded-xl border px-3 py-2.5" style={{ borderColor: 'rgba(0,255,136,0.08)', background: 'rgba(0,255,136,0.02)' }}>
-          <div className="text-[8px] font-bold uppercase tracking-[0.18em]" style={{ color: '#00FF88' }}>✓ All 22 Channels Present</div>
+        <div className="inline-flex items-center gap-2 rounded-full border border-emerald-50 bg-emerald-50/50 px-4 py-1.5 shadow-sm">
+          <span className="flex h-2 w-2 items-center justify-center rounded-full bg-emerald-500 animate-pulse" />
+          <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest">Pipeline Integrity: 100% OK</span>
         </div>
       )}
     </div>

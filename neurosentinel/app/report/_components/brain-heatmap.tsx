@@ -37,24 +37,18 @@ function bipolarToElectrodes(channelName: string): [string, string] | null {
 
 function importanceToColor(value: number, max: number): string {
   const normalized = max > 0 ? Math.min(1, value / max) : 0
-  // Cool (cyan) → Warm (purple) → Hot (red)
-  if (normalized < 0.33) {
-    const t = normalized / 0.33
-    const r = Math.round(0 + t * 100)
-    const g = Math.round(240 - t * 100)
-    const b = Math.round(255 - t * 50)
-    return `rgb(${r},${g},${b})`
-  } else if (normalized < 0.66) {
-    const t = (normalized - 0.33) / 0.33
-    const r = Math.round(100 + t * 67)
-    const g = Math.round(140 - t * 1)
-    const b = Math.round(205 + t * 45)
+  // clinical Cyan -> Blue -> Indigo
+  if (normalized < 0.5) {
+    const t = normalized / 0.5
+    const r = Math.round(165 + t * (59 - 165)) // 165 -> 59
+    const g = Math.round(243 + t * (130 - 243)) // 243 -> 130
+    const b = Math.round(252 + t * (246 - 252)) // 252 -> 246
     return `rgb(${r},${g},${b})`
   } else {
-    const t = (normalized - 0.66) / 0.34
-    const r = Math.round(167 + t * 88)
-    const g = Math.round(139 - t * 88)
-    const b = Math.round(250 - t * 148)
+    const t = (normalized - 0.5) / 0.5
+    const r = Math.round(59 + t * (79 - 59)) // 59 -> 79
+    const g = Math.round(130 + t * (70 - 130)) // 130 -> 70
+    const b = Math.round(246 + t * (229 - 246)) // 246 -> 229
     return `rgb(${r},${g},${b})`
   }
 }
@@ -82,66 +76,70 @@ export function BrainHeatmap({ topChannels = [] }: Props) {
 
   if (topChannels.length === 0) {
     return (
-      <div className="flex items-center justify-center rounded-2xl border px-5 py-8" style={{ borderColor: 'rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}>
-        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Channel importance data not available for heatmap rendering.</span>
+      <div className="flex items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-gray-50/50 px-5 py-12">
+        <span className="text-xs font-semibold text-gray-400">Spatial data unavailable</span>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col items-center gap-3">
-      <svg viewBox="0 0 200 200" className="w-full max-w-[240px]" style={{ filter: 'drop-shadow(0 0 20px rgba(0,240,255,0.08))' }}>
+    <div className="flex flex-col items-center gap-5">
+      <svg viewBox="0 0 200 200" className="w-full max-w-[280px]">
         {/* Head outline */}
-        <ellipse cx="100" cy="100" rx="88" ry="92" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="1.5" />
+        <ellipse cx="100" cy="100" rx="90" ry="94" fill="none" stroke="#F1F5F9" strokeWidth="2" />
+        <ellipse cx="100" cy="100" rx="88" ry="92" fill="#F8FAFC" stroke="#E2E8F0" strokeWidth="1" />
         {/* Nose indicator */}
-        <path d="M 95 8 L 100 2 L 105 8" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
+        <path d="M 95 6 L 100 0 L 105 6" fill="none" stroke="#CBD5E1" strokeWidth="1.5" strokeLinecap="round" />
         {/* Ear indicators */}
-        <path d="M 8 90 Q 2 100 8 110" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-        <path d="M 192 90 Q 198 100 192 110" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
+        <path d="M 6 90 Q 0 100 6 110" fill="none" stroke="#E2E8F0" strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M 194 90 Q 200 100 194 110" fill="none" stroke="#E2E8F0" strokeWidth="1.5" strokeLinecap="round" />
 
         {/* Electrode nodes */}
         {Object.entries(ELECTRODE_POSITIONS).map(([key, pos]) => {
           const score = electrodeScores[key] || 0
           const color = importanceToColor(score, maxScore)
-          const radius = score > 0 ? 6 + (score / maxScore) * 4 : 5
+          const radius = score > 0 ? 6 + (score / maxScore) * 6 : 4
           const isHovered = hoveredElectrode === key
 
           return (
             <g key={key}
               onMouseEnter={() => setHoveredElectrode(key)}
               onMouseLeave={() => setHoveredElectrode(null)}
-              style={{ cursor: 'pointer' }}
+              className="cursor-pointer transition-all duration-300"
             >
               {/* Glow */}
               {score > 0 ? (
-                <circle cx={pos.x} cy={pos.y} r={radius + 4} fill={color} opacity={isHovered ? 0.3 : 0.15} />
+                <circle cx={pos.x} cy={pos.y} r={radius + 6} fill={color} opacity={isHovered ? 0.4 : 0.2} />
               ) : null}
               {/* Node */}
               <circle
                 cx={pos.x} cy={pos.y} r={radius}
-                fill={score > 0 ? color : 'rgba(40,40,60,0.8)'}
-                stroke={isHovered ? '#fff' : 'rgba(255,255,255,0.15)'}
-                strokeWidth={isHovered ? 1.5 : 0.8}
+                fill={score > 0 ? color : '#FFFFFF'}
+                stroke={isHovered ? '#3B82F6' : (score > 0 ? 'rgba(0,0,0,0.05)' : '#E2E8F0')}
+                strokeWidth={isHovered ? 2 : 1}
+                className="transition-all duration-300"
               />
               {/* Label */}
               <text
-                x={pos.x} y={pos.y + (isHovered ? -radius - 5 : 3)}
+                x={pos.x} y={pos.y + (isHovered ? -radius - 8 : 3)}
                 textAnchor="middle"
-                fontSize={isHovered ? 8 : 6}
-                fill={isHovered ? '#fff' : 'rgba(255,255,255,0.4)'}
+                fontSize={isHovered ? 9 : 7}
+                fill={isHovered ? '#1E293B' : (score > 0 ? '#475569' : '#94A3B8')}
                 fontFamily="'JetBrains Mono', monospace"
-                fontWeight={isHovered ? 700 : 400}
+                fontWeight={isHovered || score > 0 ? 800 : 500}
+                className="pointer-events-none select-none"
               >
                 {pos.label}
               </text>
               {/* Score on hover */}
               {isHovered && score > 0 ? (
                 <text
-                  x={pos.x} y={pos.y + radius + 10}
-                  textAnchor="middle" fontSize="7"
-                  fill={color} fontFamily="'JetBrains Mono', monospace" fontWeight="700"
+                  x={pos.x} y={pos.y + radius + 12}
+                  textAnchor="middle" fontSize="8"
+                  fill="#2563EB" fontFamily="'JetBrains Mono', monospace" fontWeight="800"
+                  className="pointer-events-none select-none"
                 >
-                  {score.toFixed(3)}
+                  {(score * 10).toFixed(2)}
                 </text>
               ) : null}
             </g>
@@ -149,13 +147,19 @@ export function BrainHeatmap({ topChannels = [] }: Props) {
         })}
       </svg>
 
-      {/* Color legend */}
-      <div className="flex items-center gap-2">
-        <span className="text-[8px] uppercase tracking-[0.2em]" style={{ color: 'var(--text-muted)' }}>Low</span>
-        <div className="h-1.5 w-24 rounded-full" style={{ background: 'linear-gradient(90deg, #00F0FF, #A78BFA, #FF3366)' }} />
-        <span className="text-[8px] uppercase tracking-[0.2em]" style={{ color: 'var(--text-muted)' }}>High</span>
+      {/* Legend */}
+      <div className="flex flex-col items-center gap-2">
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-[#94A3B8]">Inactive</span>
+          <div className="h-2 w-32 rounded-full border border-white bg-gradient-to-r from-cyan-100 via-blue-400 to-indigo-600 shadow-inner" />
+          <span className="text-[10px] font-bold uppercase tracking-widest text-[#1E293B]">High Activation</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[9px] font-black uppercase tracking-widest text-gray-300">[ESTIMATED]</span>
+          <div className="h-1 w-1 rounded-full bg-gray-200" />
+          <span className="text-[9px] font-black uppercase tracking-widest text-gray-300">Spatial Attribution V4</span>
+        </div>
       </div>
-      <div className="text-[8px] uppercase tracking-[0.16em]" style={{ color: 'rgba(136,136,160,0.5)' }}>[ESTIMATED]</div>
     </div>
   )
 }

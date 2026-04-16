@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     groq_model: str = "llama-3.3-70b-versatile"
     groq_api_base: str = "https://api.groq.com/openai/v1"
     huggingface_api_key: str | None = Field(default=None, alias="HUGGINGFACE_API_KEY")
-    huggingface_model: str = "mistralai/Mistral-7B-Instruct-v0.3"
+    huggingface_model: str = "meta-llama/Llama-3.2-3B-Instruct"
     huggingface_api_base: str = "https://api-inference.huggingface.co/models"
 
     model_path: Path | None = Field(default=None, alias="MODEL_PATH")

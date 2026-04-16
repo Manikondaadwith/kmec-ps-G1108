@@ -50,49 +50,67 @@ const sections = [
 
 export default function PrivacyPage() {
   return (
-    <main className="min-h-dvh bg-[var(--bg-primary)] px-6 py-12">
-      <div className="mx-auto max-w-4xl">
-        <div className="rounded-[32px] border p-8 md:p-10" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-subtle)' }}>
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--accent-primary)' }}>
-                NeuroSentinel AI
-              </div>
-              <h1 className="mt-3 text-3xl font-semibold" style={{ color: 'var(--text-primary)', fontFamily: "'Outfit', sans-serif" }}>
-                Privacy Policy
-              </h1>
-              <p className="mt-3 max-w-2xl text-sm leading-7" style={{ color: 'var(--text-secondary)' }}>
-                This policy explains how NeuroSentinel AI handles account data, EEG uploads, reports, and SCOUT conversation context.
-              </p>
-            </div>
+    <main className="min-h-dvh bg-[#F8FAFC] px-6 py-20 pb-20" style={{ fontFamily: "'Outfit', sans-serif" }}>
+      <div className="mx-auto max-w-[800px]">
+        
+        {/* Card */}
+        <div 
+          className="relative overflow-hidden rounded-[16px] bg-[#FFFFFF] p-8 md:p-12"
+          style={{
+            border: '1px solid rgba(0,0,0,0.05)',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.03), 0 8px 16px rgba(0,0,0,0.02)'
+          }}
+        >
+          {/* Back button */}
+          <Link
+            href="/"
+            className="mb-10 inline-flex items-center gap-2 text-[13px] font-medium text-slate-400 transition-colors hover:text-slate-600"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 12H5M12 19l-7-7 7-7"/>
+            </svg>
+            Back to app
+          </Link>
 
-            <Link
-              href="/"
-              className="rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em]"
-              style={{ borderColor: 'rgba(0,240,255,0.18)', color: 'var(--accent-primary)' }}
-            >
-              Back
-            </Link>
+          {/* Header */}
+          <div className="mb-8">
+            <span className="text-[11.5px] font-bold tracking-[0.1em] uppercase text-[#0EA5A4]">
+              NeuroSentinel AI
+            </span>
+            <h1 className="mt-3 text-[32px] md:text-[36px] font-bold tracking-tight text-[#0F172A] leading-tight">
+              Privacy Policy
+            </h1>
+            <p className="mt-3 text-[15px] leading-relaxed text-slate-500">
+              This policy explains how NeuroSentinel AI handles account data, EEG uploads, reports, and SCOUT conversation context.
+            </p>
           </div>
 
-          <div className="mt-8 space-y-5">
+          <div style={{ height: '1px', background: '#E2E8F0', marginBottom: '40px' }} />
+
+          {/* Sections */}
+          <div className="space-y-12">
             {sections.map((section) => (
-              <section
-                key={section.title}
-                className="rounded-[24px] border px-5 py-5"
-                style={{ borderColor: 'rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}
-              >
-                <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)', fontFamily: "'Outfit', sans-serif" }}>
+              <section key={section.title} className="relative pl-5" style={{ borderLeft: '3px solid #E2E8F0' }}>
+                <h2 className="text-[19px] font-semibold text-[#1E293B]">
                   {section.title}
                 </h2>
-                <p className="mt-2 text-sm leading-7" style={{ color: 'var(--text-secondary)' }}>
+                <p className="mt-3 text-[15px] leading-[1.7] text-[#475569]">
                   {section.body}
                 </p>
               </section>
             ))}
+          </div>
+
+          <div className="mt-12 mb-6" style={{ height: '1px', background: '#E2E8F0' }} />
+
+          {/* Footer */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-[12.5px] text-slate-400 font-medium tracking-wide">
+            <span>Last updated: April 15, 2026</span>
+            <span>Contact: support@neurosentinel.ai</span>
           </div>
         </div>
       </div>
     </main>
   )
 }
+

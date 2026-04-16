@@ -6,32 +6,25 @@ import { formatConfidence, formatDurationMinutes, getReportHeadline, getReportSu
 
 import type { UploadState } from './upload-zone'
 
-function QuietTag({ children }: { children: string }) {
-  return <div className="text-xs font-medium tracking-widest text-[#8888A0]">{children}</div>
+function SectionLabel({ children, icon }: { children: string; icon?: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2 clinical-section-label">
+      {icon}
+      {children}
+    </div>
+  )
 }
 
-function statusStyles(status: string) {
-  if (status === 'completed') {
-    return {
-      background: 'rgba(0,255,157,0.08)',
-      borderColor: 'rgba(0,255,157,0.18)',
-      color: 'var(--accent-success)',
-    }
-  }
+function getBadgeClass(status: string) {
+  if (status === 'completed') return 'clinical-badge clinical-badge-success'
+  if (status === 'failed') return 'clinical-badge clinical-badge-danger'
+  return 'clinical-badge clinical-badge-processing'
+}
 
-  if (status === 'failed') {
-    return {
-      background: 'rgba(255,51,102,0.08)',
-      borderColor: 'rgba(255,51,102,0.18)',
-      color: 'var(--accent-danger)',
-    }
-  }
-
-  return {
-    background: 'rgba(0,240,255,0.08)',
-    borderColor: 'rgba(0,240,255,0.18)',
-    color: 'var(--accent-primary)',
-  }
+function getDotClass(status: string) {
+  if (status === 'completed') return 'clinical-dot clinical-dot-success'
+  if (status === 'failed') return 'clinical-dot clinical-dot-danger'
+  return 'clinical-dot clinical-dot-primary'
 }
 
 export function AnalysisResults({ data, uploadState = 'idle', uploadFilename }: { data: ReportRecord | null; uploadState?: UploadState; uploadFilename?: string }) {
@@ -50,28 +43,32 @@ export function AnalysisResults({ data, uploadState = 'idle', uploadFilename }: 
 
   // If actively uploading/processing, show that state instead of stale data
   const isActiveUpload = uploadState === 'uploading' || uploadState === 'processing'
+  
+  const durationMins = data?.duration_minutes ?? 0
+  const isShortDuration = durationMins > 0 && durationMins < 20
+  const showLowConfidenceWarning = hasReport && isShortDuration
 
   if (isActiveUpload) {
     return (
       <section className="space-y-4">
-        <div className="rounded-2xl border px-4 py-3" style={{ background: 'var(--bg-secondary)', borderColor: 'rgba(255,255,255,0.06)' }}>
-          <QuietTag>Analysis status</QuietTag>
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-            <span className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium" style={statusStyles('processing')}>
-              <span className="h-2 w-2 animate-pulse rounded-full" style={{ background: 'var(--accent-primary)' }} />
+        <div className="clinical-card-inner">
+          <SectionLabel>Analysis status</SectionLabel>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+            <span className="clinical-badge clinical-badge-processing">
+              <span className="clinical-dot clinical-dot-primary clinical-dot-pulse" style={{ width: 6, height: 6 }} />
               {uploadState === 'uploading' ? 'Uploading EEG...' : 'Analysing EEG signals...'}
             </span>
           </div>
-          <div className="mt-3 text-sm leading-6 text-[#8888A0]">
-            {uploadFilename ? <span className="font-medium text-[#E8E8F0]">{uploadFilename}</span> : null}
+          <div className="mt-4 text-[14px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+            {uploadFilename ? <span className="font-semibold" style={{ color: 'var(--text-heading)' }}>{uploadFilename}</span> : null}
             {uploadFilename ? ' — ' : ''}
             {uploadState === 'uploading'
               ? 'Your EEG file is being uploaded to NeuroSentinel AI.'
               : 'Preprocessing, running inference, and generating the clinical report. This may take a few minutes for large files.'}
           </div>
-          <div className="mt-3 flex items-center gap-2">
-            <div className="h-3 w-3 animate-spin rounded-full border border-t-transparent" style={{ borderColor: '#00F0FF transparent transparent transparent' }} />
-            <span className="text-xs text-[#8888A0]">Working...</span>
+          <div className="mt-4 flex items-center gap-2.5" style={{ color: 'var(--text-muted)' }}>
+            <div className="clinical-spinner-sm" />
+            <span className="text-[12px] font-medium">Working...</span>
           </div>
         </div>
       </section>
@@ -79,87 +76,135 @@ export function AnalysisResults({ data, uploadState = 'idle', uploadFilename }: 
   }
 
   return (
-    <section className="space-y-4">
-      <div className="rounded-2xl border px-4 py-3" style={{ background: 'var(--bg-secondary)', borderColor: 'rgba(255,255,255,0.06)' }}>
-        <QuietTag>{hasReport ? 'Analysis status' : 'No Analysis'}</QuietTag>
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+    <section className="space-y-5">
+      {/* ── Status Overview ── */}
+      <div className="clinical-card-inner">
+        <SectionLabel>{hasReport ? 'Analysis status' : 'No Analysis'}</SectionLabel>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
           {!hasReport ? (
-            <span className="inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium text-[#8888A0]" style={{ background: 'rgba(136,136,160,0.1)', borderColor: 'rgba(136,136,160,0.28)' }}>
+            <span className="clinical-badge clinical-badge-neutral">
               Awaiting upload
             </span>
           ) : (
-            <span className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium" style={statusStyles(status)}>
-              <span className="h-2 w-2 rounded-full" style={{ background: status === 'failed' ? 'var(--accent-danger)' : status === 'completed' ? 'var(--accent-success)' : 'var(--accent-primary)' }} />
+            <span className={getBadgeClass(status)}>
+              <span className={getDotClass(status)} style={{ width: 6, height: 6 }} />
               {getReportHeadline(data)}
             </span>
           )}
-          <div className="flex items-center gap-3 text-xs text-[#8888A0]">
-            <span>Duration: {hasReport ? formatDurationMinutes(data?.duration_minutes) : 'Unknown'}</span>
-            <span>Confidence: {hasReport ? formatConfidence(data?.confidence_score) : 'Unknown'}</span>
+          <div className="flex flex-col items-end gap-1">
+            <div className="flex items-center gap-5 text-[13px]" style={{ color: 'var(--text-muted)' }}>
+              <div className="flex items-center gap-1.5">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
+                <span>{hasReport ? formatDurationMinutes(durationMins) : '—'}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>
+                <span>{hasReport ? `${formatConfidence(data?.confidence_score)}${showLowConfidenceWarning ? ' (Low)' : ''}` : '—'}</span>
+              </div>
+            </div>
+            {showLowConfidenceWarning && (
+              <div className="text-[12px] font-semibold" style={{ color: 'var(--accent-warning)' }}>
+                Reliability: Low ⚠️
+              </div>
+            )}
           </div>
         </div>
+        
         {hasReport ? (
-          <p className="mt-3 text-sm leading-6 text-[#8888A0]">
-            {getReportSummary(data)}
-          </p>
+          <div className="mt-4">
+            <p className="text-[14px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+              {getReportSummary(data)}
+            </p>
+            {showLowConfidenceWarning && (
+              <div className="mt-4">
+                <p className="text-[13px] font-semibold mb-3" style={{ color: 'var(--accent-warning)' }}>
+                  ⚠️ This result has low reliability and should not be considered conclusive.
+                </p>
+                <div className="text-[13px] p-3 rounded-md bg-[rgba(217,119,6,0.05)] border border-[rgba(217,119,6,0.1)]" style={{ color: 'var(--text-secondary)' }}>
+                  <div className="font-semibold mb-1" style={{ color: 'var(--text-heading)' }}>Reason:</div>
+                  <ul className="list-disc pl-4 mb-3 space-y-0.5">
+                    <li>Short recording duration ({Math.round(durationMins)} min)</li>
+                    <li>Limited data reduces certainty</li>
+                  </ul>
+                  <div className="font-semibold mb-1" style={{ color: 'var(--text-heading)' }}>Confidence Factors:</div>
+                  <div className="space-y-0.5">
+                    <div>• Recording Length: <span className="font-medium" style={{ color: 'var(--accent-warning)' }}>Low ⚠️</span></div>
+                    <div>• Signal Quality: <span className="font-medium" style={{ color: 'var(--accent-success)' }}>Good ✅</span></div>
+                    <div>• Channel Coverage: <span className="font-medium" style={{ color: 'var(--accent-warning)' }}>Partial ⚠️</span></div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         ) : null}
       </div>
 
+      {/* ── No Report ── */}
       {!hasReport ? (
-        <p className="text-sm text-[#8888A0]">Create a report to see its queue state, risk summary, event cards, and recommendations.</p>
+        <p className="text-[14px] px-1" style={{ color: 'var(--text-muted)' }}>
+          Create a report to see its queue state, risk summary, event cards, and recommendations.
+        </p>
       ) : status !== 'completed' ? (
-        <div className="rounded-2xl border px-4 py-4 text-sm leading-6" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)' }}>
-          <div className="font-medium text-[#E8E8F0]" style={{ fontFamily: "'Outfit', sans-serif" }}>
+        /* ── In-Progress / Failed Detail ── */
+        <div className="clinical-card-inner">
+          <div className="text-[14px] font-semibold" style={{ color: 'var(--text-heading)' }}>
             {data.filename}
           </div>
-          <div className="mt-2">{data.error_message || 'SCOUT and the report detail page will stay available while this analysis moves through the backend lifecycle.'}</div>
-          {processingHint ? <div className="mt-2 text-xs text-[#8888A0]">{processingHint}</div> : null}
+          <div className="mt-3 text-[14px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+            {data.error_message || 'SCOUT and the report detail page will stay available while this analysis moves through the backend lifecycle.'}
+          </div>
+          {processingHint ? <div className="mt-3 text-[12px]" style={{ color: 'var(--text-muted)' }}>{processingHint}</div> : null}
           <Link
             href={`/report/${data.id}`}
-            className="mt-4 inline-flex rounded-full border px-3 py-1.5 text-xs font-medium"
-            style={{ borderColor: 'rgba(0,240,255,0.16)', color: 'var(--accent-primary)' }}
+            className="clinical-link mt-4 inline-flex"
           >
             Open report detail
           </Link>
         </div>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-          <div className="space-y-4 rounded-2xl border px-4 py-4" style={{ background: 'var(--bg-secondary)', borderColor: 'rgba(255,255,255,0.06)' }}>
-            <QuietTag>Structured findings</QuietTag>
+        /* ── Completed Report: Findings + Context ── */
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+
+          {/* ── Left: Structured Findings ── */}
+          <div className="space-y-5">
+            <SectionLabel
+              icon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>}
+            >
+              Structured findings
+            </SectionLabel>
+
+            {/* Metric Grid — values prominent */}
             <div className="grid gap-3 sm:grid-cols-3">
               {[
                 { label: 'Events', value: `${data.event_count ?? reportJson?.events?.length ?? 0}` },
                 { label: 'Risk', value: data.risk_level || reportJson?.risk_level || 'Unknown' },
                 { label: 'Quality', value: data.quality_grade || reportJson?.quality_grade || 'Unknown' },
               ].map((item) => (
-                <div key={item.label} className="rounded-2xl border px-4 py-3" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--text-muted)' }}>
-                    {item.label}
-                  </div>
-                  <div className="mt-2 text-sm font-semibold text-[#E8E8F0]" style={{ fontFamily: "'Outfit', sans-serif" }}>
-                    {item.value}
-                  </div>
+                <div key={item.label} className="clinical-metric-box">
+                  <div className="clinical-metric-label">{item.label}</div>
+                  <div className="clinical-metric-value">{item.value}</div>
                 </div>
               ))}
             </div>
 
+            {/* Event Cards */}
             <div className="space-y-3">
               {events.length === 0 ? (
-                <div className="rounded-2xl border px-4 py-3 text-sm" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)' }}>
+                <div className="clinical-card-inner text-[14px]" style={{ color: 'var(--text-secondary)' }}>
                   No seizure events survived post-processing for this report.
                 </div>
               ) : (
                 events.map((event) => (
-                  <div key={event.event_idx} className="rounded-2xl border px-4 py-3" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
+                  <div key={event.event_idx} className="clinical-event-card">
                     <div className="flex items-center justify-between gap-3">
-                      <div className="text-sm font-semibold text-[#E8E8F0]" style={{ fontFamily: "'Outfit', sans-serif" }}>
+                      <div className="clinical-event-title">
                         Event {event.event_idx}
                       </div>
-                      <div className="text-[10px] uppercase tracking-[0.16em]" style={{ color: 'var(--accent-primary)' }}>
+                      <div className="clinical-event-risk">
                         {event.risk_level || 'Unknown'} risk
                       </div>
                     </div>
-                    <div className="mt-2 grid gap-2 text-xs text-[#8888A0] sm:grid-cols-3">
+                    <div className="mt-3 grid gap-2 sm:grid-cols-3 clinical-event-meta">
                       <span>{event.onset_sec}s → {event.offset_sec}s</span>
                       <span>{event.duration_sec}s duration</span>
                       <span>{typeof event.mean_probability === 'number' ? `${(event.mean_probability * 100).toFixed(1)}% confidence` : 'Confidence unknown'}</span>
@@ -170,38 +215,63 @@ export function AnalysisResults({ data, uploadState = 'idle', uploadFilename }: 
             </div>
           </div>
 
-          <div className="space-y-4 rounded-2xl border px-4 py-4" style={{ background: 'var(--bg-secondary)', borderColor: 'rgba(255,255,255,0.06)' }}>
-            <QuietTag>Context</QuietTag>
-            <div className="rounded-2xl border px-4 py-3 text-sm leading-6" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)' }}>
+          {/* ── Right: Context Panels — improved structure ── */}
+          <div className="space-y-5">
+            <SectionLabel
+              icon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" /></svg>}
+            >
+              Context
+            </SectionLabel>
+
+            {/* Trend Summary */}
+            <div className="clinical-context-block text-[14px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
               {reportJson?.trend_summary || data.summary || 'The full report contains structured quality, risk, and explainability outputs.'}
             </div>
 
-            <div className="rounded-2xl border px-4 py-3" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--text-muted)' }}>
-                Top regions
-              </div>
-              <div className="mt-3 space-y-2">
-                {topRegions.length > 0 ? (
-                  topRegions.map(([region, score]) => (
-                    <div key={region} className="flex items-center justify-between text-sm">
-                      <span style={{ color: 'var(--text-secondary)' }}>{region}</span>
-                      <span style={{ color: 'var(--accent-primary)' }}>{score.toFixed(3)}</span>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-sm text-[#8888A0]">Region data will appear here when explainability is available.</div>
+            {/* Top Regions */}
+            <div className="clinical-context-block">
+              <div className="clinical-metric-label mb-4">Top regions</div>
+              {topRegions.length > 0 ? (
+                topRegions.map(([region, score]) => (
+                  <div key={region} className="clinical-region-row">
+                    <span className="clinical-region-name">{region}</span>
+                    <span className="clinical-region-score">{score.toFixed(3)}</span>
+                  </div>
+                ))
+              ) : (
+                <div className="text-[13px]" style={{ color: 'var(--text-muted)' }}>
+                  Region data will appear here when explainability is available.
+                </div>
+              )}
+            </div>
+
+            {/* Recommendations */}
+            <div className="clinical-context-block">
+              <div className="clinical-metric-label mb-4">Recommendations</div>
+              <div className="space-y-3">
+                {recommendations.length > 0 ? recommendations.map((item, i) => (
+                  <div key={item} className="flex gap-3 text-[14px]" style={{ color: 'var(--text-secondary)' }}>
+                    <span className="flex-shrink-0 mt-0.5 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold" style={{ background: 'var(--accent-primary-light)', color: 'var(--accent-primary)' }}>
+                      {i + 1}
+                    </span>
+                    <span className="leading-relaxed">{item}</span>
+                  </div>
+                )) : (
+                  <div className="text-[14px]" style={{ color: 'var(--text-muted)' }}>
+                    Open the full report for the complete recommendation set.
+                  </div>
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
 
-            <div className="rounded-2xl border px-4 py-3" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--text-muted)' }}>
-                Recommendations
-              </div>
-              <div className="mt-3 space-y-2 text-sm text-[#8888A0]">
-                {recommendations.length > 0 ? recommendations.map((item) => <div key={item}>{item}</div>) : <div>Open the full report for the complete recommendation set.</div>}
-              </div>
-            </div>
+      {status === 'completed' && showLowConfidenceWarning && (
+        <div className="clinical-card-inner text-center mt-5">
+          <div className="text-[14px] font-medium" style={{ color: 'var(--text-heading)' }}>Recommended next step:</div>
+          <div className="mt-1 text-[13px]" style={{ color: 'var(--text-secondary)' }}>
+            Upload a longer recording (20–60 minutes) for improved confidence.
           </div>
         </div>
       )}

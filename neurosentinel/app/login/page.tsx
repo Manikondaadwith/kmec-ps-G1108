@@ -4,73 +4,108 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { ensureUserProfile } from '@/lib/user-profile'
 
-function BackgroundAura() {
+/* ─────────────────────────────────────────────────
+   Background — premium soft gradient + ambient glow + neural hint
+───────────────────────────────────────────────── */
+function PageBackground() {
   return (
-    <div className="pointer-events-none fixed inset-0 overflow-hidden" aria-hidden="true">
+    <div
+      className="pointer-events-none fixed inset-0"
+      aria-hidden="true"
+      style={{
+        background: `
+          radial-gradient(circle at top left, rgba(16, 185, 129, 0.08), transparent 40%),
+          radial-gradient(circle at bottom right, rgba(59, 130, 246, 0.06), transparent 50%),
+          url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.5' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.03'/%3E%3C/svg%3E\"),
+          linear-gradient(135deg, #F8FAFC, #E2E8F0)
+        `,
+      }}
+    >
+      {/* Soft blurred blobs behind the form for subtle depth layer */}
       <div
-        className="absolute -left-40 -top-40 h-[600px] w-[600px] rounded-full opacity-[0.07]"
-        style={{
-          background: 'radial-gradient(circle, var(--accent-primary) 0%, transparent 70%)',
-          animation: 'pulseGlow 6s ease-in-out infinite',
-        }}
+        className="absolute left-[35%] top-[30%] h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full"
+        style={{ background: 'rgba(14,165,164,0.05)', filter: 'blur(80px)' }}
       />
       <div
-        className="absolute -bottom-60 -right-40 h-[700px] w-[700px] rounded-full opacity-[0.05]"
-        style={{
-          background: 'radial-gradient(circle, var(--accent-danger) 0%, transparent 70%)',
-          animation: 'pulseGlow 8s ease-in-out infinite 2s',
-        }}
+        className="absolute left-[65%] top-[60%] h-[400px] w-[400px] -translate-x-1/2 -translate-y-1/2 rounded-full"
+        style={{ background: 'rgba(59,130,246,0.04)', filter: 'blur(80px)' }}
       />
-      <div
-        className="absolute inset-0 opacity-[0.03]"
-        style={{
-          backgroundImage:
-            'linear-gradient(var(--accent-primary) 1px, transparent 1px), linear-gradient(90deg, var(--accent-primary) 1px, transparent 1px)',
-          backgroundSize: '60px 60px',
-        }}
-      />
+      {/* Ultra-subtle neural waveform pattern — 2.5% opacity */}
+      <svg
+        className="absolute inset-0 h-full w-full"
+        style={{ opacity: 0.025 }}
+        preserveAspectRatio="xMidYMid slice"
+      >
+        <defs>
+          <pattern id="neural-wave-login" x="0" y="0" width="120" height="60" patternUnits="userSpaceOnUse">
+            <path
+              d="M0 30 Q10 15 20 30 Q30 45 40 30 Q50 15 60 30 Q70 45 80 30 Q90 15 100 30 Q110 45 120 30"
+              stroke="#0EA5A4"
+              strokeWidth="1.2"
+              fill="none"
+            />
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#neural-wave-login)" />
+      </svg>
     </div>
   )
 }
 
-function Logo() {
+/* ─────────────────────────────────────────────────
+   Brand Header (same as sign-up page)
+───────────────────────────────────────────────── */
+function BrandHeader() {
   return (
     <div className="mb-8 flex flex-col items-center gap-3">
-      <div className="relative flex items-center justify-center">
-        <div
-          className="absolute h-16 w-16 rounded-full opacity-40"
-          style={{
-            background: 'radial-gradient(circle, var(--accent-primary), transparent)',
-            animation: 'ping-slow 2.5s cubic-bezier(0,0,0.2,1) infinite',
-          }}
-        />
-        <div
-          className="relative flex h-12 w-12 items-center justify-center rounded-xl border"
-          style={{
-            background: 'linear-gradient(135deg, rgba(0,240,255,0.15), rgba(123,97,255,0.1))',
-            borderColor: 'var(--accent-primary)',
-            boxShadow: 'var(--glow-sm)',
-          }}
-        >
-          <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
-            <path d="M3 13 Q5 9 7 13 Q9 17 11 13 Q13 9 15 13 Q17 17 19 13 Q21 9 23 13" stroke="var(--accent-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-            <circle cx="3" cy="13" r="1.5" fill="var(--accent-primary)" />
-            <circle cx="23" cy="13" r="1.5" fill="var(--accent-primary)" />
-          </svg>
-        </div>
-      </div>
+
       <div className="text-center">
-        <h1 className="text-2xl font-bold tracking-tight" style={{ color: 'var(--accent-primary)', fontFamily: "'Outfit', sans-serif" }}>
+        <h1
+          className="text-[22px] font-bold tracking-tight"
+          style={{ color: '#0F172A', fontFamily: "'Outfit', sans-serif", letterSpacing: '-0.3px' }}
+        >
           NeuroSentinel AI
         </h1>
-        <p className="mt-0.5 text-xs" style={{ color: 'var(--text-muted)' }}>
-          Sign in to the Command Centre
+        <p className="mt-1 text-[11.5px] font-medium tracking-wide" style={{ color: '#0EA5A4' }}>
+          AI-Powered Seizure Intelligence
         </p>
       </div>
     </div>
   )
 }
 
+/* ─────────────────────────────────────────────────
+   Eye Toggle Button
+───────────────────────────────────────────────── */
+function EyeButton({ visible, onClick }: { visible: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-md p-1.5 transition-colors"
+      style={{ color: '#94A3B8' }}
+      aria-label={visible ? 'Hide password' : 'Show password'}
+    >
+      {visible ? (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.77 21.77 0 0 1 5.06-5.94" />
+          <path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a21.8 21.8 0 0 1-3.17 4.26" />
+          <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
+          <line x1="1" y1="1" x2="23" y2="23" />
+        </svg>
+      ) : (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z" />
+          <circle cx="12" cy="12" r="3" />
+        </svg>
+      )}
+    </button>
+  )
+}
+
+/* ─────────────────────────────────────────────────
+   Input Field
+───────────────────────────────────────────────── */
 type InputFieldProps = {
   id: string
   label: string
@@ -86,20 +121,34 @@ type InputFieldProps = {
 
 function InputField({ id, label, type, value, onChange, placeholder, autoComplete, disabled, icon, suffix }: InputFieldProps) {
   const [focused, setFocused] = useState(false)
+  const [hovered, setHovered] = useState(false)
+
+  const borderColor = focused ? '#10B981' : hovered ? '#94A3B8' : 'rgba(0,0,0,0.06)'
+  const shadow = focused
+    ? '0 0 0 3px rgba(16,185,129,0.15)'
+    : hovered
+    ? '0 1px 4px rgba(0,0,0,0.07)'
+    : '0 1px 2px rgba(0,0,0,0.04)'
 
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-xs font-medium uppercase tracking-widest" style={{ color: 'var(--text-secondary)' }}>
+      <label
+        htmlFor={id}
+        className="text-[12px] font-medium tracking-wide"
+        style={{ color: '#334155' }}
+      >
         {label}
       </label>
       <div
-        className="relative flex items-center rounded-xl transition-all"
-        style={{
-          background: 'var(--bg-tertiary)',
-          border: `1px solid ${focused ? 'var(--accent-primary)' : 'var(--border-default)'}`,
-        }}
+        className="relative flex items-center rounded-xl transition-all duration-200"
+        style={{ background: '#F1F5F9', border: `1.5px solid ${borderColor}`, boxShadow: shadow }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
       >
-        <span className="absolute left-3.5 text-sm" style={{ color: focused ? 'var(--accent-primary)' : 'var(--text-muted)' }}>
+        <span
+          className="absolute left-3.5 flex items-center text-sm transition-colors duration-200"
+          style={{ color: focused ? '#10B981' : '#64748B' }}
+        >
           {icon}
         </span>
         <input
@@ -109,35 +158,28 @@ function InputField({ id, label, type, value, onChange, placeholder, autoComplet
           autoComplete={autoComplete}
           disabled={disabled}
           placeholder={placeholder}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={(e) => onChange(e.target.value)}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
-          className="w-full rounded-xl bg-transparent py-3.5 pl-10 pr-12 text-sm outline-none"
-          style={{ color: 'var(--text-primary)' }}
+          className="w-full rounded-xl bg-transparent py-3.5 pl-10 pr-12 text-sm outline-none placeholder:text-[#94A3B8] disabled:opacity-60"
+          style={{ color: '#0F172A', fontWeight: 500, caretColor: '#10B981', fontFamily: "'Outfit', sans-serif" }}
         />
-        {suffix ? <div className="absolute right-3 flex items-center">{suffix}</div> : null}
+        {suffix && <div className="absolute right-3 flex items-center">{suffix}</div>}
       </div>
     </div>
   )
 }
 
-function EyeButton({ visible, onClick }: { visible: boolean; onClick: () => void }) {
-  return (
-    <button type="button" onClick={onClick} className="rounded-md p-1 transition-all hover:bg-[rgba(255,255,255,0.04)]" style={{ color: 'var(--text-muted)' }}>
-      {visible ? (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.77 21.77 0 0 1 5.06-5.94" /><path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a21.8 21.8 0 0 1-3.17 4.26" /><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" /><line x1="1" y1="1" x2="23" y2="23" /></svg>
-      ) : (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z" /><circle cx="12" cy="12" r="3" /></svg>
-      )}
-    </button>
-  )
-}
-
+/* ─────────────────────────────────────────────────
+   Login Page
+───────────────────────────────────────────────── */
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [hoveredBtn, setHoveredBtn] = useState(false)
+  const [pressedBtn, setPressedBtn] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [infoMessage, setInfoMessage] = useState<string | null>(null)
   const supabase = createClient()
@@ -152,7 +194,7 @@ export default function LoginPage() {
     setError(null)
 
     if (!email || !password) {
-      setError('Email and password required.')
+      setError('Email and password are required.')
       return
     }
 
@@ -166,14 +208,8 @@ export default function LoginPage() {
     }
 
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-
-      if (!user) {
-        throw new Error('Session not available after sign in.')
-      }
-
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Session not available after sign in.')
       await ensureUserProfile(supabase, user)
       window.sessionStorage.removeItem('ns-pending-onboarding')
       window.location.href = '/dashboard'
@@ -184,36 +220,169 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="relative flex min-h-dvh items-center justify-center p-4">
-      <BackgroundAura />
-      <div className="glass-card scanline shadow-card relative w-full max-w-md px-8 py-10" style={{ animation: 'fadeInUp 0.5s ease forwards' }}>
-        <Logo />
+    <main
+      className="relative flex min-h-dvh items-center justify-center p-4"
+      style={{ fontFamily: "'Outfit', sans-serif" }}
+    >
+      <PageBackground />
+
+      {/* ── CARD ── */}
+      <div
+        className="relative z-10 w-full"
+        style={{
+          maxWidth: '440px',
+          background: 'rgba(255, 255, 255, 0.7)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          borderRadius: '20px',
+          border: '1px solid rgba(0,0,0,0.05)',
+          boxShadow: '0 10px 30px rgba(0,0,0,0.08)',
+          padding: '40px 40px 36px',
+          animation: 'fadeInUp 0.45s ease forwards',
+        }}
+      >
+        <BrandHeader />
+
         <form onSubmit={handleSignIn} className="flex flex-col gap-5">
-          <InputField id="email" label="Email Address" type="email" value={email} onChange={setEmail} placeholder="your@email.com" autoComplete="email" disabled={loading} icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" /></svg>} />
+          {/* Section header */}
+          <div className="text-center">
+            <h2
+              className="text-[20px] font-bold"
+              style={{ color: '#0F172A', letterSpacing: '-0.2px' }}
+            >
+              Welcome back
+            </h2>
+            <p className="mt-1.5 text-[14px] font-medium" style={{ color: '#334155' }}>
+              Sign in to your NeuroSentinel AI account
+            </p>
+          </div>
+
+          {/* Thin teal accent rule */}
+          <div className="mb-2" style={{ height: '2px', borderRadius: '1px', background: 'linear-gradient(90deg, #0EA5A4, #10B981, transparent)' }} />
+
+          {/* Fields */}
+          <InputField
+            id="email"
+            label="Email Address"
+            type="email"
+            value={email}
+            onChange={setEmail}
+            placeholder="your@email.com"
+            autoComplete="email"
+            disabled={loading}
+            icon={
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2" y="4" width="20" height="16" rx="2" />
+                <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+              </svg>
+            }
+          />
+
           <InputField
             id="password"
             label="Password"
             type={showPassword ? 'text' : 'password'}
             value={password}
             onChange={setPassword}
-            placeholder="********"
+            placeholder="••••••••"
             autoComplete="current-password"
             disabled={loading}
-            icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>}
-            suffix={<EyeButton visible={showPassword} onClick={() => setShowPassword((value) => !value)} />}
+            icon={
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+            }
+            suffix={<EyeButton visible={showPassword} onClick={() => setShowPassword((v) => !v)} />}
           />
 
-          {infoMessage ? <div className="rounded-lg border p-3 text-xs" style={{ background: 'rgba(0,240,255,0.05)', borderColor: 'rgba(0,240,255,0.2)', color: 'var(--accent-primary)' }}>{infoMessage}</div> : null}
-          {error && <div className="rounded-lg border p-3 text-xs" style={{ background: 'rgba(255,51,102,0.05)', borderColor: 'rgba(255,51,102,0.2)', color: 'var(--accent-danger)' }}>{error}</div>}
+          {/* Info / Error banners */}
+          {infoMessage && (
+            <div
+              className="flex items-start gap-2.5 rounded-xl px-4 py-3 text-[13px]"
+              style={{ background: '#F0FAFA', border: '1px solid rgba(14,165,164,0.25)', color: '#0D7A7A' }}
+            >
+              <svg className="mt-0.5 shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 16v-4M12 8h.01" />
+              </svg>
+              {infoMessage}
+            </div>
+          )}
 
-          <button type="submit" disabled={loading} className="w-full rounded-xl py-3.5 font-bold transition-all" style={{ background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))', color: '#0A0A0F', boxShadow: 'var(--glow-sm)' }}>
-            {loading ? 'Authenticating...' : 'Sign In ->'}
+          {error && (
+            <div
+              className="flex items-start gap-2.5 rounded-xl px-4 py-3 text-[13px]"
+              role="alert"
+              style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626' }}
+            >
+              <svg className="mt-0.5 shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+              {error}
+            </div>
+          )}
+
+          {/* CTA */}
+          <button
+            type="submit"
+            id="btn-signin"
+            disabled={loading}
+            onMouseEnter={() => setHoveredBtn(true)}
+            onMouseLeave={() => { setHoveredBtn(false); setPressedBtn(false); }}
+            onMouseDown={() => !loading && setPressedBtn(true)}
+            onMouseUp={() => !loading && setPressedBtn(false)}
+            className="relative w-full overflow-hidden rounded-xl text-sm font-semibold tracking-wide transition-all duration-200 disabled:cursor-not-allowed"
+            style={{
+              background: loading ? '#94A3B8' : 'linear-gradient(135deg, #0EA5A4 0%, #0B857A 50%, #059669 100%)',
+              color: '#FFFFFF',
+              opacity: loading ? 0.6 : 1,
+              height: '46px',
+              fontFamily: "'Outfit', sans-serif",
+              textShadow: '0 1px 2px rgba(0,0,0,0.15)',
+              boxShadow: !loading && hoveredBtn && !pressedBtn
+                ? '0 12px 28px rgba(14,165,164,0.45), 0 4px 10px rgba(0,0,0,0.1)'
+                : loading ? 'none' : '0 4px 14px rgba(14,165,164,0.25), 0 1px 3px rgba(0,0,0,0.07)',
+              transform: !loading && pressedBtn ? 'scale(0.98)' : !loading && hoveredBtn ? 'translateY(-1px)' : 'translateY(0) scale(1)',
+              filter: !loading && hoveredBtn && !pressedBtn ? 'brightness(1.12)' : 'brightness(1)',
+              letterSpacing: '0.015em',
+            }}
+          >
+            <span className="flex items-center justify-center gap-2">
+              {loading ? (
+                <>
+                  <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                  Authenticating…
+                </>
+              ) : (
+                'Sign In →'
+              )}
+            </span>
           </button>
 
-          <div className="space-y-3 text-center text-xs" style={{ color: 'var(--text-muted)' }}>
-            <p>Need access? <a href="/" className="font-semibold" style={{ color: 'var(--accent-primary)' }}>Request an account</a></p>
+          {/* Footer */}
+          <div className="flex items-center gap-3">
+            <div className="h-px flex-1" style={{ background: '#E2E8F0' }} />
+            <span className="text-[11px] font-medium tracking-wide" style={{ color: '#94A3B8' }}>
+              New to NeuroSentinel AI?
+            </span>
+            <div className="h-px flex-1" style={{ background: '#E2E8F0' }} />
           </div>
+
+          <a
+            href="/"
+            className="block text-center text-[13px] font-semibold transition-colors"
+            style={{ color: '#0EA5A4' }}
+          >
+            Request an account →
+          </a>
         </form>
+
       </div>
     </main>
   )

@@ -15,6 +15,7 @@ type ConversationState = {
   loading: boolean
   error: string | null
   loaded: boolean
+  hasUnread: boolean
 }
 
 type FloatingConversationRequest = {
@@ -39,6 +40,7 @@ type ContextValue = {
     silent?: boolean
   }) => Promise<void>
   stopMessage: (page: ScoutPageContext, reportId: string | null | undefined) => void
+  markRead: (page: ScoutPageContext, reportId: string | null | undefined) => void
   floatingConversation: FloatingConversationRequest | null
   presentFloatingConversation: (options: Omit<FloatingConversationRequest, 'token'>) => void
 }
@@ -46,7 +48,7 @@ type ContextValue = {
 const ScoutContext = createContext<ContextValue | null>(null)
 
 function getConversationKey(page: ScoutPageContext, reportId?: string | null) {
-  return reportId ? `report:${reportId}` : `page:${page}`
+  return 'global_scout'
 }
 
 function getSeedMessages(page: ScoutPageContext, reportId: string | null | undefined, initialMessage: string) {
@@ -127,6 +129,7 @@ export function ScoutProvider({ children }: { children: React.ReactNode }) {
         loading: false,
         error: null,
         loaded: true,
+        hasUnread: false,
       },
     }))
 
@@ -148,6 +151,7 @@ export function ScoutProvider({ children }: { children: React.ReactNode }) {
           loading: false,
           error: null,
           loaded: true,
+          hasUnread: false,
         }
         return {
           ...current,
@@ -168,6 +172,7 @@ export function ScoutProvider({ children }: { children: React.ReactNode }) {
           loading: false,
           error: null,
           loaded: true,
+          hasUnread: false,
         }
         return {
           ...current,
@@ -218,11 +223,12 @@ export function ScoutProvider({ children }: { children: React.ReactNode }) {
         return {
           ...current,
           [key]: {
-            ...(existing ?? { messages: optimisticMessages, loading: false, error: null, loaded: true }),
+            ...(existing ?? { messages: optimisticMessages, loading: false, error: null, loaded: true, hasUnread: false }),
             messages: [...(existing?.messages ?? optimisticMessages), assistantMessage],
             loading: false,
             error: null,
             loaded: true,
+            hasUnread: true, // New message arrived
           },
         }
       })
@@ -231,7 +237,7 @@ export function ScoutProvider({ children }: { children: React.ReactNode }) {
       setConversations((current) => ({
         ...current,
         [key]: {
-          ...(current[key] ?? { messages: [], loading: false, error: null, loaded: true }),
+          ...(current[key] ?? { messages: [], loading: false, error: null, loaded: true, hasUnread: false }),
           messages: [
             ...((current[key] ?? { messages: [] }).messages || []),
             createOptimisticScoutMessage(
@@ -245,6 +251,7 @@ export function ScoutProvider({ children }: { children: React.ReactNode }) {
           loading: false,
           error: null,
           loaded: true,
+          hasUnread: !isAbort, // Only mark as unread if it wasn't an intentional stop
         },
       }))
     } finally {
@@ -257,12 +264,25 @@ export function ScoutProvider({ children }: { children: React.ReactNode }) {
     abortControllersRef.current[key]?.abort()
   }, [])
 
+  const markRead = useCallback((page: ScoutPageContext, reportId: string | null | undefined) => {
+    const key = getConversationKey(page, reportId)
+    setConversations((current) => {
+      const existing = current[key]
+      if (!existing || !existing.hasUnread) return current
+      return {
+        ...current,
+        [key]: { ...existing, hasUnread: false },
+      }
+    })
+  }, [])
+
   const value = useMemo<ContextValue>(
     () => ({
       conversations,
       ensureConversation,
       sendMessage,
       stopMessage,
+      markRead,
       floatingConversation,
       presentFloatingConversation: (options) => {
         setFloatingConversation({
@@ -271,7 +291,7 @@ export function ScoutProvider({ children }: { children: React.ReactNode }) {
         })
       },
     }),
-    [conversations, ensureConversation, floatingConversation, sendMessage, stopMessage]
+    [conversations, ensureConversation, floatingConversation, sendMessage, stopMessage, markRead]
   )
 
   return <ScoutContext.Provider value={value}>{children}</ScoutContext.Provider>
@@ -315,6 +335,7 @@ export function useScoutConversation({
     loading: false,
     error: null,
     loaded: false,
+    hasUnread: false,
   }
 
   useEffect(() => {
@@ -325,7 +346,9 @@ export function useScoutConversation({
     messages: state.messages,
     loading: state.loading,
     error: state.error,
+    hasUnread: state.hasUnread,
     sendMessage: (content: string, silent?: boolean) => context.sendMessage({ page, role, reportId, currentReport, initialMessage, content, silent }),
     stopMessage: () => context.stopMessage(page, reportId),
+    markRead: () => context.markRead(page, reportId),
   }
 }
