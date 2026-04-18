@@ -1,6 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import nodemailer from 'nodemailer'
 
+const CANONICAL_APP_URL = 'https://neuro-sentinel-ai-6vfv.vercel.app'
+
+function normalizeEmailHtml(rawHtml: string) {
+  return rawHtml.replace(/href=(["'])(https?:\/\/[^"'<>]+)\1/gi, (match, quote, url) => {
+    const normalized = String(url).trim()
+    if (
+      normalized.includes('neuro-sentinel-ai-6vfv.vercel.app') ||
+      normalized.includes('neurosentinel.vercel.app') ||
+      normalized.includes('/dashboard')
+    ) {
+      return `href=${quote}${CANONICAL_APP_URL}${quote}`
+    }
+
+    return match
+  })
+}
+
 /**
  * INTERNAL API ROUTE
  * used to relay analysis reports from the Hugging Face backend (which has SMTP blocked)
@@ -23,6 +40,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing required mail fields' }, { status: 400 })
     }
 
+    const normalizedHtml = normalizeEmailHtml(String(html))
+
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
@@ -44,7 +63,7 @@ export async function POST(req: NextRequest) {
       from: `"NeuroSentinel AI" <${process.env.GMAIL_USER || 'manikondaadwith6@gmail.com'}>`,
       to: to_email,
       subject,
-      html,
+      html: normalizedHtml,
       attachments,
     })
 

@@ -923,6 +923,16 @@ class ScoutService:
                 "provider_failures": [],
             }
 
+        report_specific_answer = _answer_report_question(active_report, resolved_role, context.message) if active_report else None
+        if report_specific_answer:
+            return {
+                "message": report_specific_answer,
+                "provider": "deterministic-report",
+                "tools_used": list(tool_outputs.keys()),
+                "fallback": False,
+                "provider_failures": [],
+            }
+
         system_prompt = self._build_system_prompt(context, user_profile, history, active_report, recent_reports, product_snippets)
         provider_failures: list[str] = []
         for provider in self.providers:

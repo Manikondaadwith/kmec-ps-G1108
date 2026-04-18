@@ -28,7 +28,7 @@ _SUBJECT_SIZE = "NeuroSentinel AI - File Size Warning for {filename}"
 
 
 def _normalize_app_url(app_url: str | None) -> str:
-    return (app_url or DEFAULT_APP_URL).rstrip("/")
+    return DEFAULT_APP_URL
 
 
 def _build_patient_email(report: dict[str, Any], filename: str, app_url: str) -> str:
