@@ -15,7 +15,7 @@ type State =
   | { s: 'complete'; file: File; reportId: string; msg: string }
   | { s: 'error'; file: File | null; msg: string }
 
-const MAX_FILE_SIZE_MB = 50
+const MAX_FILE_SIZE_MB = 1000
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 const formatSize = (bytes: number) =>
@@ -174,15 +174,15 @@ export function UploadZone({
   }, [stopPolling, onAnalysisComplete, shouldAutoRedirect, router, showNotification, dismissNotification, updateState])
 
   /**
-   * NEW ARCHITECTURE — bypasses Vercel's body-size limit:
-   *   1. Upload the .edf directly to Supabase Storage (client-side)
-   *   2. Send the resulting URL to the backend via a tiny JSON proxy route
+   * DIRECT BACKEND UPLOAD ARCHITECTURE (Unlimited 1GB Bypassing Supabase)
+   *   1. Fetch the HF backend URL from our secure proxy route.
+   *   2. Upload the raw EDF file via multipart/form-data directly to FastAPI.
    */
   const analyse = async () => {
     if (state.s !== 'ready') return
     const file = state.file
 
-    updateState({ s: 'uploading', file, msg: 'Uploading the EDF to NeuroSentinel AI for analysis...' })
+    updateState({ s: 'uploading', file, msg: 'Connecting to NeuroSentinel AI backend...' })
     setUploadProgress(0)
 
     const jobId = crypto.randomUUID()
@@ -199,97 +199,76 @@ export function UploadZone({
 
     try {
       const supabase = createClient()
+      const { data: { session: sess } } = await supabase.auth.getSession()
+      
+      if (!sess) {
+        throw new Error('You must be signed in to upload files.')
+      }
 
-      // ── Step 1: Upload file directly to Supabase Storage ──
-      const storagePath = `uploads/${Date.now()}_${file.name}`
+      // ── Step 1: Securely get the backend URL ──
+      const urlRes = await fetch('/api/backend-url')
+      const urlData = await urlRes.json()
+      if (!urlRes.ok || !urlData.url) {
+        throw new Error('Backend URL is not configured. Please check deployment settings.')
+      }
+      const backendUrl = urlData.url
+
+      // ── Step 2: Upload file directly to Hugging Face FastAPI backend ──
+      updateState({ s: 'uploading', file, msg: 'Streaming file directly to AI server...' })
+      
       const abortController = new AbortController()
       abortRef.current = abortController
 
-      // Use XMLHttpRequest for upload progress tracking to Supabase
-      const uploadResult = await new Promise<{ path: string }>((resolve, reject) => {
-
-        // We need the session for the auth header — get it async
-        supabase.auth.getSession().then(({ data: { session: sess } }) => {
-          if (!sess) {
-            reject(new Error('You must be signed in to upload files.'))
-            return
+      const result = await new Promise<{ report_id: string, status?: string, report_json?: unknown, summary?: string }>((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        
+        xhr.upload.onprogress = (event) => {
+          if (!event.lengthComputable) return
+          const percent = Math.round((event.loaded / event.total) * 100)
+          setUploadProgress(percent)
+          if (percent === 100) {
+            updateState({ s: 'uploading', file, msg: 'Upload complete. Starting analysis...' })
           }
+        }
 
-          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-          const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-          const uploadUrl = `${supabaseUrl}/storage/v1/object/eeg-uploads/${storagePath}`
-
-          const xhr = new XMLHttpRequest()
-
-          xhr.upload.onprogress = (event) => {
-            if (!event.lengthComputable) return
-            const percent = Math.round((event.loaded / event.total) * 100)
-            setUploadProgress(percent)
-            if (percent === 100) {
-              updateState({ s: 'uploading', file, msg: 'Upload complete. Starting analysis...' })
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const res = JSON.parse(xhr.responseText)
+              resolve(res)
+            } catch {
+              resolve({ report_id: jobId, status: 'processing', summary: 'Analysis started.' }) // Fallback
             }
+          } else {
+            let errMsg = `Server rejected file (${xhr.status})`
+            try {
+              const payload = JSON.parse(xhr.responseText)
+              errMsg = payload?.detail || payload?.error || payload?.message || errMsg
+            } catch {}
+            reject(new Error(errMsg))
           }
+        }
 
-          xhr.onload = () => {
-            if (xhr.status >= 200 && xhr.status < 300) {
-              resolve({ path: storagePath })
-            } else {
-              let errMsg = `Upload to storage failed (${xhr.status})`
-              try {
-                const payload = JSON.parse(xhr.responseText)
-                errMsg = payload?.message || payload?.error || errMsg
-              } catch {}
-              reject(new Error(errMsg))
-            }
-          }
+        xhr.onerror = () => reject(new Error('Network error during file upload. Please check your connection.'))
+        xhr.onabort = () => reject(new Error('Upload was cancelled.'))
+        xhr.ontimeout = () => reject(new Error('Upload timed out. File incredibly large or connection slow.'))
 
-          xhr.onerror = () => reject(new Error('Network error during file upload. Please check your connection.'))
-          xhr.onabort = () => reject(new Error('Upload was cancelled.'))
-          xhr.ontimeout = () => reject(new Error('Upload timed out. Please try again.'))
+        // 60 minutes for up to 1GB files
+        xhr.timeout = 3_600_000 
+        xhr.open('POST', `${backendUrl}/api/v1/analyze`)
+        
+        // FastAPI needs the Supabase Bearer token
+        xhr.setRequestHeader('Authorization', `Bearer ${sess.access_token}`)
+        
+        // Note: DO NOT set Content-Type header. The browser automatically sets it to multipart/form-data with the correct boundary!
+        const formData = new FormData()
+        formData.append('file', file)
+        
+        xhr.send(formData)
 
-          xhr.timeout = 1_800_000 // 30 min for very large files
-          xhr.open('POST', uploadUrl)
-          xhr.setRequestHeader('Authorization', `Bearer ${sess.access_token}`)
-          xhr.setRequestHeader('apikey', supabaseAnonKey)
-          xhr.setRequestHeader('x-upsert', 'true')
-          xhr.send(file)
-
-          // Wire up abort
-          abortController.signal.addEventListener('abort', () => xhr.abort())
-        }).catch(reject)
+        // Wire up abort handler
+        abortController.signal.addEventListener('abort', () => xhr.abort())
       })
-
-      // ── Step 2: Get the public URL for the uploaded file ──
-      const { data: urlData } = supabase.storage
-        .from('eeg-uploads')
-        .getPublicUrl(uploadResult.path)
-
-      const fileUrl = urlData.publicUrl
-
-      // ── Step 3: Send the URL to the backend via our lightweight proxy ──
-      updateState({ s: 'uploading', file, msg: 'File uploaded. Sending to NeuroSentinel AI backend...' })
-
-      const proxyResponse = await fetch('/api/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file_url: fileUrl, filename: file.name }),
-      })
-
-      if (!proxyResponse.ok) {
-        let errorMessage = 'Backend rejected the analysis request.'
-        try {
-          const errPayload = await proxyResponse.json()
-          errorMessage = errPayload?.error || errPayload?.detail || errorMessage
-        } catch {}
-        throw new Error(errorMessage)
-      }
-
-      const result = await proxyResponse.json() as {
-        report_id: string
-        status?: string
-        report_json?: unknown
-        summary?: string
-      }
 
       const reportId = result.report_id
       const reportStatus = result.status || 'processing'

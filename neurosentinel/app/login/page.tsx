@@ -174,6 +174,7 @@ function InputField({ id, label, type, value, onChange, placeholder, autoComplet
    Login Page
 ───────────────────────────────────────────────── */
 export default function LoginPage() {
+  const [view, setView] = useState<'signin' | 'forgot'>('signin')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -192,6 +193,26 @@ export default function LoginPage() {
   const handleSignIn = async (event: FormEvent) => {
     event.preventDefault()
     setError(null)
+    setInfoMessage(null)
+
+    if (view === 'forgot') {
+      if (!email) {
+        setError('Please enter your email address.')
+        return
+      }
+      setLoading(true)
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/auth/update-password`,
+      })
+      if (resetError) {
+        setError(resetError.message)
+      } else {
+        setInfoMessage('Password reset instructions sent. Please check your email.')
+        setView('signin')
+      }
+      setLoading(false)
+      return
+    }
 
     if (!email || !password) {
       setError('Email and password are required.')
@@ -250,10 +271,10 @@ export default function LoginPage() {
               className="text-[20px] font-bold"
               style={{ color: '#0F172A', letterSpacing: '-0.2px' }}
             >
-              Welcome back
+              {view === 'forgot' ? 'Reset Password' : 'Welcome back'}
             </h2>
             <p className="mt-1.5 text-[14px] font-medium" style={{ color: '#334155' }}>
-              Sign in to your NeuroSentinel AI account
+              {view === 'forgot' ? 'Enter your email to receive recovery instructions' : 'Sign in to your NeuroSentinel AI account'}
             </p>
           </div>
 
@@ -278,23 +299,36 @@ export default function LoginPage() {
             }
           />
 
-          <InputField
-            id="password"
-            label="Password"
-            type={showPassword ? 'text' : 'password'}
-            value={password}
-            onChange={setPassword}
-            placeholder="••••••••"
-            autoComplete="current-password"
-            disabled={loading}
-            icon={
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-              </svg>
-            }
-            suffix={<EyeButton visible={showPassword} onClick={() => setShowPassword((v) => !v)} />}
-          />
+          {view === 'signin' && (
+            <div className="flex flex-col gap-1">
+              <InputField
+                id="password"
+                label="Password"
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={setPassword}
+                placeholder="••••••••"
+                autoComplete="current-password"
+                disabled={loading}
+                icon={
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                  </svg>
+                }
+                suffix={<EyeButton visible={showPassword} onClick={() => setShowPassword((v) => !v)} />}
+              />
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setView('forgot')}
+                  className="text-[12px] font-semibold text-[#0EA5A4] hover:underline"
+                >
+                  Forgot password?
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Info / Error banners */}
           {infoMessage && (
@@ -357,30 +391,46 @@ export default function LoginPage() {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                   </svg>
-                  Authenticating…
+                  {view === 'forgot' ? 'Sending Reset Link...' : 'Authenticating...'}
                 </>
               ) : (
-                'Sign In →'
+                view === 'forgot' ? 'Send Reset Link' : 'Sign In →'
               )}
             </span>
           </button>
 
-          {/* Footer */}
-          <div className="flex items-center gap-3">
-            <div className="h-px flex-1" style={{ background: '#E2E8F0' }} />
-            <span className="text-[11px] font-medium tracking-wide" style={{ color: '#94A3B8' }}>
-              New to NeuroSentinel AI?
-            </span>
-            <div className="h-px flex-1" style={{ background: '#E2E8F0' }} />
-          </div>
+          {view === 'forgot' ? (
+            <button
+              type="button"
+              onClick={() => {
+                setView('signin')
+                setError(null)
+              }}
+              className="text-center text-[13px] font-semibold transition-colors"
+              style={{ color: '#64748B' }}
+            >
+              ← Back to Sign In
+            </button>
+          ) : (
+            <>
+              {/* Footer */}
+              <div className="flex items-center gap-3">
+                <div className="h-px flex-1" style={{ background: '#E2E8F0' }} />
+                <span className="text-[11px] font-medium tracking-wide" style={{ color: '#94A3B8' }}>
+                  New to NeuroSentinel AI?
+                </span>
+                <div className="h-px flex-1" style={{ background: '#E2E8F0' }} />
+              </div>
 
-          <a
-            href="/"
-            className="block text-center text-[13px] font-semibold transition-colors"
-            style={{ color: '#0EA5A4' }}
-          >
-            Request an account →
-          </a>
+              <a
+                href="/"
+                className="block text-center text-[13px] font-semibold transition-colors"
+                style={{ color: '#0EA5A4' }}
+              >
+                Request an account →
+              </a>
+            </>
+          )}
         </form>
 
       </div>
