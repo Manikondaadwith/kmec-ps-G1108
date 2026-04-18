@@ -8,7 +8,7 @@ export const runtime = 'nodejs'
  * Proxy route for cancelling a running EEG analysis job.
  * Receives `reportId` and forwards the request to the FastAPI backend.
  */
-export async function POST(request: NextRequest) {
+export async function POST() {
   const supabase = await createClient()
 
   try {

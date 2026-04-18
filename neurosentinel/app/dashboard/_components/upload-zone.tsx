@@ -23,7 +23,7 @@ const formatSize = (bytes: number) =>
 
 export type UploadState = 'idle' | 'drag' | 'ready' | 'uploading' | 'processing' | 'complete' | 'error'
 
-import { useAnalysis } from '@/lib/context/analysis-context'
+import { useAnalysis, type CurrentAnalysis } from '@/lib/context/analysis-context'
 
 export function UploadZone({
   onAnalysisComplete,
@@ -235,7 +235,7 @@ export function UploadZone({
           if (!event.lengthComputable) return
           const percent = Math.round((event.loaded / event.total) * 100)
           setUploadProgress(percent)
-          setCurrentAnalysis(prev => prev ? { ...prev, progress: percent } : null)
+          setCurrentAnalysis((prev: CurrentAnalysis) => prev ? { ...prev, progress: percent } : null)
           if (percent === 100) {
             updateState({ s: 'uploading', file, msg: 'Upload complete. Starting analysis...' })
           }

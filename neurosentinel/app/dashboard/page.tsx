@@ -1,10 +1,10 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { AnalysisResults } from './_components/analysis-results'
-import { UploadZone, type UploadState } from './_components/upload-zone'
+import { UploadZone } from './_components/upload-zone'
 import { getRoleLabel } from '@/lib/scout-guide'
 import { ensureUserProfile } from '@/lib/user-profile'
 import { StatusBadge } from './_components/status-badge'
@@ -51,7 +51,7 @@ export default function DashboardPage() {
     } finally {
       setReportsLoading(false)
     }
-  }, [supabase])
+  }, [supabase, currentAnalysis])
 
   useEffect(() => {
     void loadDashboardContext()
@@ -70,7 +70,6 @@ export default function DashboardPage() {
     return () => window.clearInterval(interval)
   }, [latestAnalysis, loadDashboardContext, currentAnalysis])
 
-  const latestStatus = normalizeReportStatus(latestAnalysis?.status)
 
   return (
     <>

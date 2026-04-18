@@ -1,7 +1,7 @@
 'use client'
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
-import { normalizeReportStatus, type ReportRecord } from '@/lib/neurosentinel/types'
+import { normalizeReportStatus } from '@/lib/neurosentinel/types'
 import { createClient } from '@/lib/supabase/client'
 
 export type CurrentAnalysis = {
@@ -14,7 +14,7 @@ export type CurrentAnalysis = {
 
 interface AnalysisContextType {
   currentAnalysis: CurrentAnalysis
-  setCurrentAnalysis: (analysis: CurrentAnalysis) => void
+  setCurrentAnalysis: (analysis: CurrentAnalysis | ((prev: CurrentAnalysis) => CurrentAnalysis)) => void
   abortAnalysis: () => Promise<void>
   refreshStatus: () => Promise<void>
 }

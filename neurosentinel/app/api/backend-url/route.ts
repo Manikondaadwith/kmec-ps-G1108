@@ -7,7 +7,7 @@ export async function GET() {
   try {
     const url = getBackendBaseUrl()
     return NextResponse.json({ url })
-  } catch (error) {
+  } catch {
     return NextResponse.json({ url: null, error: 'Backend URL not configured' }, { status: 500 })
   }
 }

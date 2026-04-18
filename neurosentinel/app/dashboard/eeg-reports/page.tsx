@@ -1,6 +1,10 @@
 'use client'
 
-import { normalizeReport, normalizeReportStatus, type ReportRecord, getReliability } from '@/lib/neurosentinel/types'
+import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+import { normalizeReport, normalizeReportStatus, type ReportRecord } from '@/lib/neurosentinel/types'
 import { StatusBadge } from '../_components/status-badge'
 import { ReliabilityBadge } from '../_components/reliability-badge'
 import { useAnalysis } from '@/lib/context/analysis-context'
@@ -37,41 +41,6 @@ function getStatusMeta(status: string): {
   }
 }
 
-function getRiskMeta(risk: string | null | undefined): {
-  label: string
-  color: string
-  bg: string
-  border: string
-} {
-  const r = (risk ?? '').toLowerCase()
-  if (r === 'high')
-    return {
-      label: 'High Risk',
-      color: 'var(--accent-danger)',
-      bg: 'var(--accent-danger-light)',
-      border: 'rgba(220,38,38,0.12)',
-    }
-  if (r === 'medium' || r === 'moderate')
-    return {
-      label: 'Medium Risk',
-      color: 'var(--accent-warning)',
-      bg: 'var(--accent-warning-light)',
-      border: 'rgba(217,119,6,0.12)',
-    }
-  if (r === 'low')
-    return {
-      label: 'Low Risk',
-      color: 'var(--accent-success)',
-      bg: 'var(--accent-success-light)',
-      border: 'rgba(22,163,74,0.12)',
-    }
-  return {
-    label: 'Unknown',
-    color: 'var(--text-muted)',
-    bg: 'rgba(148,163,184,0.06)',
-    border: 'rgba(148,163,184,0.15)',
-  }
-}
 
 function getKeyResult(report: ReportRecord): { primary: string; secondary: string; isSeizure: boolean } {
   const status = normalizeReportStatus(report.status)
@@ -205,16 +174,6 @@ const IconDownload = ({ size = 14 }) => (
     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
   </svg>
 )
-const IconChevron = () => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--border-strong)" strokeWidth="2" strokeLinecap="round">
-    <polyline points="9 18 15 12 9 6" />
-  </svg>
-)
-const IconUpload = ({ size = 14 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
-  </svg>
-)
 const IconClose = ({ size = 12 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
     <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -294,7 +253,6 @@ function AnalysisCard({
   const isCompleted = status === 'completed'
   const isCompact = density === 'compact'
 
-  const { label: statusLabel, badgeClass, dotClass } = getStatusMeta(status)
   const { primary: primaryResult, secondary: secondaryResult, isSeizure } = getKeyResult(report)
 
   const confidenceDisplay = formatConfidence(report.confidence_score)
@@ -306,9 +264,6 @@ function AnalysisCard({
   else if (isSeizure) stripeColor = 'var(--accent-warning)' // "Seizure Detected" is Orange
   else if (isCompleted) stripeColor = 'var(--accent-success)'
 
-  const handleCardClick = () => {
-    router.push(`/report/${report.id}`)
-  }
 
   return (
     <article

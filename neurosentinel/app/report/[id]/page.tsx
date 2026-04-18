@@ -2,12 +2,12 @@
 
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { ScoutPanel } from '@/app/components/scout-panel'
 import { ScoutAvatar } from '@/app/components/scout-avatar'
 import { useScoutConversation } from '@/app/components/scout-provider'
-import { getReportExplainerOpening, getRoleLabel, type ScoutRole } from '@/lib/scout-guide'
+import { getReportExplainerOpening, type ScoutRole } from '@/lib/scout-guide'
 import { ensureUserProfile } from '@/lib/user-profile'
 import { normalizeReport, normalizeReportStatus, type ReportRecord, getReliability } from '@/lib/neurosentinel/types'
 import { StatusBadge } from '../../dashboard/_components/status-badge'
@@ -16,7 +16,6 @@ import { ReliabilityBadge } from '../../dashboard/_components/reliability-badge'
 import { ProbabilityTimeline } from '../_components/probability-timeline'
 import { EventCards } from '../_components/event-cards'
 import { BrainHeatmap } from '../_components/brain-heatmap'
-import { BandPowerChart } from '../_components/band-power-chart'
 import { DataQualityPanel } from '../_components/data-quality-panel'
 import { ClinicalMetrics } from '../_components/clinical-metrics'
 
@@ -41,12 +40,10 @@ function ScoutInterpretationCard({
   report, 
   role, 
   initialMessage, 
-  autoPrompt 
 }: { 
   report: ReportRecord
   role: ScoutRole
   initialMessage: string
-  autoPrompt: any
 }) {
   const { messages, loading } = useScoutConversation({
     page: 'report',
@@ -157,7 +154,6 @@ export default function ReportPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showChat, setShowChat] = useState(true)
-  const [panelDismissed, setPanelDismissed] = useState(false)
 
   /* ─ Auth & Session check ─ */
   useEffect(() => {
@@ -242,9 +238,7 @@ export default function ReportPage() {
 
   /* ─ Render Logic ─ */
   const reportJson = report?.report_json
-  const status = normalizeReportStatus(report?.status)
   const recommendations = Array.isArray(reportJson?.clinical_report?.recommendations) ? reportJson.clinical_report.recommendations : []
-  const topRegions = Array.isArray(reportJson?.top_regions) ? reportJson.top_regions : []
   const topChannels = Array.isArray(reportJson?.explainability?.top_channels) ? reportJson.explainability.top_channels : []
   const events = useMemo(() => Array.isArray(reportJson?.events) ? reportJson.events : [], [reportJson])
   const quality: any = reportJson?.quality || reportJson?.signal_quality || {}
@@ -405,7 +399,6 @@ export default function ReportPage() {
               report={report} 
               role={role} 
               initialMessage={scoutInitialMessage} 
-              autoPrompt={scoutAutoPrompt} 
             />
 
             {/* ─── § 3  KEY METRICS STRIP ─── */}
@@ -454,7 +447,6 @@ export default function ReportPage() {
                 probabilityTimeline={probabilityTimeline}
                 events={events}
                 thresholdHigh={modelOutputs?.threshold_high}
-                thresholdLow={modelOutputs?.threshold_low}
               />
             </section>
 
@@ -550,7 +542,6 @@ export default function ReportPage() {
             <ScoutPanel 
               page="report" 
               role={role} 
-              collapsible={false} 
               initialMessage={scoutInitialMessage} 
               report={report} 
               autoPrompt={scoutAutoPrompt}

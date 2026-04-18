@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { RELIABILITY_CONFIG, type ReliabilityType } from '@/lib/neurosentinel/ui-config'
+import { RELIABILITY_CONFIG } from '@/lib/neurosentinel/ui-config'
 import { getReliability } from '@/lib/neurosentinel/types'
 
 interface ReliabilityBadgeProps {

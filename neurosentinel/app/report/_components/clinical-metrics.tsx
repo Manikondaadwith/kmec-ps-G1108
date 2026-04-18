@@ -48,9 +48,3 @@ export function ClinicalMetrics({ report, events }: Props) {
   )
 }
 
-function gradeColor(grade: string) {
-  const g = grade.toLowerCase()
-  if (g === 'good' || g === 'a') return '#00FF88'
-  if (g === 'moderate' || g === 'b') return '#FFB800'
-  return '#FF3366'
-}

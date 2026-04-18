@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useMemo } from 'react'
-import { formatConfidence, formatDurationMinutes, getReportHeadline, getReportSummary, normalizeReportStatus, type ReportRecord, getReliability } from '@/lib/neurosentinel/types'
+import { formatConfidence, formatDurationMinutes, getReportSummary, normalizeReportStatus, type ReportRecord, getReliability } from '@/lib/neurosentinel/types'
 import { StatusBadge } from './status-badge'
 import { ReliabilityBadge } from './reliability-badge'
 import { useAnalysis } from '@/lib/context/analysis-context'

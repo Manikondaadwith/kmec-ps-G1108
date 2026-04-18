@@ -18,7 +18,7 @@ export function ReportNotificationToast() {
 
   return (
     <div className="fixed right-5 top-5 z-[9999] flex flex-col gap-3">
-      {notifications.slice().reverse().map((n, idx) => (
+      {notifications.slice().reverse().map((n) => (
         <SingleToast key={n.jobId} notification={n} />
       ))}
     </div>

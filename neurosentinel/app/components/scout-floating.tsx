@@ -428,9 +428,6 @@ export function ScoutFloating() {
               currentReport={activeSession.currentReport ?? null}
               initialMessage={activeSession.initialMessage}
               quickPrompts={quickPrompts}
-              title={SCOUT_FULL_NAME}
-              subtitle="Clinical Intelligence Assistant"
-              placeholder="Ask SCOUT about this report..."
             />
           </div>
 

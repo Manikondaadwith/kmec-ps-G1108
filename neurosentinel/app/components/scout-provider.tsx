@@ -47,7 +47,7 @@ type ContextValue = {
 
 const ScoutContext = createContext<ContextValue | null>(null)
 
-function getConversationKey(page: ScoutPageContext, reportId?: string | null) {
+function getConversationKey() {
   return 'global_scout'
 }
 
@@ -114,7 +114,7 @@ export function ScoutProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const ensureConversation = useCallback(async (page: ScoutPageContext, reportId: string | null | undefined, initialMessage: string) => {
-    const key = getConversationKey(page, reportId)
+    const key = getConversationKey()
     if (loadingRef.current[key]) return
     if (conversations[key]?.loaded) return
 
@@ -140,7 +140,7 @@ export function ScoutProvider({ children }: { children: React.ReactNode }) {
     const trimmed = content.trim()
     if (!trimmed) return
 
-    const key = getConversationKey(page, reportId)
+    const key = getConversationKey()
     await ensureConversation(page, reportId, initialMessage)
 
     // When silent=true (auto-summarize), don't show the user message in the chat
@@ -260,12 +260,12 @@ export function ScoutProvider({ children }: { children: React.ReactNode }) {
   }, [conversations, ensureConversation])
 
   const stopMessage = useCallback((page: ScoutPageContext, reportId: string | null | undefined) => {
-    const key = getConversationKey(page, reportId)
+    const key = getConversationKey()
     abortControllersRef.current[key]?.abort()
   }, [])
 
   const markRead = useCallback((page: ScoutPageContext, reportId: string | null | undefined) => {
-    const key = getConversationKey(page, reportId)
+    const key = getConversationKey()
     setConversations((current) => {
       const existing = current[key]
       if (!existing || !existing.hasUnread) return current
@@ -329,7 +329,7 @@ export function useScoutConversation({
     throw new Error('useScoutConversation must be used inside ScoutProvider.')
   }
 
-  const key = getConversationKey(page, reportId)
+  const key = getConversationKey()
   const state = context.conversations[key] ?? {
     messages: getSeedMessages(page, reportId, initialMessage),
     loading: false,

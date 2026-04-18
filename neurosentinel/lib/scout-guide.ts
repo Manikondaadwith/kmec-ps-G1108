@@ -158,26 +158,7 @@ function matches(message: string, keywords: string[]) {
 
 
 
-function formatReportStatus(result?: string) {
-  if (!result) return 'the current report'
-  return result === 'Seizure Detected' ? 'a seizure-positive report' : 'a no-event report'
-}
 
-function getDefaultRoleMessage(role: ScoutRole) {
-  if (role === 'clinician') {
-    return 'SCOUT online. Upload an EEG or open a report and I will keep the review clinical.'
-  }
-
-  if (role === 'researcher') {
-    return 'SCOUT online. Upload an EEG or open a report and I will keep the review technical.'
-  }
-
-  if (role === 'patient') {
-    return 'SCOUT online. Upload an EEG or open a report and I will explain it in plain language.'
-  }
-
-  return 'SCOUT online. Upload an EEG or open a report and I will guide you from there.'
-}
 
 export function getQuickPrompts(page: ScoutPageContext = 'general') {
   if (page === 'dashboard') return SCOUT_QUICK_PROMPTS.dashboard
@@ -364,7 +345,8 @@ export function buildScoutResponse({ lastMessage, role = null, page = 'general',
   }
 
   if (page === 'report') {
-    return `I am tracking ${formatReportStatus(report?.result)}. I can summarize it or explain the attention map.`
+    const statusText = !report?.result ? 'the current report' : report.result === 'Seizure Detected' ? 'a seizure-positive report' : 'a no-event report'
+    return `I am tracking ${statusText}. I can summarize it or explain the attention map.`
   }
 
   if (page === 'dashboard') {

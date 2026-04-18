@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { ScoutAvatar } from './scout-avatar'
 import { useScoutConversation } from './scout-provider'
 import { type ReportRecord, type ScoutPageContext, type ScoutRole } from '@/lib/neurosentinel/types'
 
@@ -26,39 +25,11 @@ type ScoutConversationProps = {
   currentReport?: ReportRecord | null
   initialMessage: string
   quickPrompts: string[]
-  title: string
-  subtitle: string
-  placeholder?: string
   autoPrompt?: { content: string; visible: boolean } | null
 }
 
-function SendIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="22" y1="2" x2="11" y2="13" />
-      <polygon points="22 2 15 22 11 13 2 9 22 2" />
-    </svg>
-  )
-}
 
-function StopIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-      <rect x="6" y="6" width="12" height="12" rx="2" />
-    </svg>
-  )
-}
 
-function ReportIcon() {
-  return (
-    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
-      <polyline points="14 2 14 8 20 8" />
-      <path d="M12 18V12" />
-      <path d="M9 15h6" />
-    </svg>
-  )
-}
 
 export function ScoutConversation({
   page,
@@ -67,9 +38,6 @@ export function ScoutConversation({
   currentReport = null,
   initialMessage,
   quickPrompts,
-  title,
-  subtitle,
-  placeholder = 'Ask SCOUT about this report...',
   autoPrompt = null,
 }: ScoutConversationProps) {
   const [input, setInput] = useState('')

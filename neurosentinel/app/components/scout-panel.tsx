@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { ScoutConversation } from './scout-conversation'
 import { SCOUT_FULL_NAME, getQuickPrompts, type ScoutPageContext, type ScoutRole } from '@/lib/scout-guide'
 import type { ReportRecord } from '@/lib/neurosentinel/types'
@@ -10,31 +10,18 @@ type ScoutPanelProps = {
   role?: ScoutRole
   initialMessage: string
   report?: ReportRecord | null
-  collapsible?: boolean
-  defaultCollapsed?: boolean
-  width?: number
   autoPrompt?: { content: string; visible: boolean } | null
-  resizable?: boolean
 }
 
-const MIN_HEIGHT = 480
-const MAX_HEIGHT_VH = 0.85
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), max)
-}
 
 export function ScoutPanel({
   page,
   role = null,
   initialMessage,
   report = null,
-  collapsible = false,
   onClose,
-  width = 350,
   autoPrompt = null,
 }: ScoutPanelProps & { onClose?: () => void }) {
-  const [panelHeight, setPanelHeight] = useState<number | null>(null)
 
   return (
     <aside
@@ -74,9 +61,6 @@ export function ScoutPanel({
         currentReport={report}
         initialMessage={initialMessage}
         quickPrompts={getQuickPrompts(page)}
-        title={SCOUT_FULL_NAME}
-        subtitle="Inline Report Explainer"
-        placeholder="Ask SCOUT about this report..."
         autoPrompt={autoPrompt}
       />
     </aside>

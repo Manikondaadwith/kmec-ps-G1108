@@ -10,7 +10,6 @@ type Props = {
   probabilityTimeline?: number[]
   events?: any[]
   thresholdHigh?: number
-  thresholdLow?: number
   strideSec?: number
 }
 
@@ -20,7 +19,7 @@ function formatTime(sec: number) {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
-export function ProbabilityTimeline({ probabilityTimeline, events = [], thresholdHigh, thresholdLow, strideSec = 1 }: Props) {
+export function ProbabilityTimeline({ probabilityTimeline, events = [], thresholdHigh, strideSec = 1 }: Props) {
   const data = useMemo(() => {
     if (!probabilityTimeline?.length) return []
     return probabilityTimeline.map((p, i) => ({
