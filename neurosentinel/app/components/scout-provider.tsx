@@ -4,9 +4,11 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { createClient } from '@/lib/supabase/client'
 import {
   createOptimisticScoutMessage,
+  getReliabilityDetails,
   type ReportRecord,
   type ScoutContextPayload,
   type ScoutMessage,
+  type ScoutPageData,
   type ScoutPageContext,
 } from '@/lib/neurosentinel/types'
 
@@ -23,6 +25,7 @@ type FloatingConversationRequest = {
   role?: ScoutContextPayload['role']
   reportId?: string | null
   currentReport?: ReportRecord | null
+  pageData?: ScoutPageData | null
   initialMessage: string
   token: string
 }
@@ -35,6 +38,7 @@ type ContextValue = {
     role?: ScoutContextPayload['role']
     reportId?: string | null
     currentReport?: ReportRecord | null
+    pageData?: ScoutPageData | null
     initialMessage: string
     content: string
     silent?: boolean
@@ -47,8 +51,8 @@ type ContextValue = {
 
 const ScoutContext = createContext<ContextValue | null>(null)
 
-function getConversationKey() {
-  return 'global_scout'
+function getConversationKey(page: ScoutPageContext, reportId: string | null | undefined) {
+  return reportId ? `${page}:${reportId}` : `${page}:global`
 }
 
 function getSeedMessages(page: ScoutPageContext, reportId: string | null | undefined, initialMessage: string) {
@@ -58,6 +62,8 @@ function getSeedMessages(page: ScoutPageContext, reportId: string | null | undef
 
 function serializeReport(report: ReportRecord | null | undefined) {
   if (!report) return null
+
+  const reliability = getReliabilityDetails(report.confidence_score, report.duration_minutes, report.quality_grade)
 
   return {
     id: report.id,
@@ -70,8 +76,21 @@ function serializeReport(report: ReportRecord | null | undefined) {
     risk_level: report.risk_level,
     quality_grade: report.quality_grade,
     duration_minutes: report.duration_minutes,
+    reliability: reliability.level,
+    reliability_reasons: reliability.reasons,
     report_json: report.report_json,
     created_at: report.created_at,
+  }
+}
+
+function serializePageData(pageData: ScoutPageData | null | undefined) {
+  if (!pageData) return null
+
+  return {
+    latest_report: serializeReport(pageData.latestReport),
+    recent_reports: Array.isArray(pageData.recentReports) ? pageData.recentReports.map((report) => serializeReport(report)).filter(Boolean) : [],
+    stats: pageData.stats ?? null,
+    summary: pageData.summary ?? null,
   }
 }
 
@@ -114,7 +133,7 @@ export function ScoutProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const ensureConversation = useCallback(async (page: ScoutPageContext, reportId: string | null | undefined, initialMessage: string) => {
-    const key = getConversationKey()
+    const key = getConversationKey(page, reportId)
     if (loadingRef.current[key]) return
     if (conversations[key]?.loaded) return
 
@@ -136,11 +155,11 @@ export function ScoutProvider({ children }: { children: React.ReactNode }) {
     loadingRef.current[key] = false
   }, [conversations])
 
-  const sendMessage = useCallback<ContextValue['sendMessage']>(async ({ page, role = null, reportId = null, currentReport = null, initialMessage, content, silent = false }) => {
+  const sendMessage = useCallback<ContextValue['sendMessage']>(async ({ page, role = null, reportId = null, currentReport = null, pageData = null, initialMessage, content, silent = false }) => {
     const trimmed = content.trim()
     if (!trimmed) return
 
-    const key = getConversationKey()
+    const key = getConversationKey(page, reportId)
     await ensureConversation(page, reportId, initialMessage)
 
     // When silent=true (auto-summarize), don't show the user message in the chat
@@ -203,6 +222,7 @@ export function ScoutProvider({ children }: { children: React.ReactNode }) {
             role,
             report_id: reportId,
             current_report: serializeReport(currentReport),
+            page_data: serializePageData(pageData),
           },
         }),
       })
@@ -260,12 +280,12 @@ export function ScoutProvider({ children }: { children: React.ReactNode }) {
   }, [conversations, ensureConversation])
 
   const stopMessage = useCallback((page: ScoutPageContext, reportId: string | null | undefined) => {
-    const key = getConversationKey()
+    const key = getConversationKey(page, reportId)
     abortControllersRef.current[key]?.abort()
   }, [])
 
   const markRead = useCallback((page: ScoutPageContext, reportId: string | null | undefined) => {
-    const key = getConversationKey()
+    const key = getConversationKey(page, reportId)
     setConversations((current) => {
       const existing = current[key]
       if (!existing || !existing.hasUnread) return current
@@ -315,12 +335,14 @@ export function useScoutConversation({
   role = null,
   reportId = null,
   currentReport = null,
+  pageData = null,
   initialMessage,
 }: {
   page: ScoutPageContext
   role?: ScoutContextPayload['role']
   reportId?: string | null
   currentReport?: ReportRecord | null
+  pageData?: ScoutPageData | null
   initialMessage: string
 }) {
   const context = useContext(ScoutContext)
@@ -329,7 +351,7 @@ export function useScoutConversation({
     throw new Error('useScoutConversation must be used inside ScoutProvider.')
   }
 
-  const key = getConversationKey()
+  const key = getConversationKey(page, reportId)
   const state = context.conversations[key] ?? {
     messages: getSeedMessages(page, reportId, initialMessage),
     loading: false,
@@ -347,7 +369,7 @@ export function useScoutConversation({
     loading: state.loading,
     error: state.error,
     hasUnread: state.hasUnread,
-    sendMessage: (content: string, silent?: boolean) => context.sendMessage({ page, role, reportId, currentReport, initialMessage, content, silent }),
+    sendMessage: (content: string, silent?: boolean) => context.sendMessage({ page, role, reportId, currentReport, pageData, initialMessage, content, silent }),
     stopMessage: () => context.stopMessage(page, reportId),
     markRead: () => context.markRead(page, reportId),
   }

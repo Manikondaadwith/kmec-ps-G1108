@@ -1,15 +1,15 @@
 'use client'
 
-import { useState } from 'react'
 import { ScoutConversation } from './scout-conversation'
-import { SCOUT_FULL_NAME, getQuickPrompts, type ScoutPageContext, type ScoutRole } from '@/lib/scout-guide'
-import type { ReportRecord } from '@/lib/neurosentinel/types'
+import { getQuickPrompts, type ScoutPageContext, type ScoutRole } from '@/lib/scout-guide'
+import type { ReportRecord, ScoutPageData } from '@/lib/neurosentinel/types'
 
 type ScoutPanelProps = {
   page: ScoutPageContext
   role?: ScoutRole
   initialMessage: string
   report?: ReportRecord | null
+  pageData?: ScoutPageData | null
   autoPrompt?: { content: string; visible: boolean } | null
 }
 
@@ -19,6 +19,7 @@ export function ScoutPanel({
   role = null,
   initialMessage,
   report = null,
+  pageData = null,
   onClose,
   autoPrompt = null,
 }: ScoutPanelProps & { onClose?: () => void }) {
@@ -59,6 +60,7 @@ export function ScoutPanel({
         role={role}
         reportId={report?.id ?? null}
         currentReport={report}
+        pageData={pageData}
         initialMessage={initialMessage}
         quickPrompts={getQuickPrompts(page)}
         autoPrompt={autoPrompt}

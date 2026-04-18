@@ -15,7 +15,7 @@ import {
   type ScoutPageContext,
   type ScoutRole,
 } from '@/lib/scout-guide'
-import type { ReportRecord } from '@/lib/neurosentinel/types'
+import { normalizeReport, type ReportRecord, type ScoutPageData } from '@/lib/neurosentinel/types'
 
 const STORAGE_KEY = 'ns-scout-floating-layout'
 const HINT_KEY = 'ns-scout-hint-shown-v1'
@@ -89,8 +89,10 @@ export function ScoutFloating() {
     role?: ScoutRole
     reportId?: string | null
     currentReport?: ReportRecord | null
+    pageData?: ScoutPageData | null
     initialMessage: string
   } | null>(null)
+  const [pageData, setPageData] = useState<ScoutPageData | null>(null)
   const resizeRef = useRef<{ startX: number; startY: number; width: number; height: number } | null>(null)
   const userIdRef = useRef<string | null>(null)
 
@@ -110,6 +112,7 @@ export function ScoutFloating() {
     role,
     reportId: reportIdFromPath,
     currentReport: null,
+    pageData,
     initialMessage: getScoutInitialMessage(role, pageContext),
   }
 
@@ -118,6 +121,8 @@ export function ScoutFloating() {
     page: activeSessionInput.page,
     role: activeSessionInput.role,
     reportId: activeSessionInput.reportId,
+    currentReport: activeSessionInput.currentReport ?? null,
+    pageData: activeSessionInput.pageData ?? null,
     initialMessage: activeSessionInput.initialMessage,
   })
 
@@ -177,11 +182,69 @@ export function ScoutFloating() {
       role: floatingConversation.role ?? null,
       reportId: floatingConversation.reportId ?? null,
       currentReport: floatingConversation.currentReport ?? null,
+      pageData: floatingConversation.pageData ?? null,
       initialMessage: floatingConversation.initialMessage,
     })
     setOpen(true)
     setIsClosing(false)
   }, [floatingConversation])
+
+  useEffect(() => {
+    if (hidden) return
+
+    async function loadPageData() {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+
+        if (!user || (pageContext !== 'dashboard' && pageContext !== 'history' && pageContext !== 'settings')) {
+          setPageData(null)
+          return
+        }
+
+        const { data, error } = await supabase
+          .from('reports')
+          .select('id, user_id, filename, status, storage_path, error_message, summary, result_label, event_count, confidence_score, risk_level, quality_grade, duration_minutes, report_json, created_at')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(pageContext === 'history' ? 8 : 5)
+
+        if (error) throw error
+
+        const reports = Array.isArray(data) ? data.map((report) => normalizeReport(report)) : []
+        const stats = {
+          totalReports: reports.length,
+          completedReports: reports.filter((report) => report.status === 'completed').length,
+          processingReports: reports.filter((report) => report.status === 'processing' || report.status === 'pending').length,
+          failedReports: reports.filter((report) => report.status === 'failed').length,
+        }
+
+        const summary =
+          pageContext === 'history'
+            ? reports.length
+              ? `Analysis history is open with ${reports.length} recent report${reports.length === 1 ? '' : 's'} available for review.`
+              : 'Analysis history is open, but no reports are available yet.'
+            : pageContext === 'settings'
+              ? 'Settings page is open. SCOUT should answer with awareness of the user role and recent report state.'
+              : reports[0]
+                ? `Latest dashboard analysis is ${reports[0].result_label || reports[0].status} for ${reports[0].filename}.`
+                : 'Dashboard is open and waiting for the first EEG upload.'
+
+        setPageData({
+          latestReport: reports[0] ?? null,
+          recentReports: reports,
+          stats,
+          summary,
+        })
+      } catch (error) {
+        console.error('[ScoutFloating] Failed to load page context:', error)
+        setPageData(null)
+      }
+    }
+
+    void loadPageData()
+  }, [hidden, pageContext, supabase])
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
@@ -191,6 +254,7 @@ export function ScoutFloating() {
         setOpen(false)
         setIsClosing(false)
         setRole(null)
+        setPageData(null)
       }
       userIdRef.current = nextUserId
     })
@@ -426,6 +490,7 @@ export function ScoutFloating() {
               role={activeSession.role ?? null}
               reportId={activeSession.reportId ?? null}
               currentReport={activeSession.currentReport ?? null}
+              pageData={activeSession.pageData ?? pageData}
               initialMessage={activeSession.initialMessage}
               quickPrompts={quickPrompts}
             />

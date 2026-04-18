@@ -9,7 +9,7 @@ import { ScoutAvatar } from '@/app/components/scout-avatar'
 import { useScoutConversation } from '@/app/components/scout-provider'
 import { getReportExplainerOpening, type ScoutRole } from '@/lib/scout-guide'
 import { ensureUserProfile } from '@/lib/user-profile'
-import { normalizeReport, normalizeReportStatus, type ReportRecord, getReliability } from '@/lib/neurosentinel/types'
+import { normalizeReport, normalizeReportStatus, type ReportRecord, getReliabilityDetails } from '@/lib/neurosentinel/types'
 import { StatusBadge } from '../../dashboard/_components/status-badge'
 import { ReliabilityBadge } from '../../dashboard/_components/reliability-badge'
 
@@ -244,6 +244,18 @@ export default function ReportPage() {
   const quality: any = reportJson?.quality || reportJson?.signal_quality || {}
   const modelOutputs: any = reportJson?.model_outputs || {}
   const probabilityTimeline = modelOutputs?.probability_timeline
+  const reliability = getReliabilityDetails(report?.confidence_score, report?.duration_minutes, report?.quality_grade)
+  const normalizedResultLabel = (report?.result_label || '').trim().toLowerCase()
+  const isSeizureDetected =
+    (report?.event_count ?? 0) > 0 ||
+    normalizedResultLabel === 'seizure detected' ||
+    normalizedResultLabel.includes('seizure-pattern activity detected')
+  const resultCardClasses = isSeizureDetected
+    ? 'border-red-200 bg-red-50 text-red-950 shadow-xl shadow-red-100/70'
+    : 'border-emerald-200 bg-emerald-50 text-emerald-950 shadow-xl shadow-emerald-100/80'
+  const resultChipClasses = isSeizureDetected
+    ? 'bg-red-600 text-white ring-red-200'
+    : 'bg-emerald-600 text-white ring-emerald-200'
 
 
   const riskClasses = (() => {
@@ -321,7 +333,7 @@ export default function ReportPage() {
           <div className="inline-flex items-center h-9 px-3 rounded-full bg-[#F3F4F6]">
             <span className="w-1.5 h-1.5 rounded-full bg-[#0D9488] mr-[6px]" />
             <span className="text-[14px] font-medium text-[#111827] leading-none">
-              Patient
+              {role ? role.charAt(0).toUpperCase() + role.slice(1) : 'Patient'}
             </span>
           </div>
         </div>
@@ -342,6 +354,17 @@ export default function ReportPage() {
                 </div>
                 <div className="flex-1">
                   <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3">
+                    <div className={`inline-flex items-center gap-3 rounded-2xl border px-4 py-3 shadow-lg ${resultCardClasses}`}>
+                      <span className={`inline-flex items-center rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ring-2 ${resultChipClasses}`}>
+                        Result
+                      </span>
+                      <div className="flex flex-col">
+                        <span className="text-[11px] font-black uppercase tracking-[0.18em] opacity-60">Clinical outcome</span>
+                        <span className="text-[18px] font-black tracking-tight">
+                          {report.result_label || 'Analysis Pending'}
+                        </span>
+                      </div>
+                    </div>
                     <StatusBadge report={report} showBorder />
                     <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-gray-400">
                       Conf: {report.confidence_score?.toFixed(1) || '0'}%
@@ -354,17 +377,17 @@ export default function ReportPage() {
                   </div>
                   <div className="mt-3 flex flex-col gap-0.5">
                     <div className="text-[12px] text-gray-500 font-medium">
-                      <span className="text-gray-900 font-bold">Reliability is {getReliability(report.confidence_score, report.duration_minutes, report.quality_grade)}</span>
+                      <span className="text-gray-900 font-bold">Reliability is {reliability.level}</span>
                     </div>
                   </div>
                   <h1 className="mt-4 text-4xl sm:text-5xl font-black tracking-tight text-gray-900 antialiased">
-                    {report.result_label || 'Analysis Pending'}
+                    {isSeizureDetected ? 'Seizure-pattern activity detected' : 'No seizure activity detected'}
                   </h1>
                   <p className="mt-3 text-lg font-bold text-gray-400 max-w-xl">
                     Automated EEG signal processing completed. Patterns analyzed from {report.duration_minutes?.toFixed(1)} minutes of recorded data.
                   </p>
 
-                  {getReliability(report.confidence_score, report.duration_minutes, report.quality_grade) === 'Low' && (
+                  {reliability.level === 'Low' && (
                     <div className="mt-6 rounded-2xl bg-amber-50/50 p-4 border border-amber-100 inline-block text-left w-full max-w-xl">
                       <div className="text-[13px] font-bold text-amber-800 flex flex-col gap-1.5">
                         <div className="flex items-center gap-2">⚠️ Low reliability detected. This result should not be considered conclusive.</div>
@@ -375,8 +398,9 @@ export default function ReportPage() {
                         <div>
                           <div className="text-[11px] font-black uppercase tracking-widest text-[#1E293B] mb-2">Primary Limitation:</div>
                           <ul className="text-[12px] text-gray-600 space-y-1 ml-1">
-                            {(report.duration_minutes || 0) < 20 && <li>• Recording duration ({report.duration_minutes?.toFixed(1)} min) is below recommended minimum (20 min)</li>}
-                            {(!report.confidence_score || report.confidence_score < 80) && <li>• Limited model confidence in detected patterns</li>}
+                            {reliability.reasons.map((reason) => (
+                              <li key={reason}>• {reason}</li>
+                            ))}
                           </ul>
                         </div>
                         <div>

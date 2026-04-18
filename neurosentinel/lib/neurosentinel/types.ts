@@ -125,6 +125,26 @@ export type ScoutContextPayload = {
   role?: ScoutRole
   reportId?: string | null
   currentReport?: ReportRecord | null
+  pageData?: ScoutPageData | null
+}
+
+export type ScoutPageStats = {
+  totalReports: number
+  completedReports: number
+  processingReports: number
+  failedReports: number
+}
+
+export type ScoutPageData = {
+  latestReport?: ReportRecord | null
+  recentReports?: ReportRecord[]
+  stats?: ScoutPageStats | null
+  summary?: string | null
+}
+
+export type ReliabilityDetails = {
+  level: 'High' | 'Moderate' | 'Low'
+  reasons: string[]
 }
 
 export function normalizeReportStatus(status: string | null | undefined): ReportStatus {
@@ -222,4 +242,35 @@ export function getReliability(confidence?: number | null, duration?: number | n
   if (normalizedConf < 0.8) return 'Moderate'
 
   return 'High'
+}
+
+export function getReliabilityDetails(confidence?: number | null, duration?: number | null, signalQuality?: string | null): ReliabilityDetails {
+  const reasons: string[] = []
+  const level = getReliability(confidence, duration, signalQuality)
+
+  if (typeof duration === 'number' && duration > 0 && duration < 20) {
+    reasons.push(`Recording length is short at ${duration.toFixed(1)} minutes; 20+ minutes is recommended.`)
+  }
+
+  const quality = signalQuality?.toLowerCase() || 'unknown'
+  if (quality === 'poor' || quality === 'unreliable') {
+    reasons.push(`Signal quality is ${signalQuality}, which reduces confidence in the interpretation.`)
+  }
+
+  const normalizedConf = typeof confidence === 'number' ? (confidence > 1 ? confidence / 100 : confidence) : null
+  if (normalizedConf !== null && normalizedConf < 0.8) {
+    reasons.push(`Model confidence is below the preferred threshold at ${(normalizedConf * 100).toFixed(1)}%.`)
+  }
+
+  if (reasons.length === 0) {
+    if (level === 'High') {
+      reasons.push('Recording duration, signal quality, and model confidence are all in a reliable range.')
+    } else if (level === 'Moderate') {
+      reasons.push('Some supporting factors are weaker than ideal, so the result should be interpreted with caution.')
+    } else {
+      reasons.push('Multiple reliability factors are weaker than ideal, so the result should not be treated as conclusive.')
+    }
+  }
+
+  return { level, reasons }
 }

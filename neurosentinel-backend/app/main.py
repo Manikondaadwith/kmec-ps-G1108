@@ -669,6 +669,7 @@ def create_app(settings: Settings | None = None, load_model_on_startup: bool = F
                 role=payload.context.role,
                 report_id=payload.context.report_id,
                 current_report=payload.context.current_report,
+                page_data=payload.context.page_data,
                 session_history=[{"role": h.role, "content": h.content} for h in payload.history],
             )
         )

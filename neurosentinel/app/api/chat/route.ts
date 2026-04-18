@@ -32,6 +32,7 @@ export async function POST(req: Request) {
     const role = normalizeScoutRole(context.role)
     const reportId = typeof context.report_id === 'string' ? context.report_id : null
     const currentReport = context.current_report && typeof context.current_report === 'object' ? context.current_report : null
+    const pageData = context.page_data && typeof context.page_data === 'object' ? context.page_data : null
 
     // Build in-session history from frontend messages (last 10 exchanges).
     // We no longer persist chat to DB — conversations are session-only.
@@ -52,6 +53,7 @@ export async function POST(req: Request) {
           role,
           report_id: reportId,
           current_report: currentReport,
+          page_data: pageData,
         },
       }),
     })
@@ -71,13 +73,7 @@ export async function POST(req: Request) {
       })
     }
 
-    let assistantMessage = typeof payload?.message === 'string' && payload.message.trim() ? payload.message.trim() : 'I do not have a reliable answer yet.'
-
-    // If the backend threw provider failures, display a much cleaner error message
-    // instead of the bulky deterministic fallback text.
-    if (payload?.fallback && Array.isArray(payload?.provider_failures) && payload.provider_failures.length > 0) {
-      assistantMessage = "SCOUT intelligence modules are currently unresponsive. Please try again later."
-    }
+    const assistantMessage = typeof payload?.message === 'string' && payload.message.trim() ? payload.message.trim() : 'I do not have a reliable answer yet.'
 
     return NextResponse.json({
       message: assistantMessage,

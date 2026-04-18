@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useScoutConversation } from './scout-provider'
-import { type ReportRecord, type ScoutPageContext, type ScoutRole } from '@/lib/neurosentinel/types'
+import { type ReportRecord, type ScoutPageContext, type ScoutPageData, type ScoutRole } from '@/lib/neurosentinel/types'
 
 function cleanMarkdown(text: string): string {
   return text
@@ -23,6 +23,7 @@ type ScoutConversationProps = {
   role?: ScoutRole
   reportId?: string | null
   currentReport?: ReportRecord | null
+  pageData?: ScoutPageData | null
   initialMessage: string
   quickPrompts: string[]
   autoPrompt?: { content: string; visible: boolean } | null
@@ -36,6 +37,7 @@ export function ScoutConversation({
   role = null,
   reportId = null,
   currentReport = null,
+  pageData = null,
   initialMessage,
   quickPrompts,
   autoPrompt = null,
@@ -49,6 +51,7 @@ export function ScoutConversation({
     role,
     reportId,
     currentReport,
+    pageData,
     initialMessage,
   })
 
@@ -180,7 +183,7 @@ export function ScoutConversation({
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask SCOUT about this report..."
+              placeholder={page === 'report' ? 'Ask SCOUT about this report...' : 'Ask SCOUT about this page...'}
               disabled={loading}
               className="w-full rounded-2xl border border-slate-200 bg-[#F8FAFC] px-5 py-3.5 text-[14px] font-medium text-[#0F172A] outline-none transition-all placeholder:text-slate-400 focus:border-[#10B981] focus:bg-white focus:ring-4 focus:ring-[#10B981]/15 disabled:opacity-60"
             />

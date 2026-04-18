@@ -40,6 +40,7 @@ class ScoutContext:
     role: str | None
     report_id: str | None
     current_report: dict[str, Any] | None
+    page_data: dict[str, Any] | None = None
     session_history: list[dict[str, str]] | None = None
 
 
@@ -72,6 +73,34 @@ def _format_minutes(value: Any) -> str:
     return "unknown"
 
 
+def _normalize_confidence_value(value: Any) -> float | None:
+    if not isinstance(value, (int, float)):
+        return None
+    return value / 100 if value > 1 else float(value)
+
+
+def _compute_reliability(quality_grade: Any, duration_minutes: Any, confidence_score: Any) -> tuple[str, list[str]]:
+    reasons: list[str] = []
+    duration_value = float(duration_minutes) if isinstance(duration_minutes, (int, float)) else None
+    quality_value = str(quality_grade).lower() if quality_grade else "unknown"
+    normalized_conf = _normalize_confidence_value(confidence_score)
+
+    if duration_value is not None and duration_value > 0 and duration_value < 20:
+        reasons.append(f"recording duration is short at {duration_value:.1f} minutes")
+    if quality_value in {"poor", "unreliable"}:
+        reasons.append(f"signal quality is {quality_grade}")
+    if normalized_conf is not None and normalized_conf < 0.8:
+        reasons.append(f"model confidence is below target at {normalized_conf * 100:.1f}%")
+
+    if reasons:
+        return ("Low" if duration_value is not None and duration_value < 20 or quality_value in {"poor", "unreliable"} else "Moderate", reasons)
+
+    if normalized_conf is not None and normalized_conf < 0.9:
+        return ("Moderate", [f"model confidence is acceptable but not ideal at {normalized_conf * 100:.1f}%"])
+
+    return ("High", ["recording duration, signal quality, and confidence are all in a reliable range"])
+
+
 def _format_event_brief(event: dict[str, Any]) -> str:
     onset = event.get("onset_sec") or event.get("start_sec") or "?"
     duration = event.get("duration_sec") or "?"
@@ -98,14 +127,18 @@ def _collect_report_details(report: dict[str, Any]) -> dict[str, Any]:
     probability_summary = model_outputs.get("probability_summary") if isinstance(model_outputs.get("probability_summary"), dict) else {}
     top_channels = explainability.get("top_channels") if isinstance(explainability.get("top_channels"), list) else []
     top_regions = explainability.get("top_regions") if isinstance(explainability.get("top_regions"), list) else report_json.get("top_regions", [])
+    confidence_value = report.get("confidence_score")
+    duration_value = report.get("duration_minutes") or report_json.get("duration_minutes")
+    quality_grade = report.get("quality_grade") or report_json.get("quality_grade") or signal_quality.get("grade") or quality.get("dominant_grade") or quality.get("grade") or "unknown"
+    reliability_level, reliability_reasons = _compute_reliability(quality_grade, duration_value, confidence_value)
 
     return {
         "filename": report.get("filename") or report_json.get("file_name") or "this report",
         "result_label": report.get("result_label") or report_json.get("result_label") or "unknown",
         "risk_level": report.get("risk_level") or report_json.get("risk_level") or summary.get("overall_risk") or "unknown",
-        "confidence_text": _format_pct(report.get("confidence_score")),
-        "duration_text": _format_minutes(report.get("duration_minutes") or report_json.get("duration_minutes")),
-        "quality_grade": report.get("quality_grade") or report_json.get("quality_grade") or signal_quality.get("grade") or quality.get("dominant_grade") or quality.get("grade") or "unknown",
+        "confidence_text": _format_pct(confidence_value),
+        "duration_text": _format_minutes(duration_value),
+        "quality_grade": quality_grade,
         "quality_score": quality.get("mean_quality_score") or signal_quality.get("score") or report_json.get("quality_score") or "unknown",
         "event_count": report.get("event_count") or len(events) or report_json.get("event_count") or 0,
         "events": events if isinstance(events, list) else [],
@@ -119,7 +152,93 @@ def _collect_report_details(report: dict[str, Any]) -> dict[str, Any]:
         "top_regions": top_regions if isinstance(top_regions, list) else [],
         "channel_summary": report_json.get("channel_importance_summary") or "not reported",
         "recommendations": recommendations if isinstance(recommendations, list) else [],
+        "reliability_level": reliability_level,
+        "reliability_reasons": reliability_reasons,
     }
+
+
+def _format_reliability_block(details: dict[str, Any]) -> str:
+    reasons = details.get("reliability_reasons") or []
+    if reasons:
+        return f"{details['reliability_level']} reliability because " + "; ".join(reasons) + "."
+    return f"{details['reliability_level']} reliability."
+
+
+def _build_page_data_context_lines(page_data: dict[str, Any] | None) -> list[str]:
+    if not isinstance(page_data, dict):
+        return ["No structured page context was provided."]
+
+    lines: list[str] = []
+    summary = page_data.get("summary")
+    stats = page_data.get("stats") if isinstance(page_data.get("stats"), dict) else {}
+    latest_report = page_data.get("latest_report") if isinstance(page_data.get("latest_report"), dict) else None
+    recent_reports = page_data.get("recent_reports") if isinstance(page_data.get("recent_reports"), list) else []
+
+    if summary:
+        lines.append(f"Page summary: {summary}")
+
+    if stats:
+        lines.append(
+            "Page stats: "
+            f"total={stats.get('totalReports', 'unknown')}, "
+            f"completed={stats.get('completedReports', 'unknown')}, "
+            f"processing={stats.get('processingReports', 'unknown')}, "
+            f"failed={stats.get('failedReports', 'unknown')}"
+        )
+
+    if latest_report:
+        latest_details = _collect_report_details(latest_report)
+        lines.extend(
+            [
+                f"Latest page report: {latest_details['filename']}",
+                f"Latest page result: {latest_details['result_label']}",
+                f"Latest page risk: {latest_details['risk_level']}",
+                f"Latest page confidence: {latest_details['confidence_text']}",
+                f"Latest page reliability: {latest_details['reliability_level']}",
+            ]
+        )
+
+    if recent_reports:
+        lines.append(f"Recent reports available in page context: {len(recent_reports)}")
+
+    return lines or ["Structured page context is empty."]
+
+
+def _answer_page_question(page_data: dict[str, Any] | None, message: str) -> str | None:
+    if not isinstance(page_data, dict):
+        return None
+
+    query = message.lower()
+    latest_report = page_data.get("latest_report") if isinstance(page_data.get("latest_report"), dict) else None
+    stats = page_data.get("stats") if isinstance(page_data.get("stats"), dict) else {}
+    recent_reports = page_data.get("recent_reports") if isinstance(page_data.get("recent_reports"), list) else []
+    latest_details = _collect_report_details(latest_report) if latest_report else None
+
+    if latest_details and any(term in query for term in ["latest", "last report", "recent report", "current report"]):
+        return (
+            f"Your latest report is {latest_details['filename']} with result {latest_details['result_label']}, "
+            f"risk {latest_details['risk_level']}, confidence {latest_details['confidence_text']}, "
+            f"and {latest_details['reliability_level'].lower()} reliability."
+        )
+
+    if latest_details and any(term in query for term in ["reliability", "reliable", "confidence", "quality"]) and "report" not in query:
+        return (
+            f"The latest report has {latest_details['reliability_level'].lower()} reliability, "
+            f"confidence {latest_details['confidence_text']}, and quality grade {latest_details['quality_grade']}."
+        )
+
+    if any(term in query for term in ["history", "how many", "count", "reports"]):
+        if stats:
+            return (
+                f"You currently have {stats.get('totalReports', len(recent_reports))} report(s) in this page context, "
+                f"with {stats.get('completedReports', 0)} completed, "
+                f"{stats.get('processingReports', 0)} processing, and "
+                f"{stats.get('failedReports', 0)} failed."
+            )
+        if recent_reports:
+            return f"You currently have {len(recent_reports)} recent report(s) available in this page context."
+
+    return None
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -334,6 +453,68 @@ def _build_report_reply(report: dict[str, Any], role: str) -> str:
         return _build_researcher_summary(details, events, top_channels, top_regions, recommendations, probability_summary)
     else:
         return _build_clinician_summary(details, events, top_channels, top_regions, recommendations, probability_summary)
+
+
+def _answer_report_question(report: dict[str, Any], role: str, message: str) -> str | None:
+    details = _collect_report_details(report)
+    query = message.lower()
+
+    if any(term in query for term in ["reliability", "reliable", "confidence factor", "how reliable"]):
+        base = f"This report has {details['reliability_level'].lower()} reliability."
+        reasons = details["reliability_reasons"]
+        if role == "patient":
+            if reasons:
+                return base + " The main reasons are that " + ", and ".join(reasons) + "."
+            return base + " The supporting factors look strong."
+        return base + " " + _format_reliability_block(details)
+
+    if any(term in query for term in ["quality", "signal quality", "recording quality"]):
+        return (
+            f"Signal quality is graded as {details['quality_grade']} "
+            f"with a quality score of {details['quality_score']}. "
+            f"Reliability is {details['reliability_level'].lower()}."
+        )
+
+    if any(term in query for term in ["duration", "length", "how long"]):
+        return f"The analyzed recording duration is {details['duration_text']}."
+
+    if any(term in query for term in ["confidence", "certain", "how sure"]):
+        return f"Model confidence for this report is {details['confidence_text']}."
+
+    if any(term in query for term in ["risk", "danger", "severity"]):
+        return f"The report risk level is {details['risk_level']}."
+
+    if any(term in query for term in ["recommendation", "next step", "what should i do", "what do i do next"]):
+        if details["recommendations"]:
+            return "Top recommendation: " + str(details["recommendations"][0])
+        if role == "patient":
+            return _get_severity_guidance_patient(details["risk_level"], details["event_count"], details["se_flag"])
+        return _get_severity_guidance_clinician(details["risk_level"], details["event_count"], details["se_flag"])
+
+    if any(term in query for term in ["event", "seizure", "segment", "episode"]):
+        if details["events"]:
+            return f"The report flagged {details['event_count']} event(s). Representative event: {_format_event_brief(details['events'][0])}."
+        return "No seizure events survived post-processing in this report."
+
+    if any(term in query for term in ["region", "brain region", "where", "channel"]):
+        parts: list[str] = []
+        if details["top_regions"]:
+            if isinstance(details["top_regions"][0], (list, tuple)):
+                region_text = ", ".join(f"{name} ({score:.3f})" for name, score in details["top_regions"][:3])
+            else:
+                region_text = ", ".join(str(region) for region in details["top_regions"][:3])
+            parts.append(f"Top regions: {region_text}.")
+        if details["top_channels"]:
+            channel_text = ", ".join(f"{name} ({score:.3f})" for name, score in details["top_channels"][:3])
+            parts.append(f"Top channels: {channel_text}.")
+        if parts:
+            return " ".join(parts)
+        return "Regional and channel explainability details are not available for this report."
+
+    if any(term in query for term in ["summary", "overall", "full report", "explain this"]):
+        return _build_report_reply(report, role)
+
+    return None
 
 
 def _build_patient_summary(
@@ -651,6 +832,12 @@ def _deterministic_fallback(context: ScoutContext, user_profile: dict[str, Any] 
         return "Start on the dashboard, upload an EDF file, and NeuroSentinel will create a pending report immediately while the backend analyzes the recording asynchronously."
     if any(term in query for term in ["memory", "remember", "history", "chat"]):
         return "SCOUT keeps chat messages for this session only. When you log out or start a new session, the conversation resets."
+    report_specific_answer = _answer_report_question((report or context.current_report), role, context.message) if (report or context.current_report) else None
+    if report_specific_answer:
+        return report_specific_answer
+    page_specific_answer = _answer_page_question(context.page_data, context.message)
+    if page_specific_answer:
+        return page_specific_answer
     if _is_report_summary_intent(context.message, report or context.current_report):
         return _build_report_reply((report or context.current_report), role)  # type: ignore[arg-type]
 
@@ -804,6 +991,8 @@ class ScoutService:
                     f"Confidence: {details['confidence_text']}",
                     f"Duration: {details['duration_text']}",
                     f"Quality: {details['quality_grade']} ({details['quality_score']}/1.0)",
+                    f"Reliability: {details['reliability_level']}",
+                    f"Reliability reasons: {'; '.join(details['reliability_reasons'])}",
                     f"Trend: {details['trend']}",
                     f"Domain shift: {details['domain_shift']}",
                 ]
@@ -825,6 +1014,8 @@ class ScoutService:
                 report_context_lines.append(f"Primary recommendation: {details['recommendations'][0]}")
         else:
             report_context_lines.append("No current report is open.")
+
+        page_context_lines = _build_page_data_context_lines(context.page_data)
 
         # Role-specific formatting rules
         format_rules = {
@@ -866,6 +1057,8 @@ class ScoutService:
                 "GLOBAL RULE: Unless you are generating the initial comprehensive auto-summary of a new EEG report, YOUR RESPONSES MUST BE EXTREMELY CONCISE, PRECISE, AND STRAIGHT TO THE POINT. No filler words, no lengthy paragraphs.",
                 "--- CURRENT REPORT ---",
                 *report_context_lines,
+                "--- PAGE CONTEXT ---",
+                *page_context_lines,
                 "--- RECENT REPORTS ---",
                 *reports_summary,
                 "--- CHAT HISTORY ---",

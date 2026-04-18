@@ -10,6 +10,7 @@ class ScoutChatContext(BaseModel):
     role: str | None = None
     report_id: str | None = None
     current_report: dict[str, Any] | None = None
+    page_data: dict[str, Any] | None = None
 
 
 class ScoutChatHistoryItem(BaseModel):
