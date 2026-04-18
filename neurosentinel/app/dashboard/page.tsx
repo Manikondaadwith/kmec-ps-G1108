@@ -57,6 +57,7 @@ export default function DashboardPage() {
     void loadDashboardContext()
   }, [loadDashboardContext])
 
+  useEffect(() => {
     const status = normalizeReportStatus(latestAnalysis?.status)
     // Only poll the DB when a report is still pending/processing AND no active global analysis
     if (status !== 'pending' && status !== 'processing') return
@@ -67,7 +68,7 @@ export default function DashboardPage() {
     }, 5000)
 
     return () => window.clearInterval(interval)
-  }, [latestAnalysis, loadDashboardContext])
+  }, [latestAnalysis, loadDashboardContext, currentAnalysis])
 
   const latestStatus = normalizeReportStatus(latestAnalysis?.status)
 
