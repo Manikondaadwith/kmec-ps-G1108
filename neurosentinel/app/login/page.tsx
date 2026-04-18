@@ -255,6 +255,15 @@ export default function LoginPage() {
         }
         return
       }
+
+      if (forgotStep === 'success') {
+        setView('signin')
+        setForgotStep('request')
+        setError(null)
+        setInfoMessage(null)
+        return
+      }
+
       return
     }
 
