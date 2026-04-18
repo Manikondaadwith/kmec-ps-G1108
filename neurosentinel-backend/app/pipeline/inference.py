@@ -222,6 +222,24 @@ def analyze_preprocessed_windows(
     output_shift = compute_output_domain_shift(raw_probabilities)
     events, high, low, post_process_config = domain_adaptive_post_process(raw_probabilities, output_shift, stride_sec=1.0)
 
+    # Seizure-aware fallback: if strict PP killed all events but model clearly
+    # detects seizures, retry with relaxed thresholds. This prevents domain-shift
+    # filtering from suppressing real seizures on foreign seizure-heavy recordings
+    # (e.g. Helsinki neonatal EEG).
+    if not events and output_shift >= 0.4:
+        raw_max = float(raw_probabilities.max())
+        seizure_ratio = float((raw_probabilities > 0.5).mean())
+        if raw_max > 0.5 or seizure_ratio > 0.05:
+            logger.info(
+                "Post-processing killed all events at domain_shift=%.2f but model shows seizure signal "
+                "(max=%.3f, ratio=%.3f). Retrying with relaxed thresholds.",
+                output_shift, raw_max, seizure_ratio,
+            )
+            events, high, low, post_process_config = domain_adaptive_post_process(
+                raw_probabilities, 0.0, stride_sec=1.0  # force permissive tier
+            )
+            post_process_config["threshold_mode"] += "_seizure_fallback"
+
     shift_label = "NONE" if output_shift < 0.15 else "LOW" if output_shift < 0.4 else "MODERATE" if output_shift < 0.7 else "HIGH"
     duration_hours = metadata.get("duration_sec", 0.0) / 3600 if metadata.get("duration_sec") else 0.0
     return {
@@ -357,6 +375,21 @@ def infer_from_data_chunked(
     # Post-processing (identical to non-chunked path)
     output_shift = compute_output_domain_shift(raw_probabilities)
     events, high, low, post_process_config = domain_adaptive_post_process(raw_probabilities, output_shift, stride_sec=1.0)
+
+    # Seizure-aware fallback (same as non-chunked path)
+    if not events and output_shift >= 0.4:
+        raw_max = float(raw_probabilities.max())
+        seizure_ratio = float((raw_probabilities > 0.5).mean())
+        if raw_max > 0.5 or seizure_ratio > 0.05:
+            logger.info(
+                "[chunked] Post-processing killed all events at domain_shift=%.2f but model shows seizure signal "
+                "(max=%.3f, ratio=%.3f). Retrying with relaxed thresholds.",
+                output_shift, raw_max, seizure_ratio,
+            )
+            events, high, low, post_process_config = domain_adaptive_post_process(
+                raw_probabilities, 0.0, stride_sec=1.0
+            )
+            post_process_config["threshold_mode"] += "_seizure_fallback"
 
     shift_label = "NONE" if output_shift < 0.15 else "LOW" if output_shift < 0.4 else "MODERATE" if output_shift < 0.7 else "HIGH"
     duration_hours = metadata.get("duration_sec", 0.0) / 3600 if metadata.get("duration_sec") else 0.0
