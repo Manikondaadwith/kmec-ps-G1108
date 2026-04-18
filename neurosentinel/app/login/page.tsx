@@ -175,8 +175,14 @@ function InputField({ id, label, type, value, onChange, placeholder, autoComplet
 ───────────────────────────────────────────────── */
 export default function LoginPage() {
   const [view, setView] = useState<'signin' | 'forgot'>('signin')
+  const [forgotStep, setForgotStep] = useState<'request' | 'verify' | 'success'>('request')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [otp, setOtp] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmNewPassword, setConfirmNewPassword] = useState('')
+  const [verificationToken, setVerificationToken] = useState<string | null>(null)
+  
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [hoveredBtn, setHoveredBtn] = useState(false)
@@ -196,21 +202,59 @@ export default function LoginPage() {
     setInfoMessage(null)
 
     if (view === 'forgot') {
-      if (!email) {
-        setError('Please enter your email address.')
+      if (forgotStep === 'request') {
+        if (!email) {
+          setError('Please enter your email address.')
+          return
+        }
+        setLoading(true)
+        try {
+          const res = await fetch('/api/auth/reset-password/request', {
+            method: 'POST',
+            body: JSON.stringify({ email }),
+            headers: { 'Content-Type': 'application/json' },
+          })
+          const data = await res.json()
+          if (!res.ok) throw new Error(data.error || 'Unable to send recovery code.')
+          
+          setVerificationToken(data.verificationToken)
+          setForgotStep('verify')
+          setInfoMessage('Verification code sent to your email.')
+        } catch (err: any) {
+          setError(err.message)
+        } finally {
+          setLoading(false)
+        }
         return
       }
-      setLoading(true)
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/auth/update-password`,
-      })
-      if (resetError) {
-        setError(resetError.message)
-      } else {
-        setInfoMessage('Password reset instructions sent. Please check your email.')
-        setView('signin')
+
+      if (forgotStep === 'verify') {
+        if (!otp || !newPassword || !confirmNewPassword) {
+          setError('Please fill in all fields.')
+          return
+        }
+        if (newPassword !== confirmNewPassword) {
+          setError('Passwords do not match.')
+          return
+        }
+        setLoading(true)
+        try {
+          const res = await fetch('/api/auth/reset-password/confirm', {
+            method: 'POST',
+            body: JSON.stringify({ email, otp, token: verificationToken, newPassword }),
+            headers: { 'Content-Type': 'application/json' },
+          })
+          const data = await res.json()
+          if (!res.ok) throw new Error(data.error || 'Unable to reset password.')
+          
+          setForgotStep('success')
+        } catch (err: any) {
+          setError(err.message)
+        } finally {
+          setLoading(false)
+        }
+        return
       }
-      setLoading(false)
       return
     }
 
@@ -271,10 +315,14 @@ export default function LoginPage() {
               className="text-[20px] font-bold"
               style={{ color: '#0F172A', letterSpacing: '-0.2px' }}
             >
-              {view === 'forgot' ? 'Reset Password' : 'Welcome back'}
+              {view === 'signin' ? 'Welcome back' : 
+               forgotStep === 'request' ? 'Reset Password' :
+               forgotStep === 'verify' ? 'Verify Code' : 'Password Reset'}
             </h2>
             <p className="mt-1.5 text-[14px] font-medium" style={{ color: '#334155' }}>
-              {view === 'forgot' ? 'Enter your email to receive recovery instructions' : 'Sign in to your NeuroSentinel AI account'}
+              {view === 'signin' ? 'Sign in to your NeuroSentinel AI account' :
+               forgotStep === 'request' ? 'Enter your email to receive recovery instructions' :
+               forgotStep === 'verify' ? 'Enter the code and your new password' : 'Your password has been updated'}
             </p>
           </div>
 
@@ -282,52 +330,124 @@ export default function LoginPage() {
           <div className="mb-2" style={{ height: '2px', borderRadius: '1px', background: 'linear-gradient(90deg, #0EA5A4, #10B981, transparent)' }} />
 
           {/* Fields */}
-          <InputField
-            id="email"
-            label="Email Address"
-            type="email"
-            value={email}
-            onChange={setEmail}
-            placeholder="your@email.com"
-            autoComplete="email"
-            disabled={loading}
-            icon={
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="2" y="4" width="20" height="16" rx="2" />
-                <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
-              </svg>
-            }
-          />
-
-          {view === 'signin' && (
-            <div className="flex flex-col gap-1">
-              <InputField
-                id="password"
-                label="Password"
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={setPassword}
-                placeholder="••••••••"
-                autoComplete="current-password"
-                disabled={loading}
-                icon={
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                  </svg>
-                }
-                suffix={<EyeButton visible={showPassword} onClick={() => setShowPassword((v) => !v)} />}
-              />
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => setView('forgot')}
-                  className="text-[12px] font-semibold text-[#0EA5A4] hover:underline"
-                >
-                  Forgot password?
-                </button>
+          {forgotStep === 'success' ? (
+            <div className="flex flex-col items-center gap-3 py-4 text-center">
+              <div 
+                className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 text-[32px]"
+                style={{ border: '2px solid rgba(16, 185, 129, 0.1)' }}
+              >
+                ✅
               </div>
+              <p className="text-[14px] font-medium text-emerald-800">
+                Your password has been successfully updated. You can now sign in with your new credentials.
+              </p>
             </div>
+          ) : (
+            <>
+              {(view === 'signin' || forgotStep === 'request') && (
+                <InputField
+                  id="email"
+                  label="Email Address"
+                  type="email"
+                  value={email}
+                  onChange={setEmail}
+                  placeholder="your@email.com"
+                  autoComplete="email"
+                  disabled={loading}
+                  icon={
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="2" y="4" width="20" height="16" rx="2" />
+                      <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+                    </svg>
+                  }
+                />
+              )}
+
+              {view === 'signin' && (
+                <div className="flex flex-col gap-1">
+                  <InputField
+                    id="password"
+                    label="Password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={setPassword}
+                    placeholder="••••••••"
+                    autoComplete="current-password"
+                    disabled={loading}
+                    icon={
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                      </svg>
+                    }
+                    suffix={<EyeButton visible={showPassword} onClick={() => setShowPassword((v) => !v)} />}
+                  />
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setView('forgot')
+                        setForgotStep('request')
+                        setError(null)
+                      }}
+                      className="text-[12px] font-semibold text-[#0EA5A4] hover:underline"
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {view === 'forgot' && forgotStep === 'verify' && (
+                <div className="flex flex-col gap-5">
+                  <InputField
+                    id="otp"
+                    label="Verification Code (6-digits)"
+                    type="text"
+                    value={otp}
+                    onChange={setOtp}
+                    placeholder="000000"
+                    disabled={loading}
+                    icon={
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                      </svg>
+                    }
+                  />
+                  <InputField
+                    id="newPassword"
+                    label="New Password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={newPassword}
+                    onChange={setNewPassword}
+                    placeholder="••••••••"
+                    disabled={loading}
+                    icon={
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                      </svg>
+                    }
+                    suffix={<EyeButton visible={showPassword} onClick={() => setShowPassword((v) => !v)} />}
+                  />
+                  <InputField
+                    id="confirmNewPassword"
+                    label="Confirm New Password"
+                    type="password"
+                    value={confirmNewPassword}
+                    onChange={setConfirmNewPassword}
+                    placeholder="••••••••"
+                    disabled={loading}
+                    icon={
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                        <polyline points="22 4 12 14.01 9 11.01" />
+                      </svg>
+                    }
+                  />
+                </div>
+              )}
+            </>
           )}
 
           {/* Info / Error banners */}
@@ -391,10 +511,13 @@ export default function LoginPage() {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                   </svg>
-                  {view === 'forgot' ? 'Sending Reset Link...' : 'Authenticating...'}
+                  {view === 'forgot' ? (forgotStep === 'request' ? 'Sending Code...' : 'Updating Password...') : 'Authenticating...'}
                 </>
               ) : (
-                view === 'forgot' ? 'Send Reset Link' : 'Sign In →'
+                view === 'forgot' ? (
+                  forgotStep === 'request' ? 'Send Reset Code' : 
+                  forgotStep === 'verify' ? 'Reset Password' : 'Go to Sign In'
+                ) : 'Sign In →'
               )}
             </span>
           </button>
@@ -403,13 +526,19 @@ export default function LoginPage() {
             <button
               type="button"
               onClick={() => {
+                if (forgotStep === 'verify') {
+                  setForgotStep('request')
+                  setError(null)
+                  return
+                }
                 setView('signin')
+                setForgotStep('request')
                 setError(null)
               }}
               className="text-center text-[13px] font-semibold transition-colors"
               style={{ color: '#64748B' }}
             >
-              ← Back to Sign In
+              {forgotStep === 'success' ? '' : '← Back to Sign In'}
             </button>
           ) : (
             <>

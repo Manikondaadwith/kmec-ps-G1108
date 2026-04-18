@@ -175,3 +175,75 @@ export async function createVerifiedSignup(email: string, password: string) {
     throw new Error(profileError.message)
   }
 }
+export async function sendResetPasswordOtp(email: string) {
+  const normalizedEmail = normalizeEmail(email)
+  const otp = generateOtp()
+  const expiresAt = Date.now() + OTP_TTL_MS
+
+  const transporter = createTransport()
+  const from = process.env.GMAIL_USER || 'manikondaadwith6@gmail.com'
+
+  await transporter.sendMail({
+    from: `"NeuroSentinel AI" <${from}>`,
+    to: normalizedEmail,
+    subject: 'Your NeuroSentinel AI password reset code',
+    text: `Your NeuroSentinel AI password reset code is ${otp}. It expires in 10 minutes.`,
+    html: `
+      <div style="font-family:Arial,sans-serif;background:#0A0A0F;color:#E8F7FF;padding:24px">
+        <h2 style="margin:0 0 12px;color:#00F0FF">NeuroSentinel AI</h2>
+        <p style="margin:0 0 16px;color:#B8C7D1">You requested to reset your password. Use the verification code below to proceed.</p>
+        <div style="font-size:32px;font-weight:700;letter-spacing:8px;padding:16px 20px;border-radius:14px;background:#111827;display:inline-block;color:#FFFFFF">
+          ${otp}
+        </div>
+        <p style="margin:16px 0 0;color:#8FA4B3">This code expires in 10 minutes. If you did not request this, please ignore this email.</p>
+      </div>
+    `,
+  })
+
+  const encodedPayload = encodePayload({
+    email: normalizedEmail,
+    otpHash: hashOtp(normalizedEmail, otp),
+    expiresAt,
+  })
+
+  return `${encodedPayload}.${signPayload(encodedPayload)}`
+}
+
+export async function confirmPasswordReset(email: string, otp: string, verificationToken: string, newPassword: string) {
+  const normalizedEmail = normalizeEmail(email)
+  const payload = decodePayload(verificationToken)
+
+  if (payload.email !== normalizedEmail) {
+    throw new Error('This verification code does not match the current email.')
+  }
+
+  if (payload.expiresAt < Date.now()) {
+    throw new Error('This verification code has expired. Please request a new one.')
+  }
+
+  if (payload.otpHash !== hashOtp(normalizedEmail, otp)) {
+    throw new Error('Invalid verification code.')
+  }
+
+  const admin = getAdminClient()
+  
+  // 1. Find user ID from public.users (shared ID with auth.users)
+  const { data: userData, error: userError } = await admin
+    .from('users')
+    .select('id')
+    .eq('email', normalizedEmail)
+    .maybeSingle()
+
+  if (userError || !userData) {
+    throw new Error('Unable to find user account.')
+  }
+
+  // 2. Update password via admin auth
+  const { error: updateError } = await admin.auth.admin.updateUserById(userData.id, {
+    password: newPassword,
+  })
+
+  if (updateError) {
+    throw new Error(updateError.message)
+  }
+}
