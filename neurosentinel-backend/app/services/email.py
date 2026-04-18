@@ -1,7 +1,7 @@
 """Email notification service for NeuroSentinel AI.
 
 Sends EEG report completion notifications with the clinical PDF attached.
-Supports Resend API (preferred) or SMTP fallback.
+Supports Resend API (preferred), Vercel relay, or SMTP fallback.
 """
 from __future__ import annotations
 
@@ -17,13 +17,18 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-# ─── Email templates ───────────────────────────────────────────────
-_SUBJECT_SEIZURE = "NeuroSentinel AI — Seizure Activity Detected in {filename}"
-_SUBJECT_NO_SEIZURE = "NeuroSentinel AI — No Seizure Activity Detected in {filename}"
-_SUBJECT_TIMEOUT = "NeuroSentinel AI — EEG Analysis Timed Out for {filename}"
-_SUBJECT_FAILED = "NeuroSentinel AI — EEG Analysis Failed for {filename}"
-_SUBJECT_ABORTED = "NeuroSentinel AI — EEG Analysis Aborted for {filename}"
-_SUBJECT_SIZE = "NeuroSentinel AI — File Size Warning for {filename}"
+DEFAULT_APP_URL = "https://neuro-sentinel-ai-6vfv.vercel.app"
+
+_SUBJECT_SEIZURE = "NeuroSentinel AI - Seizure Activity Detected in {filename}"
+_SUBJECT_NO_SEIZURE = "NeuroSentinel AI - No Seizure Activity Detected in {filename}"
+_SUBJECT_TIMEOUT = "NeuroSentinel AI - EEG Analysis Timed Out for {filename}"
+_SUBJECT_FAILED = "NeuroSentinel AI - EEG Analysis Failed for {filename}"
+_SUBJECT_ABORTED = "NeuroSentinel AI - EEG Analysis Aborted for {filename}"
+_SUBJECT_SIZE = "NeuroSentinel AI - File Size Warning for {filename}"
+
+
+def _normalize_app_url(app_url: str | None) -> str:
+    return (app_url or DEFAULT_APP_URL).rstrip("/")
 
 
 def _build_patient_email(report: dict[str, Any], filename: str, app_url: str) -> str:
@@ -36,8 +41,8 @@ def _build_patient_email(report: dict[str, Any], filename: str, app_url: str) ->
 
     if seizure_detected:
         opening = (
-            f"Your EEG recording \"{filename}\" has been analysed by NeuroSentinel AI. "
-            f"The analysis has detected seizure-like activity — {event_count} segment(s) were flagged "
+            f'Your EEG recording "{filename}" has been analysed by NeuroSentinel AI. '
+            f"The analysis has detected seizure-like activity - {event_count} segment(s) were flagged "
             f"with an overall risk level of {risk} and model confidence of {confidence_text}."
         )
         action = (
@@ -46,7 +51,7 @@ def _build_patient_email(report: dict[str, Any], filename: str, app_url: str) ->
         )
     else:
         opening = (
-            f"Your EEG recording \"{filename}\" has been analysed by NeuroSentinel AI. "
+            f'Your EEG recording "{filename}" has been analysed by NeuroSentinel AI. '
             f"The good news is that no seizure activity was detected in this recording. "
             f"The overall risk level is {risk} with model confidence of {confidence_text}."
         )
@@ -92,6 +97,7 @@ def _build_clinician_email(report: dict[str, Any], filename: str, app_url: str) 
     confidence = report.get("confidence_score")
     confidence_text = f"{confidence:.1f}%" if isinstance(confidence, (int, float)) else "N/A"
     quality = report.get("quality_grade", "Unknown")
+    result_color = "#FF3366" if "seizure" in result.lower() else "#00FF9D"
 
     return f"""
 <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0A0A0F; color: #E8E8F0; padding: 32px; border-radius: 16px;">
@@ -103,7 +109,7 @@ def _build_clinician_email(report: dict[str, Any], filename: str, app_url: str) 
     <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 20px; margin-bottom: 20px;">
         <table style="width: 100%; font-size: 13px; color: #C8C8D4; border-collapse: collapse;">
             <tr><td style="padding: 4px 0; color: #8888A0;">File</td><td style="padding: 4px 0; text-align: right;">{filename}</td></tr>
-            <tr><td style="padding: 4px 0; color: #8888A0;">Result</td><td style="padding: 4px 0; text-align: right; font-weight: 600; color: {'#FF3366' if 'seizure' in result.lower() else '#00FF9D'};">{result}</td></tr>
+            <tr><td style="padding: 4px 0; color: #8888A0;">Result</td><td style="padding: 4px 0; text-align: right; font-weight: 600; color: {result_color};">{result}</td></tr>
             <tr><td style="padding: 4px 0; color: #8888A0;">Risk</td><td style="padding: 4px 0; text-align: right;">{risk}</td></tr>
             <tr><td style="padding: 4px 0; color: #8888A0;">Events</td><td style="padding: 4px 0; text-align: right;">{event_count}</td></tr>
             <tr><td style="padding: 4px 0; color: #8888A0;">Confidence</td><td style="padding: 4px 0; text-align: right;">{confidence_text}</td></tr>
@@ -145,10 +151,10 @@ def _build_researcher_email(report: dict[str, Any], filename: str, app_url: str)
         </p>
     </div>
 
-    <p style="font-size: 13px; color: #C8C8D4; margin: 0 0 16px 0;">For the full technical breakdown — including probability timelines, channel importance rankings, attention heatmaps, band power analysis, and SCOUT AI methodology notes — open the report in the application.</p>
+    <p style="font-size: 13px; color: #C8C8D4; margin: 0 0 16px 0;">For the full technical breakdown - including probability timelines, channel importance rankings, attention heatmaps, band power analysis, and SCOUT AI methodology notes - open the report in the application.</p>
 
     <div style="text-align: center; margin: 24px 0;">
-        <a href="{_APP_URL}/dashboard/eeg-reports" style="display: inline-block; background: linear-gradient(135deg, #00F0FF, #818CF8); color: #0A0A0F; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 12px; text-decoration: none; letter-spacing: 0.5px;">Open in NeuroSentinel AI</a>
+        <a href="{app_url}/dashboard/eeg-reports" style="display: inline-block; background: linear-gradient(135deg, #00F0FF, #818CF8); color: #0A0A0F; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 12px; text-decoration: none; letter-spacing: 0.5px;">Open in NeuroSentinel AI</a>
     </div>
 
     <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 24px 0;" />
@@ -170,7 +176,7 @@ def _build_timeout_email(filename: str, app_url: str) -> str:
             The analysis of your EEG recording <strong>{filename}</strong> has timed out after 1 hour of processing.
         </p>
         <p style="font-size: 14px; line-height: 1.7; color: #C8C8D4; margin: 0;">
-            This typically happens with exceptionally long or complex recordings that exceed our current automated processing limits. 
+            This typically happens with exceptionally long or complex recordings that exceed our current automated processing limits.
             We recommend splitting the recording into smaller segments and re-uploading them, or contacting our technical support team for assistance.
         </p>
     </div>
@@ -268,19 +274,13 @@ def _build_size_email(filename: str, app_url: str, limit_mb: int) -> str:
 """
 
 
-# ─── Email sending ─────────────────────────────────────────────────
-
 def _build_email_html(report: dict[str, Any], filename: str, role: str | None, app_url: str) -> str:
-    """Select the right email template based on user role."""
     role_lower = (role or "").lower()
     if role_lower == "patient":
-        return _build_patient_email(report, filename, app_url=app_url)
-    elif role_lower == "researcher":
-        return _build_researcher_email(report, filename, app_url=app_url)
-    return _build_clinician_email(report, filename, app_url=app_url)
-
-
-def _build_patient_email(report: dict[str, Any], filename: str, app_url: str) -> str:
+      return _build_patient_email(report, filename, app_url)
+    if role_lower == "researcher":
+      return _build_researcher_email(report, filename, app_url)
+    return _build_clinician_email(report, filename, app_url)
 
 
 def _get_subject(report: dict[str, Any], filename: str) -> str:
@@ -300,17 +300,18 @@ def send_report_email_relay(
     report: dict[str, Any],
     filename: str,
     role: str | None,
+    app_url: str = DEFAULT_APP_URL,
     pdf_bytes: bytes | None = None,
 ) -> tuple[bool, str | None]:
     """Send report notification via Vercel proxy relay (HTTP)."""
     subject = _get_subject(report, filename)
-    html = _build_email_html(report, filename, role, app_url=api_url if "vercel.app" in api_url else "https://neuro-sentinel-ai-6vfv.vercel.app") # Fallback to prod if relay URL is generic
+    html = _build_email_html(report, filename, role, _normalize_app_url(app_url))
 
-    payload = {
+    payload: dict[str, Any] = {
         "to_email": to_email,
         "subject": subject,
         "html": html,
-        "filename": f"NeuroSentinel_Report_{filename.replace('.edf', '')}.pdf"
+        "filename": f"NeuroSentinel_Report_{filename.replace('.edf', '')}.pdf",
     }
 
     if pdf_bytes:
@@ -329,7 +330,7 @@ def send_report_email_relay(
         if response.status_code == 200:
             logger.info("Report email sent to %s via Vercel Relay for file %s", to_email, filename)
             return True, None
-        
+
         err = f"Vercel Relay returned {response.status_code}: {response.text[:200]}"
         logger.warning(err)
         return False, err
@@ -347,17 +348,18 @@ def send_report_email_resend(
     report: dict[str, Any],
     filename: str,
     role: str | None,
+    app_url: str = DEFAULT_APP_URL,
     pdf_bytes: bytes | None = None,
-) -> bool:
+) -> tuple[bool, str | None]:
     """Send report notification via Resend HTTP API."""
     subject = _get_subject(report, filename)
-    html = _build_email_html(report, filename, role)
+    html = _build_email_html(report, filename, role, _normalize_app_url(app_url))
 
     payload: dict[str, Any] = {
         "from": from_email,
         "to": [to_email],
         "subject": subject,
-        "html": _build_email_html(report, filename, role, app_url="https://neuro-sentinel-ai-6vfv.vercel.app"),
+        "html": html,
     }
 
     if pdf_bytes:
@@ -402,19 +404,18 @@ def send_report_email_smtp(
     report: dict[str, Any],
     filename: str,
     role: str | None,
+    app_url: str = DEFAULT_APP_URL,
     pdf_bytes: bytes | None = None,
 ) -> tuple[bool, str | None]:
     """Send report notification via SMTP."""
     subject = _get_subject(report, filename)
-    html = _build_email_html(report, filename, role, app_url="https://neuro-sentinel-ai-6vfv.vercel.app")
+    html = _build_email_html(report, filename, role, _normalize_app_url(app_url))
 
     msg = MIMEMultipart("mixed")
     msg["From"] = from_email
     msg["To"] = to_email
     msg["Subject"] = subject
-
-    html_part = MIMEText(html, "html", "utf-8")
-    msg.attach(html_part)
+    msg.attach(MIMEText(html, "html", "utf-8"))
 
     if pdf_bytes:
         pdf_part = MIMEApplication(pdf_bytes, _subtype="pdf")
@@ -425,11 +426,9 @@ def send_report_email_smtp(
         )
         msg.attach(pdf_part)
 
-    # Clean SMTP password (remove spaces common in Gmail app passwords)
     clean_password = smtp_password.replace(" ", "") if smtp_password else ""
 
     try:
-        # Auto-detect SSL/TLS based on port
         if smtp_port == 465:
             server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=30)
         else:
@@ -469,14 +468,16 @@ def send_report_notification(
     smtp_user: str | None = None,
     smtp_password: str | None = None,
     smtp_from_email: str | None = None,
+    app_url: str = DEFAULT_APP_URL,
 ) -> tuple[bool, str | None]:
-    """Send report completion notification. Tries Resend first, then SMTP fallback."""
+    """Send report completion notification. Tries Resend first, then relay, then SMTP."""
     if not to_email:
-        err = "No email address provided — skipping report notification."
+        err = "No email address provided - skipping report notification."
         logger.warning(err)
         return False, err
 
-    # 1. Try Resend first
+    normalized_app_url = _normalize_app_url(app_url)
+
     if resend_api_key:
         return send_report_email_resend(
             api_key=resend_api_key,
@@ -485,10 +486,10 @@ def send_report_notification(
             report=report,
             filename=filename,
             role=role,
+            app_url=normalized_app_url,
             pdf_bytes=pdf_bytes,
         )
 
-    # 2. Try Vercel Relay next (Bypasses HF SMTP blocks)
     if relay_api_url:
         return send_report_email_relay(
             api_url=relay_api_url,
@@ -497,10 +498,10 @@ def send_report_notification(
             report=report,
             filename=filename,
             role=role,
+            app_url=normalized_app_url,
             pdf_bytes=pdf_bytes,
         )
 
-    # 3. Try SMTP fallback
     if smtp_host and smtp_user and smtp_password:
         return send_report_email_smtp(
             smtp_host=smtp_host,
@@ -512,74 +513,19 @@ def send_report_notification(
             report=report,
             filename=filename,
             role=role,
+            app_url=normalized_app_url,
             pdf_bytes=pdf_bytes,
         )
 
-    logger.info("No email provider configured (RESEND_API_KEY or SMTP_*). Skipping email notification for %s.", filename)
+    logger.info("No email provider configured (RESEND_API_KEY, RELAY_API_URL, or SMTP_*). Skipping email notification for %s.", filename)
     return False, "No email provider configured."
 
 
-    smtp_password: str | None = None,
-    smtp_from_email: str | None = None,
-    app_url: str = "https://neuro-sentinel-ai-6vfv.vercel.app",
-) -> bool:
-    """Send notification when analysis times out."""
-    if not to_email:
-        return False
-
-    subject = _SUBJECT_TIMEOUT.format(filename=filename)
-    html = _build_timeout_email(filename, app_url)
-
-    # Try Resend
-    if resend_api_key:
-        try:
-            response = httpx.post(
-                "https://api.resend.com/emails",
-                headers={
-                    "Authorization": f"Bearer {resend_api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "from": resend_from_email,
-                    "to": [to_email],
-                    "subject": subject,
-                    "html": html,
-                },
-                timeout=30.0,
-            )
-            return response.status_code in (200, 201)
-        except Exception:
-            pass
-
-    # Try SMTP
-    if smtp_host and smtp_user and smtp_password:
-        try:
-            msg = MIMEMultipart("mixed")
-            msg["From"] = smtp_from_email or smtp_user
-            msg["To"] = to_email
-            msg["Subject"] = subject
-            msg.attach(MIMEText(html, "html", "utf-8"))
-
-            server = smtplib.SMTP(smtp_host, smtp_port, timeout=30)
-            server.ehlo()
-            server.starttls()
-            server.ehlo()
-            server.login(smtp_user, smtp_password)
-            server.send_message(msg)
-            server.quit()
-            return True
-        except Exception:
-            pass
-
-    return False
-
-
-def send_failure_notification(
+def send_timeout_notification(
     *,
     to_email: str,
     filename: str,
-    error_msg: str | None = None,
-    app_url: str = "https://neuro-sentinel-ai-6vfv.vercel.app",
+    app_url: str = DEFAULT_APP_URL,
     resend_api_key: str | None = None,
     resend_from_email: str = "NeuroSentinel AI <noreply@neurosentinel.app>",
     smtp_host: str | None = None,
@@ -588,14 +534,44 @@ def send_failure_notification(
     smtp_password: str | None = None,
     smtp_from_email: str | None = None,
 ) -> bool:
-    """Send notification when analysis fails."""
+    if not to_email:
+        return False
+
+    subject = _SUBJECT_TIMEOUT.format(filename=filename)
+    html = _build_timeout_email(filename, _normalize_app_url(app_url))
+    return _send_generic_notification(
+        to_email=to_email,
+        subject=subject,
+        html=html,
+        resend_api_key=resend_api_key,
+        resend_from_email=resend_from_email,
+        smtp_host=smtp_host,
+        smtp_port=smtp_port,
+        smtp_user=smtp_user,
+        smtp_password=smtp_password,
+        smtp_from_email=smtp_from_email,
+    )
+
+
+def send_failure_notification(
+    *,
+    to_email: str,
+    filename: str,
+    error_msg: str | None = None,
+    app_url: str = DEFAULT_APP_URL,
+    resend_api_key: str | None = None,
+    resend_from_email: str = "NeuroSentinel AI <noreply@neurosentinel.app>",
+    smtp_host: str | None = None,
+    smtp_port: int = 587,
+    smtp_user: str | None = None,
+    smtp_password: str | None = None,
+    smtp_from_email: str | None = None,
+) -> bool:
     if not to_email:
         return False
 
     subject = _SUBJECT_FAILED.format(filename=filename)
-    html = _build_failure_email(filename, app_url, error_msg)
-
-    # Re-use logic or just implement simple Resend/SMTP blocks
+    html = _build_failure_email(filename, _normalize_app_url(app_url), error_msg)
     return _send_generic_notification(
         to_email=to_email,
         subject=subject,
@@ -614,7 +590,7 @@ def send_aborted_notification(
     *,
     to_email: str,
     filename: str,
-    app_url: str = "https://neuro-sentinel-ai-6vfv.vercel.app",
+    app_url: str = DEFAULT_APP_URL,
     resend_api_key: str | None = None,
     resend_from_email: str = "NeuroSentinel AI <noreply@neurosentinel.app>",
     smtp_host: str | None = None,
@@ -623,13 +599,11 @@ def send_aborted_notification(
     smtp_password: str | None = None,
     smtp_from_email: str | None = None,
 ) -> bool:
-    """Send notification when analysis is aborted."""
     if not to_email:
         return False
 
     subject = _SUBJECT_ABORTED.format(filename=filename)
-    html = _build_aborted_email(filename, app_url)
-
+    html = _build_aborted_email(filename, _normalize_app_url(app_url))
     return _send_generic_notification(
         to_email=to_email,
         subject=subject,
@@ -649,7 +623,7 @@ def send_size_exceeded_notification(
     to_email: str,
     filename: str,
     limit_mb: int,
-    app_url: str = "https://neuro-sentinel-ai-6vfv.vercel.app",
+    app_url: str = DEFAULT_APP_URL,
     resend_api_key: str | None = None,
     resend_from_email: str = "NeuroSentinel AI <noreply@neurosentinel.app>",
     smtp_host: str | None = None,
@@ -658,13 +632,11 @@ def send_size_exceeded_notification(
     smtp_password: str | None = None,
     smtp_from_email: str | None = None,
 ) -> bool:
-    """Send notification when file size exceeds limit."""
     if not to_email:
         return False
 
     subject = _SUBJECT_SIZE.format(filename=filename)
-    html = _build_size_email(filename, app_url, limit_mb)
-
+    html = _build_size_email(filename, _normalize_app_url(app_url), limit_mb)
     return _send_generic_notification(
         to_email=to_email,
         subject=subject,
@@ -680,6 +652,7 @@ def send_size_exceeded_notification(
 
 
 def _send_generic_notification(
+    *,
     to_email: str,
     subject: str,
     html: str,
@@ -691,8 +664,6 @@ def _send_generic_notification(
     smtp_password: str | None,
     smtp_from_email: str | None,
 ) -> bool:
-    """Helper to send a simple HTML email without attachments."""
-    # Try Resend
     if resend_api_key:
         try:
             response = httpx.post(
@@ -714,7 +685,6 @@ def _send_generic_notification(
         except Exception:
             pass
 
-    # Try SMTP
     if smtp_host and smtp_user and smtp_password:
         try:
             msg = MIMEMultipart("mixed")
@@ -730,7 +700,7 @@ def _send_generic_notification(
                 server.ehlo()
                 server.starttls()
                 server.ehlo()
-            
+
             clean_password = smtp_password.replace(" ", "")
             server.login(smtp_user, clean_password)
             server.send_message(msg)
