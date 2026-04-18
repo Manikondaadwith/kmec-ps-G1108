@@ -1,4 +1,4 @@
-export type StatusType = 'seizure_detected' | 'no_seizure' | 'failed' | 'processing' | 'pending' | 'aborted'
+export type StatusType = 'seizure_detected' | 'no_seizure' | 'failed' | 'processing' | 'pending' | 'aborted' | 'uploading'
 
 export interface StatusConfig {
   label: string
@@ -36,6 +36,13 @@ export const STATUS_CONFIG: Record<StatusType, StatusConfig> = {
     bg: 'bg-red-100',
     text: 'text-red-700',
     border: 'border-red-500',
+  },
+  uploading: {
+    label: 'Uploading',
+    color: 'blue',
+    bg: 'bg-sky-100',
+    text: 'text-sky-700',
+    border: 'border-sky-500',
   },
   processing: {
     label: 'Processing',

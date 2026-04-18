@@ -36,7 +36,7 @@ export function UploadZone({
   onUploadStateChange?: (state: UploadState, filename?: string) => void
   shouldAutoRedirect?: boolean
 }) {
-  const { setCurrentAnalysis, abortAnalysis: globalAbort } = useAnalysis()
+  const { setCurrentAnalysis, abortAnalysis: globalAbort, registerAbortHandler } = useAnalysis()
   const [state, setState] = useState<State>({ s: 'idle' })
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -44,10 +44,14 @@ export function UploadZone({
   const abortRef = useRef<AbortController | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const currentJobIdRef = useRef<string | null>(null)
+  const mountedRef = useRef(true)
+  const stateRef = useRef<State>({ s: 'idle' })
+  const cancelledByUserRef = useRef(false)
   const router = useRouter()
-  const { showNotification, dismissNotification } = useReportNotification()
+  const { showNotification, dismissNotification, updateNotification } = useReportNotification()
 
   const updateState = useCallback((newState: State) => {
+    stateRef.current = newState
     setState(newState)
     onUploadStateChange?.(newState.s, 'file' in newState ? (newState as any).file?.name : undefined)
   }, [onUploadStateChange])
@@ -67,11 +71,15 @@ export function UploadZone({
     setUploadProgress(null)
     updateState({ s: 'idle' })
     setCurrentAnalysis(null)
-  }, [onReset, updateState, stopPolling, setCurrentAnalysis])
+    registerAbortHandler(null)
+  }, [onReset, registerAbortHandler, setCurrentAnalysis, stopPolling, updateState])
 
   // Cleanup polling on unmount
   useEffect(() => {
-    return () => stopPolling()
+    return () => {
+      mountedRef.current = false
+      stopPolling()
+    }
   }, [stopPolling])
 
   const pickFile = useCallback(
@@ -95,27 +103,48 @@ export function UploadZone({
       abortRef.current.abort()
       abortRef.current = null
     }
+    cancelledByUserRef.current = false
     resetUploadState()
     if (inputRef.current) inputRef.current.value = ''
   }
 
-  const cancelUpload = () => {
+  const cancelUpload = useCallback(async () => {
+    cancelledByUserRef.current = true
+
     if (abortRef.current) {
       abortRef.current.abort()
       abortRef.current = null
     }
 
-    // Call the backend cancellation API if we are in the processing state
-    if (state.s === 'processing' && state.reportId) {
-      globalAbort()
+    const activeState = stateRef.current
+
+    // Call the backend cancellation API if we are in the processing state.
+    if (activeState.s === 'processing' && activeState.reportId) {
+      const response = await fetch('/api/cancel', { method: 'POST' })
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null)
+        throw new Error(payload?.error || 'Failed to cancel analysis.')
+      }
     }
 
     stopPolling()
     setUploadProgress(null)
-    updateState({ s: 'idle' })
+    if (mountedRef.current) {
+      updateState({ s: 'idle' })
+    }
     setCurrentAnalysis(null)
+    registerAbortHandler(null)
+
+    if (currentJobIdRef.current) {
+      updateNotification(currentJobIdRef.current, {
+        status: 'aborted',
+        reportId: activeState.s === 'processing' ? activeState.reportId : undefined,
+        hasNotified: true,
+      })
+    }
+
     if (inputRef.current) inputRef.current.value = ''
-  }
+  }, [registerAbortHandler, setCurrentAnalysis, stopPolling, updateNotification, updateState])
 
   /** Start polling supabase for report completion after backend returns processing */
   const startCompletionPolling = useCallback((reportId: string, file: File) => {
@@ -142,8 +171,11 @@ export function UploadZone({
         if (status === 'completed') {
           stopPolling()
           const normalized = normalizeReport(report)
-          onAnalysisComplete(normalized)
+          if (mountedRef.current) {
+            onAnalysisComplete(normalized)
+          }
           setUploadProgress(null)
+          registerAbortHandler(null)
 
           // Check if user is on dashboard
           const onDashboard = window.location.pathname.startsWith('/dashboard') && !window.location.pathname.includes('/eeg-reports') && !window.location.pathname.includes('/settings')
@@ -165,14 +197,17 @@ export function UploadZone({
           }
         } else if (status === 'failed') {
           stopPolling()
-          updateState({ s: 'error', file, msg: report.error_message || 'Analysis failed.' })
+          registerAbortHandler(null)
+          if (mountedRef.current) {
+            updateState({ s: 'error', file, msg: report.error_message || 'Analysis failed.' })
+          }
         }
         // else still processing — keep polling
       } catch (err) {
         console.error('[UploadZone] Polling error:', err)
       }
     }, 4000)
-  }, [stopPolling, onAnalysisComplete, shouldAutoRedirect, router, showNotification, dismissNotification, updateState])
+  }, [dismissNotification, onAnalysisComplete, registerAbortHandler, router, shouldAutoRedirect, showNotification, stopPolling, updateState])
 
   /**
    * DIRECT BACKEND UPLOAD ARCHITECTURE (Unlimited 1GB Bypassing Supabase)
@@ -183,6 +218,7 @@ export function UploadZone({
     if (state.s !== 'ready') return
     const file = state.file
 
+    cancelledByUserRef.current = false
     updateState({ s: 'uploading', file, msg: 'Connecting to NeuroSentinel AI backend...' })
     setUploadProgress(0)
 
@@ -208,6 +244,7 @@ export function UploadZone({
       progress: 0,
       startedAt: new Date().toISOString()
     })
+    registerAbortHandler(cancelUpload)
 
     try {
       const supabase = createClient()
@@ -300,6 +337,7 @@ export function UploadZone({
         onAnalysisComplete(normalized)
         setUploadProgress(null)
         setCurrentAnalysis(null)
+        registerAbortHandler(null)
 
         const onDashboard = window.location.pathname.startsWith('/dashboard') && !window.location.pathname.includes('/eeg-reports') && !window.location.pathname.includes('/settings')
         if (shouldAutoRedirect && onDashboard) {
@@ -353,6 +391,12 @@ export function UploadZone({
       console.error('[UploadZone] Analysis error:', analysisError)
       setUploadProgress(null)
 
+      if (cancelledByUserRef.current || /cancel|abort/i.test(String(analysisError?.message || ''))) {
+        cancelledByUserRef.current = false
+        registerAbortHandler(null)
+        return
+      }
+
       // The backend may have created the report but crashed.
       try {
         const supabase = createClient()
@@ -370,11 +414,16 @@ export function UploadZone({
 
           if (latestReport && (latestReport.status === 'completed' || latestReport.status === 'processing')) {
             const normalized = normalizeReport(latestReport)
-            onAnalysisComplete(normalized)
+            if (mountedRef.current) {
+              onAnalysisComplete(normalized)
+            }
             if (latestReport.status === 'processing') {
-              updateState({ s: 'processing', file, msg: 'Analysis is running in the background.', reportId: normalized.id })
+              if (mountedRef.current) {
+                updateState({ s: 'processing', file, msg: 'Analysis is running in the background.', reportId: normalized.id })
+              }
               startCompletionPolling(normalized.id, file)
             } else {
+              registerAbortHandler(null)
               showNotification({
                 jobId: currentJobIdRef.current || 'fallback-id',
                 reportId: normalized.id,
@@ -388,7 +437,10 @@ export function UploadZone({
         }
       } catch {}
 
-      updateState({ s: 'error', file, msg: analysisError.message || 'Analysis failed before the report could be generated.' })
+      registerAbortHandler(null)
+      if (mountedRef.current) {
+        updateState({ s: 'error', file, msg: analysisError.message || 'Analysis failed before the report could be generated.' })
+      }
     }
   }
 
@@ -537,11 +589,11 @@ export function UploadZone({
               type="button"
               onClick={(event) => {
                 event.stopPropagation()
-                cancelUpload()
+                void globalAbort()
               }}
               className="clinical-btn-danger-outline mt-5"
             >
-              {state.s === 'processing' || (state.s === 'uploading' && uploadProgress === 100) ? 'Abort Analysis' : 'Cancel Upload'}
+              {state.s === 'uploading' ? 'Cancel Upload' : 'Abort Analysis'}
             </button>
           </div>
         )}

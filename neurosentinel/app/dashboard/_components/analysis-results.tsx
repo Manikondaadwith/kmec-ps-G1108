@@ -5,7 +5,12 @@ import { useMemo } from 'react'
 import { formatConfidence, formatDurationMinutes, getReportSummary, normalizeReportStatus, type ReportRecord, getReliability } from '@/lib/neurosentinel/types'
 import { StatusBadge } from './status-badge'
 import { ReliabilityBadge } from './reliability-badge'
-import { useAnalysis } from '@/lib/context/analysis-context'
+import {
+  getAnalysisActionLabel,
+  getAnalysisDescription,
+  getAnalysisHeadline,
+  useAnalysis,
+} from '@/lib/context/analysis-context'
 
 import type { UploadState } from './upload-zone'
 
@@ -27,6 +32,7 @@ export function AnalysisResults({ data, uploadState = 'idle', uploadFilename }: 
   const recommendations = Array.isArray(reportJson?.clinical_report?.recommendations) ? reportJson?.clinical_report?.recommendations.slice(0, 3) : []
   const events = Array.isArray(reportJson?.events) ? reportJson.events.slice(0, 3) : []
   const topRegions = Array.isArray(reportJson?.top_regions) ? reportJson.top_regions.slice(0, 3) : []
+  const isSeizureDetected = hasReport && status === 'completed' && (data?.event_count ?? 0) > 0
   const processingHint = useMemo(() => {
     if (!data || status !== 'processing') return null
     const ageSeconds = Math.max(0, (Date.now() - new Date(data.created_at).getTime()) / 1000)
@@ -58,10 +64,10 @@ export function AnalysisResults({ data, uploadState = 'idle', uploadFilename }: 
           <div className="mt-4 flex flex-col items-center justify-center py-6 text-center">
             <div className="clinical-spinner mb-5" />
             <div className="text-lg font-semibold text-[var(--text-heading)] mb-1">
-              {activeAnalysis.status === 'uploading' ? 'Uploading EEG Data' : 'Processing Clinical Report'}
+              {getAnalysisHeadline(activeAnalysis.status)}
             </div>
             <div className="text-[13px] text-[var(--text-secondary)] mb-6 max-w-sm">
-              {activeAnalysis.filename} is being processed by our V4 AI model. You can safely navigate away.
+              {getAnalysisDescription(activeAnalysis.filename, activeAnalysis.status)}
             </div>
             
             <div className="w-full max-w-xs mb-6">
@@ -79,10 +85,10 @@ export function AnalysisResults({ data, uploadState = 'idle', uploadFilename }: 
             </div>
 
             <button 
-              onClick={() => abortAnalysis()}
+              onClick={() => void abortAnalysis()}
               className="clinical-btn-danger-outline"
             >
-              Abort Analysis
+              {getAnalysisActionLabel(activeAnalysis.status)}
             </button>
           </div>
         </div>
@@ -93,7 +99,17 @@ export function AnalysisResults({ data, uploadState = 'idle', uploadFilename }: 
   return (
     <section className="space-y-5">
       {/* ── Status Overview ── */}
-      <div className="clinical-card-inner">
+      <div
+        className="clinical-card-inner"
+        style={
+          isSeizureDetected
+            ? {
+                background: 'rgba(245, 158, 11, 0.04)',
+                border: '1px solid rgba(245, 158, 11, 0.14)',
+              }
+            : undefined
+        }
+      >
         <SectionLabel>{hasReport ? 'Analysis status' : 'No Analysis'}</SectionLabel>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
           {!hasReport ? (
@@ -126,7 +142,10 @@ export function AnalysisResults({ data, uploadState = 'idle', uploadFilename }: 
         
         {hasReport ? (
           <div className="mt-4">
-            <p className="text-[14px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+            <p
+              className="text-[14px] leading-relaxed"
+              style={{ color: isSeizureDetected ? 'var(--accent-warning)' : 'var(--text-secondary)' }}
+            >
               {getReportSummary(data)}
             </p>
             {getReliability(data.confidence_score, data.duration_minutes, data.quality_grade) === 'Low' && (

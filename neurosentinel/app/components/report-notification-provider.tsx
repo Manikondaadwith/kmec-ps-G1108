@@ -6,7 +6,7 @@ export type ReportNotification = {
   jobId: string
   reportId?: string
   filename: string
-  status: 'uploading' | 'processing' | 'completed' | 'failed'
+  status: 'uploading' | 'processing' | 'completed' | 'failed' | 'aborted'
   timestamp: number
   startTime?: number
   hasNotified?: boolean

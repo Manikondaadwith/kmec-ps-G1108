@@ -91,23 +91,32 @@ function SingleToast({ notification }: { notification: ReportNotification }) {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current)
     }
-  }, [notification.status, notification.reportId, notification.filename, notification.hasNotified, notification.jobId, updateNotification])
+  }, [notification.status, notification.reportId, notification.filename, notification.hasNotified, notification.jobId, notification.startTime, updateNotification])
 
   const isSuccess = notification.status === 'completed'
-  const isFailed = notification.status === 'failed'
+  const isFailed = notification.status === 'failed' || notification.status === 'aborted'
+  const isAborted = notification.status === 'aborted'
   const isInProgress = notification.status === 'uploading' || notification.status === 'processing'
 
   const accentColor = isSuccess ? '#10B981' : isFailed ? '#EF4444' : '#3B82F6'
   const statusLabel = isSuccess
     ? 'Report Ready'
-    : isFailed
+    : isAborted
+      ? `Cancelled: ${notification.filename}`
+      : isFailed
       ? 'Analysis Failed'
       : notification.status === 'uploading'
         ? `Uploading: ${notification.filename}`
         : `Processing: ${notification.filename}`
 
   const subtext = isSuccess ? notification.filename : null
-  const sublabel = isInProgress ? 'Running in background' : 'Completed just now'
+  const sublabel = notification.status === 'uploading'
+    ? 'File is uploading'
+    : notification.status === 'processing'
+      ? 'Analysis in progress'
+      : isAborted
+        ? 'Cancelled just now'
+        : 'Completed just now'
 
   return (
     <div

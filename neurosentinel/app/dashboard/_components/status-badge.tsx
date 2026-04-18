@@ -32,6 +32,7 @@ export function StatusBadge({ report, status, showDot = true, showBorder = false
   }
 
   const config = STATUS_CONFIG[statusKey] || STATUS_CONFIG.pending
+  const isAnimated = statusKey === 'processing' || statusKey === 'uploading'
 
   return (
     <span 
@@ -39,7 +40,7 @@ export function StatusBadge({ report, status, showDot = true, showBorder = false
     >
       {showDot && (
         <span 
-          className={`w-1.5 h-1.5 rounded-full ${statusKey === 'processing' ? 'animate-pulse' : ''}`} 
+          className={`w-1.5 h-1.5 rounded-full ${isAnimated ? 'animate-pulse' : ''}`} 
           style={{ backgroundColor: 'currentColor' }} 
         />
       )}

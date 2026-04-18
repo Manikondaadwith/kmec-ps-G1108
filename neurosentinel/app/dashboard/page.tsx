@@ -8,7 +8,7 @@ import { UploadZone } from './_components/upload-zone'
 import { getRoleLabel } from '@/lib/scout-guide'
 import { ensureUserProfile } from '@/lib/user-profile'
 import { StatusBadge } from './_components/status-badge'
-import { useAnalysis } from '@/lib/context/analysis-context'
+import { getAnalysisHeadline, useAnalysis } from '@/lib/context/analysis-context'
 import { getReportHeadline, normalizeReport, normalizeReportStatus, type ReportRecord, type ScoutRole } from '@/lib/neurosentinel/types'
 
 export default function DashboardPage() {
@@ -124,7 +124,7 @@ export default function DashboardPage() {
                 {[
                   { label: 'Current role', value: getRoleLabel(role) },
                   { label: 'Latest status', value:
-                    currentAnalysis ? `${currentAnalysis.status === 'uploading' ? 'Uploading' : 'Analysing'} — ${currentAnalysis.filename}...`
+                    currentAnalysis ? `${getAnalysisHeadline(currentAnalysis.status)} — ${currentAnalysis.filename}...`
                     : latestAnalysis ? getReportHeadline(latestAnalysis)
                     : 'Awaiting upload'
                   },

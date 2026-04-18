@@ -7,7 +7,12 @@ import { createClient } from '@/lib/supabase/client'
 import { normalizeReport, normalizeReportStatus, type ReportRecord } from '@/lib/neurosentinel/types'
 import { StatusBadge } from '../_components/status-badge'
 import { ReliabilityBadge } from '../_components/reliability-badge'
-import { useAnalysis } from '@/lib/context/analysis-context'
+import {
+  getAnalysisActionLabel,
+  getAnalysisDescription,
+  getAnalysisStatusLabel,
+  useAnalysis,
+} from '@/lib/context/analysis-context'
 
 /* ─────────────────────────────────────────────────────────────
    Helpers
@@ -702,13 +707,13 @@ export default function AnalysisHistoryPage() {
                 </div>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-primary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>
-                    Active {currentAnalysis.status === 'uploading' ? 'Upload' : 'Analysis'}
+                    {getAnalysisStatusLabel(currentAnalysis.status)}
                   </div>
                   <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-heading)', marginBottom: 4 }}>
                     {currentAnalysis.filename}
                   </div>
                   <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                    Our AI model is currently processing this recording. You will be notified upon completion.
+                    {getAnalysisDescription(currentAnalysis.filename, currentAnalysis.status)}
                   </div>
                 </div>
               </div>
@@ -720,11 +725,11 @@ export default function AnalysisHistoryPage() {
                   />
                 </div>
                 <button 
-                  onClick={() => abortAnalysis()}
+                  onClick={() => void abortAnalysis()}
                   className="clinical-btn-danger-outline"
                   style={{ height: 36, padding: '0 16px', fontSize: 13 }}
                 >
-                  Abort
+                  {getAnalysisActionLabel(currentAnalysis.status)}
                 </button>
               </div>
             </section>
