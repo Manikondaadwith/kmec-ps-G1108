@@ -435,6 +435,8 @@ def create_app(settings: Settings | None = None, load_model_on_startup: bool = F
                 smtp_user=state.settings.smtp_user,
                 smtp_password=state.settings.smtp_password,
                 smtp_from_email=state.settings.smtp_from_email,
+                relay_api_url=state.settings.relay_api_url,
+                internal_api_secret=state.settings.internal_api_secret,
             )
             
             if sent:

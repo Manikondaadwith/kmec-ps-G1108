@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     # Email notification settings (optional — set RESEND_API_KEY or SMTP_* to enable)
     resend_api_key: str | None = Field(default=None, alias="RESEND_API_KEY")
     resend_from_email: str = Field(default="NeuroSentinel AI <noreply@neurosentinel.app>", alias="RESEND_FROM_EMAIL")
+    
+    # Relay settings (Vercel proxy)
+    relay_api_url: str | None = Field(default=None, alias="RELAY_API_URL")
+    internal_api_secret: str = Field(default="neurosentinel-internal-key-2026", alias="INTERNAL_API_SECRET")
+
     smtp_host: str | None = Field(default=None, alias="SMTP_HOST")
     smtp_port: int = Field(default=587, alias="SMTP_PORT")
     smtp_user: str | None = Field(default=None, alias="SMTP_USER")

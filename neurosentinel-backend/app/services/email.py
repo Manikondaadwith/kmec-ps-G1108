@@ -206,6 +206,53 @@ def _get_subject(report: dict[str, Any], filename: str) -> str:
     return _SUBJECT_NO_SEIZURE.format(filename=filename)
 
 
+def send_report_email_relay(
+    *,
+    api_url: str,
+    secret: str,
+    to_email: str,
+    report: dict[str, Any],
+    filename: str,
+    role: str | None,
+    pdf_bytes: bytes | None = None,
+) -> tuple[bool, str | None]:
+    """Send report notification via Vercel proxy relay (HTTP)."""
+    subject = _get_subject(report, filename)
+    html = _build_email_html(report, filename, role)
+
+    payload = {
+        "to_email": to_email,
+        "subject": subject,
+        "html": html,
+        "filename": f"NeuroSentinel_Report_{filename.replace('.edf', '')}.pdf"
+    }
+
+    if pdf_bytes:
+        payload["pdf_base64"] = base64.b64encode(pdf_bytes).decode("ascii")
+
+    try:
+        response = httpx.post(
+            api_url,
+            headers={
+                "x-internal-secret": secret,
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=40.0,
+        )
+        if response.status_code == 200:
+            logger.info("Report email sent to %s via Vercel Relay for file %s", to_email, filename)
+            return True, None
+        
+        err = f"Vercel Relay returned {response.status_code}: {response.text[:200]}"
+        logger.warning(err)
+        return False, err
+    except Exception as exc:
+        err = f"Failed to send email via Vercel Relay: {exc}"
+        logger.warning(err)
+        return False, err
+
+
 def send_report_email_resend(
     *,
     api_key: str,
@@ -329,6 +376,8 @@ def send_report_notification(
     pdf_bytes: bytes | None = None,
     resend_api_key: str | None = None,
     resend_from_email: str = "NeuroSentinel AI <noreply@neurosentinel.app>",
+    relay_api_url: str | None = None,
+    internal_api_secret: str = "neurosentinel-internal-key-2026",
     smtp_host: str | None = None,
     smtp_port: int = 587,
     smtp_user: str | None = None,
@@ -341,7 +390,7 @@ def send_report_notification(
         logger.warning(err)
         return False, err
 
-    # Try Resend first
+    # 1. Try Resend first
     if resend_api_key:
         return send_report_email_resend(
             api_key=resend_api_key,
@@ -353,7 +402,19 @@ def send_report_notification(
             pdf_bytes=pdf_bytes,
         )
 
-    # Try SMTP fallback
+    # 2. Try Vercel Relay next (Bypasses HF SMTP blocks)
+    if relay_api_url:
+        return send_report_email_relay(
+            api_url=relay_api_url,
+            secret=internal_api_secret,
+            to_email=to_email,
+            report=report,
+            filename=filename,
+            role=role,
+            pdf_bytes=pdf_bytes,
+        )
+
+    # 3. Try SMTP fallback
     if smtp_host and smtp_user and smtp_password:
         return send_report_email_smtp(
             smtp_host=smtp_host,
