@@ -310,7 +310,7 @@ export function UploadZone({
 
         const onDashboard = window.location.pathname.startsWith('/dashboard') && !window.location.pathname.includes('/eeg-reports') && !window.location.pathname.includes('/settings')
         if (shouldAutoRedirect && onDashboard) {
-          dismissNotification()
+          dismissNotification(jobId)
           router.push(`/report/${normalized.id}`)
         } else {
           showNotification({
