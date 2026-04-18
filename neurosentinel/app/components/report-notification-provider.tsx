@@ -8,6 +8,7 @@ export type ReportNotification = {
   filename: string
   status: 'uploading' | 'processing' | 'completed' | 'failed'
   timestamp: number
+  startTime?: number
   hasNotified?: boolean
 }
 

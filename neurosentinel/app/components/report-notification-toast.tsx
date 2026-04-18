@@ -57,14 +57,19 @@ function SingleToast({ notification }: { notification: ReportNotification }) {
             .maybeSingle()
           report = data
         } else if (notification.filename) {
-          const { data } = await supabase
+          const query = supabase
             .from('reports')
             .select('id, status, filename')
             .eq('user_id', user.id)
             .eq('filename', notification.filename)
             .order('created_at', { ascending: false })
             .limit(1)
-            .maybeSingle()
+
+          if (notification.startTime) {
+            query.gt('created_at', new Date(notification.startTime).toISOString())
+          }
+
+          const { data } = await query.maybeSingle()
           report = data
         }
 

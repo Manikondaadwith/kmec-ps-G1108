@@ -189,13 +189,16 @@ export function UploadZone({
     const jobId = crypto.randomUUID()
     currentJobIdRef.current = jobId
 
+    const startTime = Date.now()
+
     // Show notification immediately so it persists cross-page even if user navigates away
     showNotification({
       jobId,
       reportId: '',
       filename: file.name,
       status: 'uploading',
-      timestamp: Date.now(),
+      timestamp: startTime,
+      startTime: startTime,
     })
 
     setCurrentAnalysis({
@@ -360,6 +363,7 @@ export function UploadZone({
             .select('id, filename, status, summary, result_label, event_count, confidence_score, risk_level, quality_grade, duration_minutes, report_json, created_at')
             .eq('user_id', user.id)
             .eq('filename', file.name)
+            .gt('created_at', new Date(startTime).toISOString())
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle()
@@ -537,7 +541,7 @@ export function UploadZone({
               }}
               className="clinical-btn-danger-outline mt-5"
             >
-              {state.s === 'processing' ? 'Abort Analysis' : 'Cancel Upload'}
+              {state.s === 'processing' || (state.s === 'uploading' && uploadProgress === 100) ? 'Abort Analysis' : 'Cancel Upload'}
             </button>
           </div>
         )}
