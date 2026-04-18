@@ -404,6 +404,55 @@ def create_app(settings: Settings | None = None, load_model_on_startup: bool = F
             "memory_mb": round(_get_memory_mb(), 1),
         }
 
+    # ── Debug Email ──────────────────────────────────────────────────────
+    @app.get("/api/v1/debug/email")
+    async def debug_email(
+        email: str,
+        state: BackendState = Depends(get_backend_state),
+    ) -> dict[str, Any]:
+        """Send a test email to verify SMTP configuration."""
+        if not state.settings.smtp_host:
+            return {"status": "error", "message": "SMTP_HOST is not configured."}
+        
+        try:
+            from app.services.email import send_report_notification
+            test_report = {
+                "result_label": "TEST - NO SEIZURE",
+                "risk_level": "Low",
+                "event_count": 0,
+                "confidence_score": 99.9,
+                "quality_grade": "Excellent",
+            }
+            
+            sent = send_report_notification(
+                to_email=email,
+                report=test_report,
+                filename="test_connection.edf",
+                role="clinician",
+                pdf_bytes=None,
+                smtp_host=state.settings.smtp_host,
+                smtp_port=state.settings.smtp_port,
+                smtp_user=state.settings.smtp_user,
+                smtp_password=state.settings.smtp_password,
+                smtp_from_email=state.settings.smtp_from_email,
+            )
+            
+            if sent:
+                return {
+                    "status": "success", 
+                    "message": f"Test email sent to {email}. Check your inbox and 'Sent' folder.",
+                    "config": {
+                        "host": state.settings.smtp_host,
+                        "port": state.settings.smtp_port,
+                        "user": state.settings.smtp_user,
+                        "from": state.settings.smtp_from_email
+                    }
+                }
+            else:
+                return {"status": "failed", "message": "SMTP sending failed. Check backend logs for authentication errors."}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
     # ── Cancel Job ───────────────────────────────────────────────────────
     @app.post("/api/v1/job/cancel")
     async def cancel_job(
