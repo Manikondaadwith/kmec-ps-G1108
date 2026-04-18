@@ -276,7 +276,7 @@ export function ScoutFloating() {
     setIsDragging(true)
 
     const offsetX = touch.clientX - layout.left
-    const offsetY = touch.top - layout.top
+    const offsetY = touch.clientY - layout.top
 
     const handleTouchMove = (touchEvent: TouchEvent) => {
       const nextTouch = touchEvent.touches[0]
