@@ -206,3 +206,20 @@ export function formatDurationMinutes(durationMinutes?: number | null) {
   if (typeof durationMinutes !== 'number' || Number.isNaN(durationMinutes)) return 'Unknown'
   return `${durationMinutes.toFixed(1)} min`
 }
+
+export function getReliability(confidence?: number | null, duration?: number | null, signalQuality?: string | null): 'High' | 'Moderate' | 'Low' {
+  const conf = typeof confidence === 'number' ? confidence : 0
+  const dur = typeof duration === 'number' ? duration : 0
+  const qual = signalQuality?.toLowerCase() || 'unknown'
+
+  // Low thresholds: short duration or poor signal
+  if (dur > 0 && dur < 20) return 'Low'
+  if (qual === 'poor' || qual === 'unreliable') return 'Low'
+
+  // Moderate threshold: low confidence score
+  // (We handle both 0..1 and 0..100)
+  const normalizedConf = conf > 1 ? conf / 100 : conf
+  if (normalizedConf < 0.8) return 'Moderate'
+
+  return 'High'
+}

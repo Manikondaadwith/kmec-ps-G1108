@@ -2,7 +2,10 @@
 
 import Link from 'next/link'
 import { useMemo } from 'react'
-import { formatConfidence, formatDurationMinutes, getReportHeadline, getReportSummary, normalizeReportStatus, type ReportRecord } from '@/lib/neurosentinel/types'
+import { formatConfidence, formatDurationMinutes, getReportHeadline, getReportSummary, normalizeReportStatus, type ReportRecord, getReliability } from '@/lib/neurosentinel/types'
+import { StatusBadge } from './status-badge'
+import { ReliabilityBadge } from './reliability-badge'
+import { useAnalysis } from '@/lib/context/analysis-context'
 
 import type { UploadState } from './upload-zone'
 
@@ -15,19 +18,9 @@ function SectionLabel({ children, icon }: { children: string; icon?: React.React
   )
 }
 
-function getBadgeClass(status: string) {
-  if (status === 'completed') return 'clinical-badge clinical-badge-success'
-  if (status === 'failed') return 'clinical-badge clinical-badge-danger'
-  return 'clinical-badge clinical-badge-processing'
-}
-
-function getDotClass(status: string) {
-  if (status === 'completed') return 'clinical-dot clinical-dot-success'
-  if (status === 'failed') return 'clinical-dot clinical-dot-danger'
-  return 'clinical-dot clinical-dot-primary'
-}
 
 export function AnalysisResults({ data, uploadState = 'idle', uploadFilename }: { data: ReportRecord | null; uploadState?: UploadState; uploadFilename?: string }) {
+  const { currentAnalysis, abortAnalysis } = useAnalysis()
   const hasReport = data != null
   const status = normalizeReportStatus(data?.status)
   const reportJson = data?.report_json
@@ -48,27 +41,49 @@ export function AnalysisResults({ data, uploadState = 'idle', uploadFilename }: 
   const isShortDuration = durationMins > 0 && durationMins < 20
   const showLowConfidenceWarning = hasReport && isShortDuration
 
-  if (isActiveUpload) {
+  // ── Global Processing / Prop Loading ──
+  const activeAnalysis = currentAnalysis || (isActiveUpload ? {
+    id: 'prop-active',
+    filename: uploadFilename || 'Unknown recording',
+    status: uploadState as any,
+    progress: uploadState === 'uploading' ? 0 : 100,
+    startedAt: new Date().toISOString()
+  } : null)
+
+  if (activeAnalysis) {
     return (
       <section className="space-y-4">
         <div className="clinical-card-inner">
           <SectionLabel>Analysis status</SectionLabel>
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-            <span className="clinical-badge clinical-badge-processing">
-              <span className="clinical-dot clinical-dot-primary clinical-dot-pulse" style={{ width: 6, height: 6 }} />
-              {uploadState === 'uploading' ? 'Uploading EEG...' : 'Analysing EEG signals...'}
-            </span>
-          </div>
-          <div className="mt-4 text-[14px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-            {uploadFilename ? <span className="font-semibold" style={{ color: 'var(--text-heading)' }}>{uploadFilename}</span> : null}
-            {uploadFilename ? ' — ' : ''}
-            {uploadState === 'uploading'
-              ? 'Your EEG file is being uploaded to NeuroSentinel AI.'
-              : 'Preprocessing, running inference, and generating the clinical report. This may take a few minutes for large files.'}
-          </div>
-          <div className="mt-4 flex items-center gap-2.5" style={{ color: 'var(--text-muted)' }}>
-            <div className="clinical-spinner-sm" />
-            <span className="text-[12px] font-medium">Working...</span>
+          <div className="mt-4 flex flex-col items-center justify-center py-6 text-center">
+            <div className="clinical-spinner mb-5" />
+            <div className="text-lg font-semibold text-[var(--text-heading)] mb-1">
+              {activeAnalysis.status === 'uploading' ? 'Uploading EEG Data' : 'Processing Clinical Report'}
+            </div>
+            <div className="text-[13px] text-[var(--text-secondary)] mb-6 max-w-sm">
+              {activeAnalysis.filename} is being processed by our V4 AI model. You can safely navigate away.
+            </div>
+            
+            <div className="w-full max-w-xs mb-6">
+              <div className="clinical-progress-track">
+                <div 
+                  className={`clinical-progress-fill ${activeAnalysis.status === 'processing' ? 'clinical-progress-indeterminate' : ''}`} 
+                  style={activeAnalysis.status === 'uploading' ? { width: `${activeAnalysis.progress || 0}%` } : {}}
+                />
+              </div>
+              {activeAnalysis.status === 'uploading' && (
+                <div className="mt-2 text-[11px] font-bold text-[var(--accent-primary)] uppercase tracking-wider">
+                  {activeAnalysis.progress || 0}% Uploaded
+                </div>
+              )}
+            </div>
+
+            <button 
+              onClick={() => abortAnalysis()}
+              className="clinical-btn-danger-outline"
+            >
+              Abort Analysis
+            </button>
           </div>
         </div>
       </section>
@@ -86,10 +101,7 @@ export function AnalysisResults({ data, uploadState = 'idle', uploadFilename }: 
               Awaiting upload
             </span>
           ) : (
-            <span className={getBadgeClass(status)}>
-              <span className={getDotClass(status)} style={{ width: 6, height: 6 }} />
-              {getReportHeadline(data)}
-            </span>
+            <StatusBadge report={data} showBorder />
           )}
           <div className="flex flex-col items-end gap-1">
             <div className="flex items-center gap-5 text-[13px]" style={{ color: 'var(--text-muted)' }}>
@@ -99,13 +111,15 @@ export function AnalysisResults({ data, uploadState = 'idle', uploadFilename }: 
               </div>
               <div className="flex items-center gap-1.5">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>
-                <span>{hasReport ? `${formatConfidence(data?.confidence_score)}${showLowConfidenceWarning ? ' (Low)' : ''}` : '—'}</span>
+                <span>{hasReport ? `${formatConfidence(data?.confidence_score)}` : '—'}</span>
               </div>
             </div>
-            {showLowConfidenceWarning && (
-              <div className="text-[12px] font-semibold" style={{ color: 'var(--accent-warning)' }}>
-                Reliability: Low ⚠️
-              </div>
+            {hasReport && status === 'completed' && (
+              <ReliabilityBadge 
+                confidence={data.confidence_score} 
+                duration={data.duration_minutes} 
+                signalQuality={data.quality_grade} 
+              />
             )}
           </div>
         </div>
@@ -115,23 +129,18 @@ export function AnalysisResults({ data, uploadState = 'idle', uploadFilename }: 
             <p className="text-[14px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
               {getReportSummary(data)}
             </p>
-            {showLowConfidenceWarning && (
+            {getReliability(data.confidence_score, data.duration_minutes, data.quality_grade) === 'Low' && (
               <div className="mt-4">
                 <p className="text-[13px] font-semibold mb-3" style={{ color: 'var(--accent-warning)' }}>
                   ⚠️ This result has low reliability and should not be considered conclusive.
                 </p>
-                <div className="text-[13px] p-3 rounded-md bg-[rgba(217,119,6,0.05)] border border-[rgba(217,119,6,0.1)]" style={{ color: 'var(--text-secondary)' }}>
-                  <div className="font-semibold mb-1" style={{ color: 'var(--text-heading)' }}>Reason:</div>
-                  <ul className="list-disc pl-4 mb-3 space-y-0.5">
-                    <li>Short recording duration ({Math.round(durationMins)} min)</li>
-                    <li>Limited data reduces certainty</li>
+                <div className="text-[13px] p-4 rounded-lg bg-[rgba(217,119,6,0.03)] border border-[rgba(217,119,6,0.1)]" style={{ color: 'var(--text-secondary)' }}>
+                  <div className="font-semibold mb-2" style={{ color: 'var(--text-heading)' }}>Primary Factors:</div>
+                  <ul className="list-disc pl-4 space-y-1">
+                    {durationMins > 0 && durationMins < 20 && <li>Short recording duration ({Math.round(durationMins)} min) — recommended 20-60m</li>}
+                    {data.quality_grade?.toLowerCase() === 'poor' && <li>Poor signal quality detected</li>}
+                    {(!data.confidence_score || data.confidence_score < 80) && <li>Low statistical confidence in pattern recognition</li>}
                   </ul>
-                  <div className="font-semibold mb-1" style={{ color: 'var(--text-heading)' }}>Confidence Factors:</div>
-                  <div className="space-y-0.5">
-                    <div>• Recording Length: <span className="font-medium" style={{ color: 'var(--accent-warning)' }}>Low ⚠️</span></div>
-                    <div>• Signal Quality: <span className="font-medium" style={{ color: 'var(--accent-success)' }}>Good ✅</span></div>
-                    <div>• Channel Coverage: <span className="font-medium" style={{ color: 'var(--accent-warning)' }}>Partial ⚠️</span></div>
-                  </div>
                 </div>
               </div>
             )}

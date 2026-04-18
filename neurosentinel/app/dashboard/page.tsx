@@ -7,25 +7,21 @@ import { AnalysisResults } from './_components/analysis-results'
 import { UploadZone, type UploadState } from './_components/upload-zone'
 import { getRoleLabel } from '@/lib/scout-guide'
 import { ensureUserProfile } from '@/lib/user-profile'
+import { StatusBadge } from './_components/status-badge'
+import { useAnalysis } from '@/lib/context/analysis-context'
 import { getReportHeadline, normalizeReport, normalizeReportStatus, type ReportRecord, type ScoutRole } from '@/lib/neurosentinel/types'
 
 export default function DashboardPage() {
+  const { currentAnalysis } = useAnalysis()
   const supabase = createClient()
   const [latestAnalysis, setLatestAnalysis] = useState<ReportRecord | null>(null)
   const [reportsLoading, setReportsLoading] = useState(true)
   const [role, setRole] = useState<ScoutRole>(null)
   const [userId, setUserId] = useState<string | null>(null)
-  const [uploadState, setUploadState] = useState<UploadState>('idle')
-  const [uploadFilename, setUploadFilename] = useState<string | undefined>(undefined)
-
-  // Ref so loadDashboardContext can read uploadState without being in its deps
-  const uploadStateRef = useRef<UploadState>('idle')
-  useEffect(() => { uploadStateRef.current = uploadState }, [uploadState])
 
   const loadDashboardContext = useCallback(async () => {
     // Don't overwrite latestAnalysis with stale DB data while an upload is running.
-    // The UploadZone drives latestAnalysis directly via onAnalysisComplete during uploads.
-    if (uploadStateRef.current === 'uploading' || uploadStateRef.current === 'processing') return
+    if (currentAnalysis) return
 
     try {
       const {
@@ -61,12 +57,10 @@ export default function DashboardPage() {
     void loadDashboardContext()
   }, [loadDashboardContext])
 
-  useEffect(() => {
     const status = normalizeReportStatus(latestAnalysis?.status)
-    // Only poll the DB when a report is still pending/processing AND no active XHR upload
-    // is managing latestAnalysis itself (UploadZone handles that path via onAnalysisComplete).
+    // Only poll the DB when a report is still pending/processing AND no active global analysis
     if (status !== 'pending' && status !== 'processing') return
-    if (uploadStateRef.current === 'uploading' || uploadStateRef.current === 'processing') return
+    if (currentAnalysis) return
 
     const interval = window.setInterval(() => {
       void loadDashboardContext()
@@ -130,13 +124,12 @@ export default function DashboardPage() {
                 {[
                   { label: 'Current role', value: getRoleLabel(role) },
                   { label: 'Latest status', value:
-                    uploadState === 'uploading' ? `Uploading${uploadFilename ? ` — ${uploadFilename}` : ''}...`
-                    : uploadState === 'processing' ? `Analysing${uploadFilename ? ` — ${uploadFilename}` : ''}...`
+                    currentAnalysis ? `${currentAnalysis.status === 'uploading' ? 'Uploading' : 'Analysing'} — ${currentAnalysis.filename}...`
                     : latestAnalysis ? getReportHeadline(latestAnalysis)
                     : 'Awaiting upload'
                   },
                 ].map((item) => {
-                  const isActive = item.label === 'Latest status' && (uploadState === 'uploading' || uploadState === 'processing')
+                  const isActive = item.label === 'Latest status' && !!currentAnalysis
                   return (
                     <div
                       key={item.label}
@@ -174,10 +167,6 @@ export default function DashboardPage() {
                   setLatestAnalysis(data)
                 }}
                 onReset={() => setLatestAnalysis(null)}
-                onUploadStateChange={(s, fn) => {
-                  setUploadState(s)
-                  setUploadFilename(fn)
-                }}
                 shouldAutoRedirect
               />
             </section>
@@ -191,31 +180,17 @@ export default function DashboardPage() {
                     <div className="clinical-section-label">Latest Analysis</div>
                   </div>
                   <p className="clinical-section-desc mt-1">
-                    {(uploadState === 'uploading' || uploadState === 'processing') ? 'Current upload in progress' : 'Your most recent EEG analysis'}
+                    {currentAnalysis ? 'Current upload in progress' : 'Your most recent EEG analysis'}
                   </p>
                 </div>
-                {(uploadState === 'uploading' || uploadState === 'processing') ? (
-                  <span className="clinical-badge clinical-badge-processing">
-                    <span className="clinical-dot clinical-dot-primary clinical-dot-pulse" style={{ width: 6, height: 6 }} />
-                    {uploadState === 'uploading' ? 'uploading' : 'analysing'}
-                  </span>
+                {currentAnalysis ? (
+                  <StatusBadge status={currentAnalysis.status} showBorder />
                 ) : latestAnalysis ? (
-                  <span className={`clinical-badge ${
-                    latestStatus === 'completed' ? 'clinical-badge-success' :
-                    latestStatus === 'failed' ? 'clinical-badge-danger' :
-                    'clinical-badge-processing'
-                  }`}>
-                    <span className={`clinical-dot ${
-                      latestStatus === 'completed' ? 'clinical-dot-success' :
-                      latestStatus === 'failed' ? 'clinical-dot-danger' :
-                      'clinical-dot-primary'
-                    }`} style={{ width: 6, height: 6 }} />
-                    {latestStatus}
-                  </span>
+                  <StatusBadge report={latestAnalysis} showBorder />
                 ) : null}
               </div>
 
-              <AnalysisResults data={latestAnalysis} uploadState={uploadState} uploadFilename={uploadFilename} />
+              <AnalysisResults data={latestAnalysis} />
 
               <div className="mt-6 pt-5" style={{ borderTop: '1px solid var(--border-subtle)' }}>
                 <Link href="/dashboard/eeg-reports" className="clinical-link">

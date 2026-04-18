@@ -23,6 +23,8 @@ const formatSize = (bytes: number) =>
 
 export type UploadState = 'idle' | 'drag' | 'ready' | 'uploading' | 'processing' | 'complete' | 'error'
 
+import { useAnalysis } from '@/lib/context/analysis-context'
+
 export function UploadZone({
   onAnalysisComplete,
   onReset,
@@ -34,6 +36,7 @@ export function UploadZone({
   onUploadStateChange?: (state: UploadState, filename?: string) => void
   shouldAutoRedirect?: boolean
 }) {
+  const { setCurrentAnalysis, abortAnalysis: globalAbort } = useAnalysis()
   const [state, setState] = useState<State>({ s: 'idle' })
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -63,7 +66,8 @@ export function UploadZone({
     onReset()
     setUploadProgress(null)
     updateState({ s: 'idle' })
-  }, [onReset, updateState, stopPolling])
+    setCurrentAnalysis(null)
+  }, [onReset, updateState, stopPolling, setCurrentAnalysis])
 
   // Cleanup polling on unmount
   useEffect(() => {
@@ -103,16 +107,13 @@ export function UploadZone({
 
     // Call the backend cancellation API if we are in the processing state
     if (state.s === 'processing' && state.reportId) {
-      void fetch('/api/cancel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reportId: state.reportId }),
-      }).catch((err) => console.error('[UploadZone] Cancellation failed:', err))
+      globalAbort()
     }
 
     stopPolling()
     setUploadProgress(null)
     updateState({ s: 'idle' })
+    setCurrentAnalysis(null)
     if (inputRef.current) inputRef.current.value = ''
   }
 
@@ -197,6 +198,14 @@ export function UploadZone({
       timestamp: Date.now(),
     })
 
+    setCurrentAnalysis({
+      id: jobId,
+      filename: file.name,
+      status: 'uploading',
+      progress: 0,
+      startedAt: new Date().toISOString()
+    })
+
     try {
       const supabase = createClient()
       const { data: { session: sess } } = await supabase.auth.getSession()
@@ -226,6 +235,7 @@ export function UploadZone({
           if (!event.lengthComputable) return
           const percent = Math.round((event.loaded / event.total) * 100)
           setUploadProgress(percent)
+          setCurrentAnalysis(prev => prev ? { ...prev, progress: percent } : null)
           if (percent === 100) {
             updateState({ s: 'uploading', file, msg: 'Upload complete. Starting analysis...' })
           }
@@ -286,6 +296,7 @@ export function UploadZone({
         })
         onAnalysisComplete(normalized)
         setUploadProgress(null)
+        setCurrentAnalysis(null)
 
         const onDashboard = window.location.pathname.startsWith('/dashboard') && !window.location.pathname.includes('/eeg-reports') && !window.location.pathname.includes('/settings')
         if (shouldAutoRedirect && onDashboard) {
@@ -314,6 +325,14 @@ export function UploadZone({
         onAnalysisComplete(normalized)
         setUploadProgress(null)
         updateState({ s: 'processing', file, msg: 'Your EEG is being analysed. You can safely close this page — we\'ll email you the report when it\'s ready.', reportId })
+
+        setCurrentAnalysis({
+          id: reportId,
+          filename: file.name,
+          status: 'processing',
+          progress: 100,
+          startedAt: new Date().toISOString()
+        })
 
         // Show processing notification
         showNotification({

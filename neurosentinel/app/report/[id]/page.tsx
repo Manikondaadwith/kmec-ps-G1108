@@ -9,7 +9,9 @@ import { ScoutAvatar } from '@/app/components/scout-avatar'
 import { useScoutConversation } from '@/app/components/scout-provider'
 import { getReportExplainerOpening, getRoleLabel, type ScoutRole } from '@/lib/scout-guide'
 import { ensureUserProfile } from '@/lib/user-profile'
-import { normalizeReport, normalizeReportStatus, type ReportRecord } from '@/lib/neurosentinel/types'
+import { normalizeReport, normalizeReportStatus, type ReportRecord, getReliability } from '@/lib/neurosentinel/types'
+import { StatusBadge } from '../../dashboard/_components/status-badge'
+import { ReliabilityBadge } from '../../dashboard/_components/reliability-badge'
 
 import { ProbabilityTimeline } from '../_components/probability-timeline'
 import { EventCards } from '../_components/event-cards'
@@ -249,20 +251,6 @@ export default function ReportPage() {
   const modelOutputs: any = reportJson?.model_outputs || {}
   const probabilityTimeline = modelOutputs?.probability_timeline
 
-  const reliability = (() => {
-    const conf = report?.confidence_score || 0
-    const dur = report?.duration_minutes || 0
-    const qual = report?.quality_grade || 'Unknown'
-    const isGoodQual = qual === 'A' || qual === 'B' || qual === 'Good' || qual === 'Excellent' || qual === 'High'
-
-    if (conf >= 80 && dur >= 20 && isGoodQual) {
-      return { level: 'High', reason: 'sufficient recording duration and good signal quality.' }
-    } else if ((conf >= 60 && conf < 80) || (dur >= 20 && conf >= 60 && !isGoodQual)) {
-      return { level: 'Moderate', reason: 'moderate confidence or minor signal limitations.' }
-    } else {
-      return { level: 'Low', reason: dur < 20 ? 'recording duration being below the 20-minute minimum.' : 'low model confidence in the detected patterns.' }
-    }
-  })()
 
   const riskClasses = (() => {
     const r = (report?.risk_level || '').toLowerCase()
@@ -360,26 +348,19 @@ export default function ReportPage() {
                 </div>
                 <div className="flex-1">
                   <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3">
-                    <span className={`inline-flex items-center rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest bg-white ${riskClasses.text} shadow-sm ring-1 ring-inset ring-gray-100`}>
-                      {report.risk_level || 'Unknown'} Risk Detected
-                    </span>
+                    <StatusBadge report={report} showBorder />
                     <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-gray-400">
-                      Conf: {report.confidence_score?.toFixed(1) || '0'}%{ (report?.duration_minutes ?? 0) > 0 && (report?.duration_minutes ?? 0) < 20 ? ' (Low)' : ''}
+                      Conf: {report.confidence_score?.toFixed(1) || '0'}%
                     </span>
-                    <span className={`inline-flex items-center rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ring-1 ring-inset shadow-sm ${
-                      reliability.level === 'High' ? 'bg-emerald-50 text-emerald-700 ring-emerald-500/30' :
-                      reliability.level === 'Moderate' ? 'bg-amber-50 text-amber-700 ring-amber-500/30' :
-                      'bg-red-50 text-red-700 ring-red-500/30'
-                    }`}>
-                      Reliability: {reliability.level} {reliability.level === 'Low' || reliability.level === 'Moderate' ? '⚠️' : '✓'}
-                    </span>
+                    <ReliabilityBadge 
+                      confidence={report.confidence_score} 
+                      duration={report.duration_minutes} 
+                      signalQuality={report.quality_grade}
+                    />
                   </div>
                   <div className="mt-3 flex flex-col gap-0.5">
                     <div className="text-[12px] text-gray-500 font-medium">
-                      <span className="text-gray-900 font-bold">Reliability is {reliability.level}</span> due to {reliability.reason}
-                    </div>
-                    <div className="text-[10px] text-gray-400 font-medium">
-                      Confidence Guide: 0–60% → Low  |  60–80% → Moderate  |  80%+ → High
+                      <span className="text-gray-900 font-bold">Reliability is {getReliability(report.confidence_score, report.duration_minutes, report.quality_grade)}</span>
                     </div>
                   </div>
                   <h1 className="mt-4 text-4xl sm:text-5xl font-black tracking-tight text-gray-900 antialiased">
@@ -387,12 +368,9 @@ export default function ReportPage() {
                   </h1>
                   <p className="mt-3 text-lg font-bold text-gray-400 max-w-xl">
                     Automated EEG signal processing completed. Patterns analyzed from {report.duration_minutes?.toFixed(1)} minutes of recorded data.
-                    {(report?.duration_minutes ?? 0) > 0 && (report?.duration_minutes ?? 0) < 20 && (
-                      <span> — results may have reduced confidence due to short recording duration.</span>
-                    )}
                   </p>
 
-                  {(report?.duration_minutes ?? 0) > 0 && (report?.duration_minutes ?? 0) < 20 && (
+                  {getReliability(report.confidence_score, report.duration_minutes, report.quality_grade) === 'Low' && (
                     <div className="mt-6 rounded-2xl bg-amber-50/50 p-4 border border-amber-100 inline-block text-left w-full max-w-xl">
                       <div className="text-[13px] font-bold text-amber-800 flex flex-col gap-1.5">
                         <div className="flex items-center gap-2">⚠️ Low reliability detected. This result should not be considered conclusive.</div>
@@ -403,14 +381,14 @@ export default function ReportPage() {
                         <div>
                           <div className="text-[11px] font-black uppercase tracking-widest text-[#1E293B] mb-2">Primary Limitation:</div>
                           <ul className="text-[12px] text-gray-600 space-y-1 ml-1">
-                            <li>• Recording duration ({report?.duration_minutes?.toFixed(1)} min) is below recommended minimum (20 min)</li>
-                            <li>• Limited data reduces model certainty</li>
+                            {(report.duration_minutes || 0) < 20 && <li>• Recording duration ({report.duration_minutes?.toFixed(1)} min) is below recommended minimum (20 min)</li>}
+                            {(!report.confidence_score || report.confidence_score < 80) && <li>• Limited model confidence in detected patterns</li>}
                           </ul>
                         </div>
                         <div>
                           <div className="text-[11px] font-black uppercase tracking-widest text-[#1E293B] mb-2">Confidence Factors:</div>
                           <ul className="text-[12px] text-gray-600 space-y-1 ml-1">
-                            <li>• Recording Length: Low ⚠️</li>
+                            <li>• Recording Length: {(report.duration_minutes || 0) < 20 ? 'Low ⚠️' : 'Optimal ✓'}</li>
                             <li>• Signal Quality: {report.quality_grade === 'A' || report.quality_grade === 'B' || report.quality_grade === 'Good' ? 'Good ✓' : 'Poor ⚠️'}</li>
                             <li>• Channel Coverage: Partial ⚠️</li>
                           </ul>

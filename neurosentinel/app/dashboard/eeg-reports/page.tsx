@@ -1,10 +1,9 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
-import { normalizeReport, normalizeReportStatus, type ReportRecord } from '@/lib/neurosentinel/types'
+import { normalizeReport, normalizeReportStatus, type ReportRecord, getReliability } from '@/lib/neurosentinel/types'
+import { StatusBadge } from '../_components/status-badge'
+import { ReliabilityBadge } from '../_components/reliability-badge'
+import { useAnalysis } from '@/lib/context/analysis-context'
 
 /* ─────────────────────────────────────────────────────────────
    Helpers
@@ -297,7 +296,6 @@ function AnalysisCard({
 
   const { label: statusLabel, badgeClass, dotClass } = getStatusMeta(status)
   const { primary: primaryResult, secondary: secondaryResult, isSeizure } = getKeyResult(report)
-  const riskMeta = getRiskMeta(report.risk_level)
 
   const confidenceDisplay = formatConfidence(report.confidence_score)
   const durationDisplay = report.duration_minutes != null ? `${report.duration_minutes} min` : null
@@ -305,8 +303,7 @@ function AnalysisCard({
   // Stripe Color logic
   let stripeColor = 'var(--accent-primary)'
   if (isFailed) stripeColor = 'var(--accent-danger)'
-  else if (riskMeta.label === 'High Risk') stripeColor = 'var(--accent-danger)'
-  else if (riskMeta.label === 'Medium Risk') stripeColor = 'var(--accent-warning)'
+  else if (isSeizure) stripeColor = 'var(--accent-warning)' // "Seizure Detected" is Orange
   else if (isCompleted) stripeColor = 'var(--accent-success)'
 
   const handleCardClick = () => {
@@ -475,34 +472,15 @@ function AnalysisCard({
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'flex-start' }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {/* Status Badge */}
-              <span className={badgeClass} style={{ padding: isCompact ? '3px 10px' : '5px 14px', fontSize: 11 }}>
-                <span
-                  className={dotClass}
-                  style={{ width: 5, height: 5, display: 'inline-block', borderRadius: '50%' }}
-                />
-                {statusLabel}
-              </span>
+              <StatusBadge report={report} showBorder />
 
-              {/* Risk Badge */}
+              {/* Reliability Badge */}
               {isCompleted && (
-                <span
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    padding: isCompact ? '3px 10px' : '5px 14px',
-                    borderRadius: 20,
-                    fontSize: 10,
-                    fontWeight: 700,
-                    color: riskMeta.color,
-                    background: riskMeta.bg,
-                    border: `1px solid ${riskMeta.border}`,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.04em',
-                  }}
-                >
-                  {riskMeta.label}
-                </span>
+                <ReliabilityBadge 
+                  confidence={report.confidence_score} 
+                  duration={report.duration_minutes} 
+                  signalQuality={report.quality_grade}
+                />
               )}
             </div>
 
@@ -591,6 +569,7 @@ function AnalysisCard({
    Main page
 ───────────────────────────────────────────────────────────── */
 export default function AnalysisHistoryPage() {
+  const { currentAnalysis, abortAnalysis } = useAnalysis()
   const [reports, setReports] = useState<ReportRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -743,6 +722,58 @@ export default function AnalysisHistoryPage() {
          ══════════════════════════════════════ */}
       <div className="clinical-fade-in clinical-page-content">
         <div className="clinical-page-container" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+
+          {/* ── Active Analysis Card (Pinned to Top) ── */}
+          {currentAnalysis && (
+            <section
+              style={{
+                background: 'rgba(14, 116, 144, 0.02)',
+                border: '1px solid rgba(14, 116, 144, 0.12)',
+                borderRadius: 'var(--radius-xl)',
+                padding: '24px 32px',
+                display: 'grid',
+                gridTemplateColumns: 'minmax(0, 1fr) auto',
+                alignItems: 'center',
+                gap: 24,
+                boxShadow: 'var(--shadow-sm)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+                <div style={{ position: 'relative' }}>
+                  <div className="clinical-spinner" />
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyItems: 'center', padding: '0 0 0 14px' }}>
+                    <span className="text-[10px] font-bold text-[var(--accent-primary)]">{currentAnalysis.progress || 0}%</span>
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-primary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>
+                    Active {currentAnalysis.status === 'uploading' ? 'Upload' : 'Analysis'}
+                  </div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-heading)', marginBottom: 4 }}>
+                    {currentAnalysis.filename}
+                  </div>
+                  <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                    Our AI model is currently processing this recording. You will be notified upon completion.
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div className="clinical-progress-track" style={{ width: 120 }}>
+                  <div 
+                    className={`clinical-progress-fill ${currentAnalysis.status === 'processing' ? 'clinical-progress-indeterminate' : ''}`} 
+                    style={currentAnalysis.status === 'uploading' ? { width: `${currentAnalysis.progress || 0}%` } : {}}
+                  />
+                </div>
+                <button 
+                  onClick={() => abortAnalysis()}
+                  className="clinical-btn-danger-outline"
+                  style={{ height: 36, padding: '0 16px', fontSize: 13 }}
+                >
+                  Abort
+                </button>
+              </div>
+            </section>
+          )}
 
           {/* ══════════════════════════════════════
               HERO — lighter version of dashboard hero
