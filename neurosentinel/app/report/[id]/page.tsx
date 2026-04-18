@@ -535,7 +535,7 @@ export default function ReportPage() {
                    ].map(meta => (
                      <div key={meta.l} className="flex flex-col rounded-2xl bg-gray-50 p-3 ring-1 ring-gray-100">
                        <span className="text-[9px] font-black uppercase text-gray-400">{meta.l}</span>
-                       <span className="text-[11px] font-bold text-gray-900 font-mono mt-0.5">{meta.v}</span>
+                       <span className="text-[11px] font-bold text-gray-900 font-mono mt-0.5">{String(meta.v)}</span>
                      </div>
                    ))}
                  </div>
@@ -573,7 +573,6 @@ export default function ReportPage() {
               page="report" 
               role={role} 
               collapsible={false} 
-              width="100%" 
               initialMessage={scoutInitialMessage} 
               report={report} 
               autoPrompt={scoutAutoPrompt}

@@ -314,6 +314,7 @@ export function UploadZone({
           router.push(`/report/${normalized.id}`)
         } else {
           showNotification({
+            jobId,
             reportId: normalized.id,
             filename: file.name,
             status: 'completed',
@@ -337,6 +338,7 @@ export function UploadZone({
 
         // Show processing notification
         showNotification({
+          jobId,
           reportId,
           filename: file.name,
           status: 'processing',
@@ -372,6 +374,7 @@ export function UploadZone({
               startCompletionPolling(normalized.id, file)
             } else {
               showNotification({
+                jobId: currentJobIdRef.current || 'fallback-id',
                 reportId: normalized.id,
                 filename: file.name,
                 status: 'completed',
