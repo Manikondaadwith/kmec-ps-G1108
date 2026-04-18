@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     smtp_from_email: str | None = Field(default=None, alias="SMTP_FROM_EMAIL")
 
     # App URL for email links
-    app_url: str = Field(default="https://neurosentinel.vercel.app", alias="APP_URL")
+    app_url: str = Field(default="https://neuro-sentinel-ai-6vfv.vercel.app", alias="APP_URL")
 
     @property
     def resolved_gemini_api_key(self) -> str | None:

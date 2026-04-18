@@ -518,7 +518,7 @@ export function UploadZone({
               }}
               className="clinical-btn-danger-outline mt-5"
             >
-              Cancel
+              {state.s === 'processing' ? 'Abort Analysis' : 'Cancel Upload'}
             </button>
           </div>
         )}

@@ -282,9 +282,16 @@ def _run_analysis_sync(
             # If it was a timeout, send a specific email notification
             if is_timeout:
                 state.analysis_service.send_timeout_notification(user_id, file_name)
+            else:
+                # Check if it was a manual abort
+                from app.pipeline.inference import JobAborted
+                if isinstance(exc, JobAborted) or "cancelled" in error_msg.lower():
+                    state.analysis_service.send_aborted_notification(user_id, file_name)
+                else:
+                    state.analysis_service.send_failure_notification(user_id, file_name, error_msg=error_msg)
                 
-        except Exception:
-            logger.error("Failed to update report status for %s", report_id)
+        except Exception as internal_err:
+            logger.error("Failed to update report status or send email for %s: %s", report_id, internal_err)
 
     finally:
         # Always clean up — no matter what
@@ -530,6 +537,14 @@ def create_app(settings: Settings | None = None, load_model_on_startup: bool = F
                     handle.close()
                     os.remove(temp_path)
                     await file.close()
+                    
+                    # Send size exceeded email (non-blocking)
+                    try:
+                        limit_mb = MAX_UPLOAD_BYTES // (1024 * 1024)
+                        state.analysis_service.send_size_exceeded_notification(user.id, file_name, limit_mb)
+                    except Exception:
+                        pass
+                        
                     raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail=f"File exceeds {MAX_UPLOAD_BYTES // (1024*1024)}MB limit.")
                 handle.write(chunk)
         await file.close()

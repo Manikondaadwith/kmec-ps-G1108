@@ -18,15 +18,15 @@ import httpx
 logger = logging.getLogger(__name__)
 
 # ─── Email templates ───────────────────────────────────────────────
-
-_APP_URL = "https://neurosentinel.vercel.app"
-
 _SUBJECT_SEIZURE = "NeuroSentinel AI — Seizure Activity Detected in {filename}"
 _SUBJECT_NO_SEIZURE = "NeuroSentinel AI — No Seizure Activity Detected in {filename}"
 _SUBJECT_TIMEOUT = "NeuroSentinel AI — EEG Analysis Timed Out for {filename}"
+_SUBJECT_FAILED = "NeuroSentinel AI — EEG Analysis Failed for {filename}"
+_SUBJECT_ABORTED = "NeuroSentinel AI — EEG Analysis Aborted for {filename}"
+_SUBJECT_SIZE = "NeuroSentinel AI — File Size Warning for {filename}"
 
 
-def _build_patient_email(report: dict[str, Any], filename: str) -> str:
+def _build_patient_email(report: dict[str, Any], filename: str, app_url: str) -> str:
     result = report.get("result_label", "Unknown")
     risk = report.get("risk_level", "Unknown")
     event_count = report.get("event_count", 0) or 0
@@ -73,7 +73,7 @@ def _build_patient_email(report: dict[str, Any], filename: str) -> str:
     </div>
 
     <div style="text-align: center; margin: 24px 0;">
-        <a href="{_APP_URL}/dashboard/eeg-reports" style="display: inline-block; background: linear-gradient(135deg, #00F0FF, #818CF8); color: #0A0A0F; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 12px; text-decoration: none; letter-spacing: 0.5px;">View Full Report in App</a>
+        <a href="{app_url}/dashboard/eeg-reports" style="display: inline-block; background: linear-gradient(135deg, #00F0FF, #818CF8); color: #0A0A0F; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 12px; text-decoration: none; letter-spacing: 0.5px;">View Full Report in App</a>
     </div>
 
     <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 24px 0;" />
@@ -85,7 +85,7 @@ def _build_patient_email(report: dict[str, Any], filename: str) -> str:
 """
 
 
-def _build_clinician_email(report: dict[str, Any], filename: str) -> str:
+def _build_clinician_email(report: dict[str, Any], filename: str, app_url: str) -> str:
     result = report.get("result_label", "Unknown")
     risk = report.get("risk_level", "Unknown")
     event_count = report.get("event_count", 0) or 0
@@ -114,7 +114,7 @@ def _build_clinician_email(report: dict[str, Any], filename: str) -> str:
     <p style="font-size: 13px; color: #C8C8D4; margin: 0 0 16px 0;">Clinical PDF is attached. For full structured analysis with explainability outputs, probability timelines, and SCOUT AI summary, access the report in the application.</p>
 
     <div style="text-align: center; margin: 24px 0;">
-        <a href="{_APP_URL}/dashboard/eeg-reports" style="display: inline-block; background: linear-gradient(135deg, #00F0FF, #818CF8); color: #0A0A0F; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 12px; text-decoration: none; letter-spacing: 0.5px;">Open in NeuroSentinel AI</a>
+        <a href="{app_url}/dashboard/eeg-reports" style="display: inline-block; background: linear-gradient(135deg, #00F0FF, #818CF8); color: #0A0A0F; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 12px; text-decoration: none; letter-spacing: 0.5px;">Open in NeuroSentinel AI</a>
     </div>
 
     <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 24px 0;" />
@@ -123,7 +123,7 @@ def _build_clinician_email(report: dict[str, Any], filename: str) -> str:
 """
 
 
-def _build_researcher_email(report: dict[str, Any], filename: str) -> str:
+def _build_researcher_email(report: dict[str, Any], filename: str, app_url: str) -> str:
     result = report.get("result_label", "Unknown")
     risk = report.get("risk_level", "Unknown")
     event_count = report.get("event_count", 0) or 0
@@ -157,7 +157,7 @@ def _build_researcher_email(report: dict[str, Any], filename: str) -> str:
 """
 
 
-def _build_timeout_email(filename: str) -> str:
+def _build_timeout_email(filename: str, app_url: str) -> str:
     return f"""
 <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0A0A0F; color: #E8E8F0; padding: 32px; border-radius: 16px;">
     <div style="text-align: center; margin-bottom: 24px;">
@@ -176,7 +176,90 @@ def _build_timeout_email(filename: str) -> str:
     </div>
 
     <div style="text-align: center; margin: 24px 0;">
-        <a href="{_APP_URL}/dashboard" style="display: inline-block; background: rgba(255,255,255,0.08); color: #00F0FF; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 12px; text-decoration: none; border: 1px solid rgba(0,240,255,0.2);">Return to Dashboard</a>
+        <a href="{app_url}/dashboard" style="display: inline-block; background: rgba(255,255,255,0.08); color: #00F0FF; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 12px; text-decoration: none; border: 1px solid rgba(0,240,255,0.2);">Return to Dashboard</a>
+    </div>
+
+    <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 24px 0;" />
+    <p style="font-size: 11px; color: #565670; text-align: center; line-height: 1.6; margin: 0;">Automated notification from NeuroSentinel AI Clinical Intelligence System.</p>
+</div>
+"""
+
+
+def _build_failure_email(filename: str, app_url: str, error_msg: str | None = None) -> str:
+    error_detail = f"<p style='color: #FF3366; font-family: monospace; font-size: 12px;'>Error: {error_msg}</p>" if error_msg else ""
+    return f"""
+<div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0A0A0F; color: #E8E8F0; padding: 32px; border-radius: 16px;">
+    <div style="text-align: center; margin-bottom: 24px;">
+        <h1 style="font-size: 20px; color: #FF3366; margin: 0;">NeuroSentinel AI</h1>
+        <p style="font-size: 11px; color: #565670; letter-spacing: 2px; text-transform: uppercase; margin-top: 4px;">Analysis Failed</p>
+    </div>
+
+    <div style="background: rgba(255,51,102,0.04); border: 1px solid rgba(255,51,102,0.12); border-radius: 12px; padding: 20px; margin-bottom: 20px;">
+        <p style="font-size: 14px; line-height: 1.7; color: #C8C8D4; margin: 0 0 16px 0;">
+            We encountered an unexpected error while processing your EEG recording <strong>{filename}</strong>.
+        </p>
+        <p style="font-size: 14px; line-height: 1.7; color: #C8C8D4; margin: 0 0 16px 0;">
+            This could be due to a corrupt file format, signal interference, or a temporary server issue. Please try re-uploading the file.
+        </p>
+        {error_detail}
+    </div>
+
+    <div style="text-align: center; margin: 24px 0;">
+        <a href="{app_url}/dashboard" style="display: inline-block; background: rgba(255,255,255,0.08); color: #FF3366; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 12px; text-decoration: none; border: 1px solid rgba(255,51,102,0.2);">Return to Dashboard</a>
+    </div>
+
+    <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 24px 0;" />
+    <p style="font-size: 11px; color: #565670; text-align: center; line-height: 1.6; margin: 0;">Automated notification from NeuroSentinel AI Clinical Intelligence System.</p>
+</div>
+"""
+
+
+def _build_aborted_email(filename: str, app_url: str) -> str:
+    return f"""
+<div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0A0A0F; color: #E8E8F0; padding: 32px; border-radius: 16px;">
+    <div style="text-align: center; margin-bottom: 24px;">
+        <h1 style="font-size: 20px; color: #00F0FF; margin: 0;">NeuroSentinel AI</h1>
+        <p style="font-size: 11px; color: #565670; letter-spacing: 2px; text-transform: uppercase; margin-top: 4px;">Analysis Aborted</p>
+    </div>
+
+    <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 20px; margin-bottom: 20px;">
+        <p style="font-size: 14px; line-height: 1.7; color: #C8C8D4; margin: 0 0 16px 0;">
+            The analysis for <strong>{filename}</strong> was manually aborted by a user.
+        </p>
+        <p style="font-size: 14px; line-height: 1.7; color: #C8C8D4; margin: 0;">
+            No report was generated for this file. You can start a new analysis at any time by uploading a new EDF file to the dashboard.
+        </p>
+    </div>
+
+    <div style="text-align: center; margin: 24px 0;">
+        <a href="{app_url}/dashboard" style="display: inline-block; background: rgba(0,240,255,0.08); color: #00F0FF; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 12px; text-decoration: none; border: 1px solid rgba(0,240,255,0.2);">Back to Dashboard</a>
+    </div>
+
+    <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 24px 0;" />
+    <p style="font-size: 11px; color: #565670; text-align: center; line-height: 1.6; margin: 0;">Automated notification from NeuroSentinel AI Clinical Intelligence System.</p>
+</div>
+"""
+
+
+def _build_size_email(filename: str, app_url: str, limit_mb: int) -> str:
+    return f"""
+<div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0A0A0F; color: #E8E8F0; padding: 32px; border-radius: 16px;">
+    <div style="text-align: center; margin-bottom: 24px;">
+        <h1 style="font-size: 20px; color: #FFD700; margin: 0;">NeuroSentinel AI</h1>
+        <p style="font-size: 11px; color: #565670; letter-spacing: 2px; text-transform: uppercase; margin-top: 4px;">Upload Size Exceeded</p>
+    </div>
+
+    <div style="background: rgba(255,215,0,0.04); border: 1px solid rgba(255,215,0,0.12); border-radius: 12px; padding: 20px; margin-bottom: 20px;">
+        <p style="font-size: 14px; line-height: 1.7; color: #C8C8D4; margin: 0 0 16px 0;">
+            Your EEG recording <strong>{filename}</strong> exceeded our maximum upload size limit of {limit_mb}MB.
+        </p>
+        <p style="font-size: 14px; line-height: 1.7; color: #C8C8D4; margin: 0;">
+            To process this recording, please split the EDF file into smaller segments or use a lower sampling rate, then re-upload.
+        </p>
+    </div>
+
+    <div style="text-align: center; margin: 24px 0;">
+        <a href="{app_url}/dashboard" style="display: inline-block; background: rgba(255,255,255,0.08); color: #FFD700; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 12px; text-decoration: none; border: 1px solid rgba(255,215,0,0.2);">Return to Dashboard</a>
     </div>
 
     <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 24px 0;" />
@@ -187,14 +270,17 @@ def _build_timeout_email(filename: str) -> str:
 
 # ─── Email sending ─────────────────────────────────────────────────
 
-def _build_email_html(report: dict[str, Any], filename: str, role: str | None) -> str:
+def _build_email_html(report: dict[str, Any], filename: str, role: str | None, app_url: str) -> str:
     """Select the right email template based on user role."""
     role_lower = (role or "").lower()
     if role_lower == "patient":
-        return _build_patient_email(report, filename)
+        return _build_patient_email(report, filename, app_url=app_url)
     elif role_lower == "researcher":
-        return _build_researcher_email(report, filename)
-    return _build_clinician_email(report, filename)
+        return _build_researcher_email(report, filename, app_url=app_url)
+    return _build_clinician_email(report, filename, app_url=app_url)
+
+
+def _build_patient_email(report: dict[str, Any], filename: str, app_url: str) -> str:
 
 
 def _get_subject(report: dict[str, Any], filename: str) -> str:
@@ -218,7 +304,7 @@ def send_report_email_relay(
 ) -> tuple[bool, str | None]:
     """Send report notification via Vercel proxy relay (HTTP)."""
     subject = _get_subject(report, filename)
-    html = _build_email_html(report, filename, role)
+    html = _build_email_html(report, filename, role, app_url=api_url if "vercel.app" in api_url else "https://neuro-sentinel-ai-6vfv.vercel.app") # Fallback to prod if relay URL is generic
 
     payload = {
         "to_email": to_email,
@@ -271,7 +357,7 @@ def send_report_email_resend(
         "from": from_email,
         "to": [to_email],
         "subject": subject,
-        "html": html,
+        "html": _build_email_html(report, filename, role, app_url="https://neuro-sentinel-ai-6vfv.vercel.app"),
     }
 
     if pdf_bytes:
@@ -320,7 +406,7 @@ def send_report_email_smtp(
 ) -> tuple[bool, str | None]:
     """Send report notification via SMTP."""
     subject = _get_subject(report, filename)
-    html = _build_email_html(report, filename, role)
+    html = _build_email_html(report, filename, role, app_url="https://neuro-sentinel-ai-6vfv.vercel.app")
 
     msg = MIMEMultipart("mixed")
     msg["From"] = from_email
@@ -433,24 +519,16 @@ def send_report_notification(
     return False, "No email provider configured."
 
 
-def send_timeout_notification(
-    *,
-    to_email: str,
-    filename: str,
-    resend_api_key: str | None = None,
-    resend_from_email: str = "NeuroSentinel AI <noreply@neurosentinel.app>",
-    smtp_host: str | None = None,
-    smtp_port: int = 587,
-    smtp_user: str | None = None,
     smtp_password: str | None = None,
     smtp_from_email: str | None = None,
+    app_url: str = "https://neuro-sentinel-ai-6vfv.vercel.app",
 ) -> bool:
     """Send notification when analysis times out."""
     if not to_email:
         return False
 
     subject = _SUBJECT_TIMEOUT.format(filename=filename)
-    html = _build_timeout_email(filename)
+    html = _build_timeout_email(filename, app_url)
 
     # Try Resend
     if resend_api_key:
@@ -487,6 +565,174 @@ def send_timeout_notification(
             server.starttls()
             server.ehlo()
             server.login(smtp_user, smtp_password)
+            server.send_message(msg)
+            server.quit()
+            return True
+        except Exception:
+            pass
+
+    return False
+
+
+def send_failure_notification(
+    *,
+    to_email: str,
+    filename: str,
+    error_msg: str | None = None,
+    app_url: str = "https://neuro-sentinel-ai-6vfv.vercel.app",
+    resend_api_key: str | None = None,
+    resend_from_email: str = "NeuroSentinel AI <noreply@neurosentinel.app>",
+    smtp_host: str | None = None,
+    smtp_port: int = 587,
+    smtp_user: str | None = None,
+    smtp_password: str | None = None,
+    smtp_from_email: str | None = None,
+) -> bool:
+    """Send notification when analysis fails."""
+    if not to_email:
+        return False
+
+    subject = _SUBJECT_FAILED.format(filename=filename)
+    html = _build_failure_email(filename, app_url, error_msg)
+
+    # Re-use logic or just implement simple Resend/SMTP blocks
+    return _send_generic_notification(
+        to_email=to_email,
+        subject=subject,
+        html=html,
+        resend_api_key=resend_api_key,
+        resend_from_email=resend_from_email,
+        smtp_host=smtp_host,
+        smtp_port=smtp_port,
+        smtp_user=smtp_user,
+        smtp_password=smtp_password,
+        smtp_from_email=smtp_from_email,
+    )
+
+
+def send_aborted_notification(
+    *,
+    to_email: str,
+    filename: str,
+    app_url: str = "https://neuro-sentinel-ai-6vfv.vercel.app",
+    resend_api_key: str | None = None,
+    resend_from_email: str = "NeuroSentinel AI <noreply@neurosentinel.app>",
+    smtp_host: str | None = None,
+    smtp_port: int = 587,
+    smtp_user: str | None = None,
+    smtp_password: str | None = None,
+    smtp_from_email: str | None = None,
+) -> bool:
+    """Send notification when analysis is aborted."""
+    if not to_email:
+        return False
+
+    subject = _SUBJECT_ABORTED.format(filename=filename)
+    html = _build_aborted_email(filename, app_url)
+
+    return _send_generic_notification(
+        to_email=to_email,
+        subject=subject,
+        html=html,
+        resend_api_key=resend_api_key,
+        resend_from_email=resend_from_email,
+        smtp_host=smtp_host,
+        smtp_port=smtp_port,
+        smtp_user=smtp_user,
+        smtp_password=smtp_password,
+        smtp_from_email=smtp_from_email,
+    )
+
+
+def send_size_exceeded_notification(
+    *,
+    to_email: str,
+    filename: str,
+    limit_mb: int,
+    app_url: str = "https://neuro-sentinel-ai-6vfv.vercel.app",
+    resend_api_key: str | None = None,
+    resend_from_email: str = "NeuroSentinel AI <noreply@neurosentinel.app>",
+    smtp_host: str | None = None,
+    smtp_port: int = 587,
+    smtp_user: str | None = None,
+    smtp_password: str | None = None,
+    smtp_from_email: str | None = None,
+) -> bool:
+    """Send notification when file size exceeds limit."""
+    if not to_email:
+        return False
+
+    subject = _SUBJECT_SIZE.format(filename=filename)
+    html = _build_size_email(filename, app_url, limit_mb)
+
+    return _send_generic_notification(
+        to_email=to_email,
+        subject=subject,
+        html=html,
+        resend_api_key=resend_api_key,
+        resend_from_email=resend_from_email,
+        smtp_host=smtp_host,
+        smtp_port=smtp_port,
+        smtp_user=smtp_user,
+        smtp_password=smtp_password,
+        smtp_from_email=smtp_from_email,
+    )
+
+
+def _send_generic_notification(
+    to_email: str,
+    subject: str,
+    html: str,
+    resend_api_key: str | None,
+    resend_from_email: str,
+    smtp_host: str | None,
+    smtp_port: int,
+    smtp_user: str | None,
+    smtp_password: str | None,
+    smtp_from_email: str | None,
+) -> bool:
+    """Helper to send a simple HTML email without attachments."""
+    # Try Resend
+    if resend_api_key:
+        try:
+            response = httpx.post(
+                "https://api.resend.com/emails",
+                headers={
+                    "Authorization": f"Bearer {resend_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "from": resend_from_email,
+                    "to": [to_email],
+                    "subject": subject,
+                    "html": html,
+                },
+                timeout=30.0,
+            )
+            if response.status_code in (200, 201):
+                return True
+        except Exception:
+            pass
+
+    # Try SMTP
+    if smtp_host and smtp_user and smtp_password:
+        try:
+            msg = MIMEMultipart("mixed")
+            msg["From"] = smtp_from_email or smtp_user
+            msg["To"] = to_email
+            msg["Subject"] = subject
+            msg.attach(MIMEText(html, "html", "utf-8"))
+
+            if smtp_port == 465:
+                server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=30)
+            else:
+                server = smtplib.SMTP(smtp_host, smtp_port, timeout=30)
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+            
+            clean_password = smtp_password.replace(" ", "")
+            server.login(smtp_user, clean_password)
             server.send_message(msg)
             server.quit()
             return True

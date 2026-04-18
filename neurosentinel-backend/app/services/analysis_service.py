@@ -13,7 +13,13 @@ from app.pipeline.explainability import compute_channel_importance, extract_atte
 from app.pipeline.inference import GuardFn, JobAborted, infer_from_data_chunked
 from app.pipeline.preprocessing import preprocess_edf_to_data, extract_window_at
 from app.pipeline.reporting import build_full_report_payload
-from app.services.email import send_report_notification, send_timeout_notification
+from app.services.email import (
+    send_report_notification, 
+    send_timeout_notification,
+    send_failure_notification,
+    send_aborted_notification,
+    send_size_exceeded_notification
+)
 from app.services.pdf import generate_pdf
 from app.services.supabase import SupabaseService
 
@@ -97,6 +103,7 @@ class AnalysisService:
                 smtp_from_email=self.settings.smtp_from_email,
                 relay_api_url=self.settings.relay_api_url,
                 internal_api_secret=self.settings.internal_api_secret,
+                app_url=self.settings.app_url,
             )
             if sent:
                 logger.info("Report completion email sent for %s to %s", filename, user_email)
@@ -125,10 +132,85 @@ class AnalysisService:
                 smtp_user=self.settings.smtp_user,
                 smtp_password=self.settings.smtp_password,
                 smtp_from_email=self.settings.smtp_from_email,
+                app_url=self.settings.app_url,
             )
             logger.info("Timeout notification sent for %s to %s", filename, user_email)
         except Exception as exc:
             logger.warning("Timeout notification failed (non-fatal): %s", exc)
+
+    def send_failure_notification(self, user_id: str, filename: str, error_msg: str | None = None) -> None:
+        """Send notification when analysis fails."""
+        if not self.settings: return
+        try:
+            user_profile = self.supabase_service.fetch_user_profile(user_id)
+            user_email = (user_profile or {}).get("email")
+            if not user_email: return
+
+            send_failure_notification(
+                to_email=user_email,
+                filename=filename,
+                error_msg=error_msg,
+                app_url=self.settings.app_url,
+                resend_api_key=self.settings.resend_api_key,
+                resend_from_email=self.settings.resend_from_email,
+                smtp_host=self.settings.smtp_host,
+                smtp_port=self.settings.smtp_port,
+                smtp_user=self.settings.smtp_user,
+                smtp_password=self.settings.smtp_password,
+                smtp_from_email=self.settings.smtp_from_email,
+            )
+            logger.info("Failure notification sent for %s to %s", filename, user_email)
+        except Exception as exc:
+            logger.warning("Failure notification failed (non-fatal): %s", exc)
+
+    def send_aborted_notification(self, user_id: str, filename: str) -> None:
+        """Send notification when analysis is aborted."""
+        if not self.settings: return
+        try:
+            user_profile = self.supabase_service.fetch_user_profile(user_id)
+            user_email = (user_profile or {}).get("email")
+            if not user_email: return
+
+            send_aborted_notification(
+                to_email=user_email,
+                filename=filename,
+                app_url=self.settings.app_url,
+                resend_api_key=self.settings.resend_api_key,
+                resend_from_email=self.settings.resend_from_email,
+                smtp_host=self.settings.smtp_host,
+                smtp_port=self.settings.smtp_port,
+                smtp_user=self.settings.smtp_user,
+                smtp_password=self.settings.smtp_password,
+                smtp_from_email=self.settings.smtp_from_email,
+            )
+            logger.info("Abortion notification sent for %s to %s", filename, user_email)
+        except Exception as exc:
+            logger.warning("Abortion notification failed (non-fatal): %s", exc)
+
+    def send_size_exceeded_notification(self, user_id: str, filename: str, limit_mb: int) -> None:
+        """Send notification when file size exceeds limit."""
+        if not self.settings: return
+        try:
+            user_profile = self.supabase_service.fetch_user_profile(user_id)
+            user_email = (user_profile or {}).get("email")
+            if not user_email: return
+
+            send_size_exceeded_notification(
+                to_email=user_email,
+                filename=filename,
+                limit_mb=limit_mb,
+                app_url=self.settings.app_url,
+                resend_api_key=self.settings.resend_api_key,
+                resend_from_email=self.settings.resend_from_email,
+                smtp_host=self.settings.smtp_host,
+                smtp_port=self.settings.smtp_port,
+                smtp_user=self.settings.smtp_user,
+                smtp_password=self.settings.smtp_password,
+                smtp_from_email=self.settings.smtp_from_email,
+            )
+            logger.info("Size exceeded notification sent for %s to %s", filename, user_email)
+        except Exception as exc:
+            logger.warning("Size exceeded notification failed (non-fatal): %s", exc)
 
     def run_analysis_upload(
         self,
