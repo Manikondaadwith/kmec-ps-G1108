@@ -28,7 +28,7 @@ from app.services.supabase import AuthenticatedUser, SupabaseService
 logger = logging.getLogger(__name__)
 
 # ── Hard limits ──────────────────────────────────────────────────────────────
-MAX_UPLOAD_BYTES = 50 * 1024 * 1024       # 50MB file cap (Supabase free tier max)
+MAX_UPLOAD_BYTES = 1000 * 1024 * 1024     # 1GB file cap (Raw backend spooling)
 JOB_TIMEOUT_SECONDS = 3600                  # 1 hour max per job
 MEMORY_THRESHOLD_MB = 450                  # Abort job if RSS exceeds this
 STALE_JOB_CLEANUP_SECONDS = 300            # Clean up "processing" jobs older than 5 min on startup
