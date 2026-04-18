@@ -172,6 +172,55 @@ def _format_reliability_block(details: dict[str, Any]) -> str:
     return f"{details['reliability_level']} reliability."
 
 
+def _summarize_user_preferences(user_profile: dict[str, Any] | None) -> list[str]:
+    if not isinstance(user_profile, dict):
+        return ["User profile preferences are not available."]
+
+    preferences = user_profile.get("preferences") if isinstance(user_profile.get("preferences"), dict) else {}
+    lines: list[str] = []
+    if user_profile.get("email"):
+        lines.append(f"Signed-in account email: {user_profile['email']}")
+    if preferences:
+        preference_pairs = [f"{key}={value}" for key, value in preferences.items() if value not in (None, "", [], {})]
+        if preference_pairs:
+            lines.append("User preferences: " + ", ".join(preference_pairs[:8]))
+    return lines or ["User profile preferences are empty."]
+
+
+def _build_recent_report_context_lines(
+    recent_reports: list[dict[str, Any]],
+    current_report: dict[str, Any] | None,
+) -> list[str]:
+    if not recent_reports:
+        return ["No recent reports are available for this account."]
+
+    current_report_id = str(current_report.get("id")) if isinstance(current_report, dict) and current_report.get("id") is not None else None
+    lines = [
+        f"Recent report count on this signed-in account: {len(recent_reports)}.",
+        "Historical reports belong to this account and are not guaranteed to represent the same patient, encounter, or recording session unless continuity is explicitly confirmed.",
+    ]
+
+    comparable_reports = 0
+    for report in recent_reports:
+        if current_report_id and str(report.get("id")) == current_report_id:
+            continue
+        details = _collect_report_details(report)
+        comparable_reports += 1
+        lines.append(
+            f"Historical report {comparable_reports}: "
+            f"{details['filename']} | result {details['result_label']} | "
+            f"reliability {details['reliability_level']} | confidence {details['confidence_text']} | "
+            f"created {report.get('created_at') or 'unknown'}"
+        )
+        if comparable_reports >= 4:
+            break
+
+    if comparable_reports == 0:
+        lines.append("No prior reports beyond the current report are available for comparison.")
+
+    return lines
+
+
 def _build_page_data_context_lines(page_data: dict[str, Any] | None) -> list[str]:
     if not isinstance(page_data, dict):
         return ["No structured page context was provided."]
@@ -247,6 +296,44 @@ def _answer_page_question(page_data: dict[str, Any] | None, message: str) -> str
             return f"You currently have {len(recent_reports)} recent report(s) available in this page context."
 
     return None
+
+
+def _answer_history_comparison_question(
+    current_report: dict[str, Any] | None,
+    recent_reports: list[dict[str, Any]],
+    role: str,
+    message: str,
+) -> str | None:
+    if not isinstance(current_report, dict):
+        return None
+
+    query = message.lower()
+    comparison_terms = ["compare", "comparison", "previous", "prior", "past", "history", "historical", "trend"]
+    if not any(term in query for term in comparison_terms):
+        return None
+
+    current_details = _collect_report_details(current_report)
+    current_report_id = current_report.get("id")
+    prior_reports = [report for report in recent_reports if report.get("id") != current_report_id]
+    caution = (
+        "Use historical comparison cautiously: prior account reports may belong to different patients, encounters, or recording contexts unless continuity is explicitly confirmed."
+        if role == "clinician"
+        else "Historical comparison should be interpreted cautiously unless the prior report is confirmed to be from the same person and clinical context."
+    )
+
+    if not prior_reports:
+        return (
+            f"The current report shows {current_details['result_label']} with {current_details['reliability_level'].lower()} reliability. "
+            f"No prior report is available in this account context for comparison. {caution}"
+        )
+
+    prior_details = _collect_report_details(prior_reports[0])
+    return (
+        f"Current report: {current_details['result_label']}, reliability {current_details['reliability_level']}, "
+        f"confidence {current_details['confidence_text']}. "
+        f"Most recent prior account report: {prior_details['result_label']}, reliability {prior_details['reliability_level']}, "
+        f"confidence {prior_details['confidence_text']}. {caution}"
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -466,16 +553,21 @@ def _build_report_reply(report: dict[str, Any], role: str) -> str:
 def _answer_report_question(report: dict[str, Any], role: str, message: str) -> str | None:
     details = _collect_report_details(report)
     query = message.lower()
+    keywords = details.get("report_keywords") or [f"Reliability: {details['reliability_level']}"]
 
     if "reliability" in query and any(term in query for term in ["keyword", "mentioned", "present", "see", "find"]):
-        keywords = details.get("report_keywords") or [f"Reliability: {details['reliability_level']}"]
         return (
             f"Yes. The report explicitly includes the keyword \"Reliability\" and it is shown as "
             f"\"{keywords[0]}\"."
         )
 
+    if any(term in query for term in ["keyword", "keywords", "label", "labels", "field", "fields"]) and any(
+        term in query for term in ["report", "shown", "visible", "screen", "page"]
+    ):
+        return "Visible report labels include " + ", ".join(f"\"{keyword}\"" for keyword in keywords[:6]) + "."
+
     if any(term in query for term in ["reliability", "reliable", "confidence factor", "how reliable"]):
-        base = f"This report has {details['reliability_level'].lower()} reliability."
+        base = f'The report explicitly shows "Reliability: {details["reliability_level"]}".'
         reasons = details["reliability_reasons"]
         if role == "patient":
             if reasons:
@@ -744,52 +836,48 @@ def _build_researcher_summary(
     probability_summary: dict,
 ) -> str:
     """Hybrid narrative with embedded metrics for researchers."""
-    paragraphs: list[str] = []
+    lines: list[str] = []
 
-    # Overview paragraph with metrics
-    paragraphs.append(
+    lines.append(
         f"Analysis of \"{details['filename']}\" is complete. "
         f"Result: {details['result_label']}, risk level {details['risk_level']}, "
         f"model confidence {details['confidence_text']}, "
-        f"event count {details['event_count']}. "
-        f"Recording duration was {details['duration_text']} with signal quality graded {details['quality_grade']} "
-        f"(score {details['quality_score']}/1.0). "
-        f"Reliability is {details['reliability_level'].lower()} because " + "; ".join(details["reliability_reasons"]) + ". "
-        f"Domain shift: {details['domain_shift']}."
+        f"event count {details['event_count']}."
     )
+    lines.append(
+        f"Recording duration was {details['duration_text']} with signal quality graded {details['quality_grade']} "
+        f"(score {details['quality_score']}/1.0)."
+    )
+    lines.append(
+        f"Reliability is {details['reliability_level'].lower()} because " + "; ".join(details["reliability_reasons"]) + "."
+    )
+    lines.append(f"Domain shift: {details['domain_shift']}.")
 
-    # Probability & events
     if probability_summary:
-        paragraphs.append(
-            f"Probability distribution: mean {probability_summary.get('mean', '?')}, "
+        lines.append(
+            f"Probability profile: mean {probability_summary.get('mean', '?')}, "
             f"median {probability_summary.get('median', '?')}, "
             f"p99 {probability_summary.get('p99', '?')}, "
             f"max {probability_summary.get('max', '?')}."
         )
 
     if events:
-        event_lines = [f"Primary event: {_format_event_brief(events[0])}."]
+        lines.append(f"Primary event: {_format_event_brief(events[0])}.")
         if len(events) > 1:
-            event_lines.append(f"{len(events) - 1} additional segment(s) require cross-validation against raw traces.")
-        paragraphs.append(" ".join(event_lines))
+            lines.append(f"Additional events: {len(events) - 1} segment(s) require cross-validation against raw traces.")
     else:
-        paragraphs.append("No events survived post-processing filters. Event burden is zero for the analyzed window.")
+        lines.append("Event burden: zero after post-processing filters for the analyzed window.")
 
-    # Explainability
-    explainability_parts: list[str] = []
     if top_channels:
         channel_text = ", ".join(f"{ch} ({sc:.3f})" for ch, sc in top_channels[:5])
-        explainability_parts.append(f"Top channels by importance: {channel_text}.")
+        lines.append(f"Top channels by importance: {channel_text}.")
     if top_regions:
         if isinstance(top_regions[0], (list, tuple)):
             region_text = ", ".join(f"{name} ({score:.3f})" for name, score in top_regions[:4])
         else:
             region_text = ", ".join(str(r) for r in top_regions[:4])
-        explainability_parts.append(f"Active regions: {region_text}.")
-    if explainability_parts:
-        paragraphs.append(" ".join(explainability_parts))
+        lines.append(f"Active regions: {region_text}.")
 
-    # Flags
     flags: list[str] = []
     if details["se_flag"]:
         flags.append("status epilepticus flag")
@@ -798,17 +886,14 @@ def _build_researcher_summary(
     if details["events_per_hour"] is not None:
         flags.append(f"events/hr: {details['events_per_hour']}")
     if flags:
-        paragraphs.append(f"Critical flags: {', '.join(flags)}.")
+        lines.append(f"Critical flags: {', '.join(flags)}.")
 
-    # Trend
     if details["trend"] and details["trend"].lower() != "no trend summary available.":
-        paragraphs.append(f"Trend summary: {details['trend']}")
+        lines.append(f"Trend summary: {details['trend']}")
 
-    # Epidemiological & clinical context for researchers
-    paragraphs.append(_get_researcher_context(top_regions, details["risk_level"]))
+    lines.append(_get_researcher_context(top_regions, details["risk_level"]))
 
-    # Methodology note
-    paragraphs.append(
+    lines.append(
         "Methodological note: all [HEURISTIC] labels are rule-based estimates, not ground-truth annotations. "
         "Cross-validate flagged segments against raw EEG traces before drawing conclusions. "
         "Model outputs are decision-support evidence and should not be treated as definitive clinical annotations."
@@ -816,9 +901,9 @@ def _build_researcher_summary(
 
     if recommendations:
         rec_text = "; ".join(recommendations[:3])
-        paragraphs.append(f"Recommendations: {rec_text}.")
+        lines.append(f"Recommendations: {rec_text}.")
 
-    return "\n\n".join(paragraphs)
+    return "\n".join(lines)
 
 
 def _is_auto_summary_request(message: str) -> bool:
@@ -859,7 +944,10 @@ def _deterministic_fallback(context: ScoutContext, user_profile: dict[str, Any] 
         return "I can explain NeuroSentinel results and product behavior, but I cannot diagnose, prescribe, or recommend treatment changes."
     if any(term in query for term in ["upload", "start", "tour", "dashboard"]):
         return "Start on the dashboard, upload an EDF file, and NeuroSentinel will create a pending report immediately while the backend analyzes the recording asynchronously."
-    if any(term in query for term in ["memory", "remember", "history", "chat"]):
+    history_comparison_answer = _answer_history_comparison_question((report or context.current_report), recent_reports, role, context.message)
+    if history_comparison_answer:
+        return history_comparison_answer
+    if any(term in query for term in ["memory", "remember", "chat history", "conversation history", "chat reset"]):
         return "SCOUT keeps chat messages for this session only. When you log out or start a new session, the conversation resets."
     report_specific_answer = _answer_report_question((report or context.current_report), role, context.message) if (report or context.current_report) else None
     if report_specific_answer:
@@ -935,6 +1023,16 @@ class ScoutService:
         if _is_report_summary_intent(context.message, active_report):
             return {
                 "message": _build_report_reply(active_report, resolved_role),  # type: ignore[arg-type]
+                "provider": "deterministic-report",
+                "tools_used": list(tool_outputs.keys()),
+                "fallback": False,
+                "provider_failures": [],
+            }
+
+        history_comparison_answer = _answer_history_comparison_question(active_report, recent_reports, resolved_role, context.message)
+        if history_comparison_answer:
+            return {
+                "message": history_comparison_answer,
                 "provider": "deterministic-report",
                 "tools_used": list(tool_outputs.keys()),
                 "fallback": False,
@@ -1018,11 +1116,9 @@ class ScoutService:
             ),
         }
         history_lines = [f"{message['role']}: {message['content']}" for message in history[-8:]]
-        reports_summary = [
-            f"{report.get('filename', 'Unknown file')} | {report.get('status', 'unknown')} | {report.get('result_label', 'unknown')} | risk={report.get('risk_level', 'unknown')}"
-            for report in recent_reports[:5]
-        ]
+        reports_summary = _build_recent_report_context_lines(recent_reports, current_report)
         snippet_text = [f"{snippet['title']}: {snippet['body']}" for snippet in product_snippets]
+        user_profile_lines = _summarize_user_preferences(user_profile)
 
         report_context_lines: list[str] = []
         if current_report:
@@ -1037,6 +1133,7 @@ class ScoutService:
                     f"Quality: {details['quality_grade']} ({details['quality_score']}/1.0)",
                     f"Reliability: {details['reliability_level']}",
                     f"Reliability reasons: {'; '.join(details['reliability_reasons'])}",
+                    f"Visible report labels: {'; '.join(details['report_keywords']) if details['report_keywords'] else 'not provided'}",
                     f"Trend: {details['trend']}",
                     f"Domain shift: {details['domain_shift']}",
                 ]
@@ -1098,8 +1195,14 @@ class ScoutService:
                 f"CRITICAL: You MUST calibrate EVERY response for the '{role}' role. "
                 f"{'Write in plain, calm, and brief language. Avoid jargon. No numbered lists or bullets ever.' if role == 'patient' else 'Use precise clinical terminology with structured metric-dense findings.' if role == 'clinician' else 'Use technical, methodological language with metrics and confidence bounds.'}",
                 f"Current page: {context.page}",
+                "PRIMARY CONTEXT RULE: When a current report is open, treat the CURRENT REPORT block below as the primary source of truth over general assumptions.",
                 "REPORT RULE: If a current report is available, treat reliability as part of the core result and mention it whenever you summarize the report.",
+                "RELIABILITY RULE: If the report explicitly includes a Reliability label, acknowledge that the label is present and state its exact value before elaborating.",
+                "HISTORY SAFETY RULE: Recent reports are account history only. Do not assume they belong to the same patient, same encounter, or same recording unless continuity is explicitly confirmed.",
+                "CLINICIAN SAFETY RULE: If a clinician asks you to compare the current report with prior reports, include a caution that prior account history may refer to different patients or different recording contexts.",
                 "GLOBAL RULE: Unless you are generating the initial comprehensive auto-summary of a new EEG report, YOUR RESPONSES MUST BE EXTREMELY CONCISE, PRECISE, AND STRAIGHT TO THE POINT. No filler words, no lengthy paragraphs.",
+                "--- USER PROFILE ---",
+                *user_profile_lines,
                 "--- CURRENT REPORT ---",
                 *report_context_lines,
                 "--- PAGE CONTEXT ---",

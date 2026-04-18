@@ -70,7 +70,7 @@ class SupabaseService:
         try:
             response = (
                 self.client.table("reports")
-                .select("id, filename, status, summary, result_label, event_count, confidence_score, quality_grade, risk_level, created_at")
+                .select("id, filename, status, summary, result_label, event_count, confidence_score, quality_grade, risk_level, duration_minutes, created_at")
                 .eq("user_id", user_id)
                 .order("created_at", desc=True)
                 .limit(limit)

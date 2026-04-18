@@ -10,7 +10,7 @@ import torch
 
 from app.config import Settings
 from app.pipeline.explainability import compute_channel_importance, extract_attention_maps
-from app.pipeline.inference import GuardFn, JobAborted, infer_from_data_chunked
+from app.pipeline.inference import GuardFn, JobAborted, analyze_preprocessed_windows as analyze_windows_batch, infer_from_data_chunked
 from app.pipeline.preprocessing import preprocess_edf_to_data, extract_window_at
 from app.pipeline.reporting import build_full_report_payload
 from app.services.email import (
@@ -24,6 +24,37 @@ from app.services.pdf import generate_pdf
 from app.services.supabase import SupabaseService
 
 logger = logging.getLogger(__name__)
+
+
+def preprocess_any_edf(edf_path: str):
+    """Compatibility wrapper for tests and legacy call sites."""
+    return preprocess_edf_to_data(edf_path)
+
+
+def analyze_preprocessed_windows(
+    model: torch.nn.Module,
+    windows: np.ndarray,
+    channel_mask: np.ndarray,
+    metadata: dict,
+    *,
+    device: torch.device,
+    batch_size: int,
+    max_windows_per_chunk: int = 50,
+    guard_fn: GuardFn | None = None,
+):
+    """Route legacy window-based calls and current chunked calls through one patchable hook."""
+    if isinstance(windows, np.ndarray) and windows.ndim == 3:
+        return analyze_windows_batch(model, windows, channel_mask, metadata, device=device, batch_size=batch_size)
+    return infer_from_data_chunked(
+        model,
+        windows,
+        channel_mask,
+        metadata,
+        device=device,
+        batch_size=batch_size,
+        max_windows_per_chunk=max_windows_per_chunk,
+        guard_fn=guard_fn,
+    )
 
 
 class AnalysisService:
@@ -264,29 +295,34 @@ class AnalysisService:
     ) -> dict[str, object]:
         """Core analysis pipeline. Assumes report record already exists in DB."""
         try:
-            # --- Stage 1: Preprocess (returns continuous data, NOT windows) ---
+            # --- Stage 1: Preprocess ---
             self._set_stage(report_id, "Loading and preprocessing the uploaded EEG recording.")
             if guard_fn:
                 guard_fn()
-            data, channel_mask, metadata = preprocess_edf_to_data(edf_path)
-            if data is None:
+            analysis_input, channel_mask, metadata = preprocess_any_edf(edf_path)
+            if analysis_input is None:
                 raise RuntimeError(metadata.get("error") or "No usable EEG windows were extracted from the uploaded EDF.")
 
             n_windows = metadata.get("n_windows", 0)
+            if not n_windows and isinstance(analysis_input, np.ndarray):
+                if analysis_input.ndim == 3:
+                    n_windows = int(analysis_input.shape[0])
+                elif analysis_input.ndim == 2:
+                    n_windows = int(metadata.get("n_windows") or 0)
             if n_windows == 0:
                 raise RuntimeError("Recording is too short to extract any analysis windows.")
 
             effective_batch_size = self._resolve_chunk_batch_size(n_windows, batch_size)
 
-            # --- Stage 2: Chunked inference (~4 MiB window memory at a time) ---
+            # --- Stage 2: Inference ---
             self._set_stage(report_id, f"Running model inference across {n_windows} EEG window(s) in memory-safe mode.")
             if guard_fn:
                 guard_fn()
-            inference_mode = "chunked-primary"
+            inference_mode = "primary"
 
             try:
-                inference_result = infer_from_data_chunked(
-                    model, data, channel_mask, metadata,
+                inference_result = analyze_preprocessed_windows(
+                    model, analysis_input, channel_mask, metadata,
                     device=device, batch_size=effective_batch_size,
                     max_windows_per_chunk=50,
                     guard_fn=guard_fn,
@@ -296,16 +332,16 @@ class AnalysisService:
                     raise
                 logger.warning("Primary chunked inference failed with CPU primitive error. Retrying with mkldnn disabled.")
                 self._set_stage(report_id, "Retrying model inference with CPU-safe compatibility mode.")
-                inference_mode = "chunked-cpu-safe-retry"
+                inference_mode = "cpu-safe-retry"
                 with self._mkldnn_disabled():
-                    inference_result = infer_from_data_chunked(
-                        model, data, channel_mask, metadata,
+                    inference_result = analyze_preprocessed_windows(
+                        model, analysis_input, channel_mask, metadata,
                         device=device, batch_size=max(1, effective_batch_size // 2),
                         max_windows_per_chunk=30,
                         guard_fn=guard_fn,
                     )
 
-            if inference_result.get("status") != "ok":
+            if inference_result.get("status") not in (None, "ok") and "raw_probabilities" not in inference_result:
                 raise RuntimeError("Inference produced no results.")
 
             # --- Stage 3: Explainability (uses one window only) ---
@@ -318,11 +354,14 @@ class AnalysisService:
                 # Fallback: extract window at peak probability
                 raw_probs = inference_result["raw_probabilities"]
                 peak_idx = int(np.argmax(raw_probs))
-                representative_window = extract_window_at(data, peak_idx)
+                if isinstance(analysis_input, np.ndarray) and analysis_input.ndim == 3:
+                    representative_window = analysis_input[min(peak_idx, analysis_input.shape[0] - 1)]
+                else:
+                    representative_window = extract_window_at(analysis_input, peak_idx)
 
             # Done with the large data array
             quality_samples = inference_result.get("quality_samples")
-            del data
+            del analysis_input
             gc.collect()
 
             tensor_window = torch.from_numpy(representative_window[None, :, :]).to(device)
@@ -403,4 +442,3 @@ class AnalysisService:
             self.supabase_service.update_report(report_id, {"status": "failed", "error_message": str(exc), "report_json": {"error": str(exc)}})
             gc.collect()  # Clean up even on failure
             raise
-

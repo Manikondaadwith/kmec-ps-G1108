@@ -53,13 +53,28 @@ function ScoutInterpretationCard({
     initialMessage,
   })
 
-  // We want the latest assistant message that isn't the first greeting, specifically for this context
-  const latestAssistantMessage = [...messages].reverse().find(m => 
-    m.role === 'assistant' && 
-    m.content !== initialMessage &&
-    m.reportId === report.id
-  )
-  if (loading && !latestAssistantMessage) {
+  const [lockedAutoSummary, setLockedAutoSummary] = useState<string | null>(null)
+
+  useEffect(() => {
+    setLockedAutoSummary(null)
+  }, [report.id])
+
+  useEffect(() => {
+    if (lockedAutoSummary) return
+
+    const firstAutoSummary = messages.find((message) =>
+      message.role === 'assistant' &&
+      !message.isError &&
+      message.content !== initialMessage &&
+      message.reportId === report.id
+    )
+
+    if (firstAutoSummary?.content?.trim()) {
+      setLockedAutoSummary(firstAutoSummary.content)
+    }
+  }, [initialMessage, lockedAutoSummary, messages, report.id])
+
+  if (loading && !lockedAutoSummary) {
     return (
       <div className="relative overflow-hidden rounded-[32px] border border-blue-100 bg-white p-8 shadow-sm">
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-cyan-400" />
@@ -105,17 +120,17 @@ function ScoutInterpretationCard({
             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-tight">Signal Capture & Observation Unified Tool</p>
           </div>
         </div>
-        {!loading && (
+        {lockedAutoSummary && (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[9px] font-black text-emerald-700 uppercase tracking-wider ring-1 ring-inset ring-emerald-100">
-            Analysis Verified
+            Auto Summary Locked
           </span>
         )}
       </div>
 
       <div className="prose prose-sm max-w-none">
-        {latestAssistantMessage ? (
+        {lockedAutoSummary ? (
           <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-gray-700 font-medium">
-            {cleanMarkdown(latestAssistantMessage.content)}
+            {cleanMarkdown(lockedAutoSummary)}
           </p>
         ) : (
           <div className="flex items-center gap-3">

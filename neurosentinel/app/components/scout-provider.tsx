@@ -64,6 +64,14 @@ function serializeReport(report: ReportRecord | null | undefined) {
   if (!report) return null
 
   const reliability = getReliabilityDetails(report.confidence_score, report.duration_minutes, report.quality_grade)
+  const reportKeywords = [
+    report.result_label ? `Result: ${report.result_label}` : null,
+    `Reliability: ${reliability.level}`,
+    typeof report.confidence_score === 'number' ? `Confidence: ${report.confidence_score.toFixed(1)}%` : null,
+    typeof report.duration_minutes === 'number' ? `Duration: ${report.duration_minutes.toFixed(1)} min` : null,
+    report.risk_level ? `Risk: ${report.risk_level}` : null,
+    report.quality_grade ? `Signal quality: ${report.quality_grade}` : null,
+  ].filter((keyword): keyword is string => Boolean(keyword))
 
   return {
     id: report.id,
@@ -78,7 +86,7 @@ function serializeReport(report: ReportRecord | null | undefined) {
     duration_minutes: report.duration_minutes,
     reliability: reliability.level,
     reliability_reasons: reliability.reasons,
-    report_keywords: [`Reliability: ${reliability.level}`],
+    report_keywords: reportKeywords,
     report_json: report.report_json,
     created_at: report.created_at,
   }
