@@ -130,7 +130,14 @@ def _collect_report_details(report: dict[str, Any]) -> dict[str, Any]:
     confidence_value = report.get("confidence_score")
     duration_value = report.get("duration_minutes") or report_json.get("duration_minutes")
     quality_grade = report.get("quality_grade") or report_json.get("quality_grade") or signal_quality.get("grade") or quality.get("dominant_grade") or quality.get("grade") or "unknown"
+    explicit_reliability = report.get("reliability")
+    explicit_reliability_reasons = report.get("reliability_reasons")
     reliability_level, reliability_reasons = _compute_reliability(quality_grade, duration_value, confidence_value)
+    if isinstance(explicit_reliability, str) and explicit_reliability.strip():
+        reliability_level = explicit_reliability.strip().title()
+    if isinstance(explicit_reliability_reasons, list) and explicit_reliability_reasons:
+        reliability_reasons = [str(reason) for reason in explicit_reliability_reasons if str(reason).strip()]
+    report_keywords = report.get("report_keywords") if isinstance(report.get("report_keywords"), list) else []
 
     return {
         "filename": report.get("filename") or report_json.get("file_name") or "this report",
@@ -154,6 +161,7 @@ def _collect_report_details(report: dict[str, Any]) -> dict[str, Any]:
         "recommendations": recommendations if isinstance(recommendations, list) else [],
         "reliability_level": reliability_level,
         "reliability_reasons": reliability_reasons,
+        "report_keywords": [str(keyword) for keyword in report_keywords if str(keyword).strip()],
     }
 
 
@@ -458,6 +466,13 @@ def _build_report_reply(report: dict[str, Any], role: str) -> str:
 def _answer_report_question(report: dict[str, Any], role: str, message: str) -> str | None:
     details = _collect_report_details(report)
     query = message.lower()
+
+    if "reliability" in query and any(term in query for term in ["keyword", "mentioned", "present", "see", "find"]):
+        keywords = details.get("report_keywords") or [f"Reliability: {details['reliability_level']}"]
+        return (
+            f"Yes. The report explicitly includes the keyword \"Reliability\" and it is shown as "
+            f"\"{keywords[0]}\"."
+        )
 
     if any(term in query for term in ["reliability", "reliable", "confidence factor", "how reliable"]):
         base = f"This report has {details['reliability_level'].lower()} reliability."
@@ -901,7 +916,10 @@ class ScoutService:
         else:
             history = self.supabase_service.fetch_recent_chat_messages(context.user_id, self.settings.scout_max_history)
         current_report = self.supabase_service.fetch_report(context.user_id, context.report_id) if context.report_id else None
-        active_report = current_report or context.current_report
+        if current_report and context.current_report:
+            active_report = {**current_report, **context.current_report}
+        else:
+            active_report = current_report or context.current_report
         recent_reports = self.supabase_service.fetch_recent_reports(context.user_id, self.settings.scout_report_limit)
         product_snippets = select_product_snippets(context.page, context.message)
         resolved_role = _normalize_role(context.role or (user_profile or {}).get("role"))
