@@ -232,14 +232,22 @@ export function getReliability(confidence?: number | null, duration?: number | n
   const dur = typeof duration === 'number' ? duration : 0
   const qual = signalQuality?.toLowerCase() || 'unknown'
 
-  // Low thresholds: short duration or poor signal
-  if (dur > 0 && dur < 20) return 'Low'
+  // Normalize confidence to 0..1 range
+  const normalizedConf = conf > 1 ? conf / 100 : conf
+
+  // Critical: very low confidence always = Low reliability
+  // This catches the case where the model is uncertain regardless of duration
+  if (normalizedConf < 0.30) return 'Low'
+
+  // Poor signal quality = Low reliability
   if (qual === 'poor' || qual === 'unreliable') return 'Low'
 
-  // Moderate threshold: low confidence score
-  // (We handle both 0..1 and 0..100)
-  const normalizedConf = conf > 1 ? conf / 100 : conf
-  if (normalizedConf < 0.8) return 'Moderate'
+  // Short recording reduces reliability
+  if (dur > 0 && dur < 10) return 'Low'
+
+  // Moderate confidence or somewhat short duration = Moderate
+  if (normalizedConf < 0.80) return 'Moderate'
+  if (dur > 0 && dur < 20) return 'Moderate'
 
   return 'High'
 }
@@ -248,8 +256,13 @@ export function getReliabilityDetails(confidence?: number | null, duration?: num
   const reasons: string[] = []
   const level = getReliability(confidence, duration, signalQuality)
 
-  if (typeof duration === 'number' && duration > 0 && duration < 20) {
-    reasons.push(`Recording length is short at ${duration.toFixed(1)} minutes; 20+ minutes is recommended.`)
+  const normalizedConf = typeof confidence === 'number' ? (confidence > 1 ? confidence / 100 : confidence) : null
+
+  // Check confidence first (matches getReliability priority)
+  if (normalizedConf !== null && normalizedConf < 0.30) {
+    reasons.push(`Model confidence is very low at ${(normalizedConf * 100).toFixed(1)}%, indicating high uncertainty in the result.`)
+  } else if (normalizedConf !== null && normalizedConf < 0.80) {
+    reasons.push(`Model confidence is below the preferred threshold at ${(normalizedConf * 100).toFixed(1)}%.`)
   }
 
   const quality = signalQuality?.toLowerCase() || 'unknown'
@@ -257,9 +270,10 @@ export function getReliabilityDetails(confidence?: number | null, duration?: num
     reasons.push(`Signal quality is ${signalQuality}, which reduces confidence in the interpretation.`)
   }
 
-  const normalizedConf = typeof confidence === 'number' ? (confidence > 1 ? confidence / 100 : confidence) : null
-  if (normalizedConf !== null && normalizedConf < 0.8) {
-    reasons.push(`Model confidence is below the preferred threshold at ${(normalizedConf * 100).toFixed(1)}%.`)
+  if (typeof duration === 'number' && duration > 0 && duration < 10) {
+    reasons.push(`Recording length is very short at ${duration.toFixed(1)} minutes; 20+ minutes is recommended.`)
+  } else if (typeof duration === 'number' && duration > 0 && duration < 20) {
+    reasons.push(`Recording length is short at ${duration.toFixed(1)} minutes; 20+ minutes is recommended.`)
   }
 
   if (reasons.length === 0) {

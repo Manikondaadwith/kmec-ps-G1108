@@ -383,21 +383,65 @@ def build_full_report_payload(
         )
 
     status_epilepticus = any(float(event["duration_sec"]) > 300 for event in enriched_events)
-    result_label = "Seizure Detected" if enriched_events else "No seizure events detected"
+
+    # ── Raw-probability seizure detection ──────────────────────────
+    # The post-processing gauntlet (smoothing, hysteresis, min-duration,
+    # mean-filter, sustained-filter) can kill real seizure events,
+    # especially in long recordings with sparse/short seizures or in
+    # recordings with many seizures (where domain-shift raises thresholds).
+    # To prevent false negatives we also check the raw model output directly.
+    raw_prob_max = float(inference_result["raw_prob_max"])
+    seizure_ratio = float((raw_probabilities > 0.5).mean())  # fraction of windows above 0.5
+    n_windows_above_50 = int((raw_probabilities > 0.5).sum())
+    model_detects_seizure = raw_prob_max > 0.5 or seizure_ratio > 0.05
+
+    if enriched_events:
+        result_label = "Seizure Detected"
+    elif model_detects_seizure:
+        # Post-processing killed all events, but the model clearly sees seizures
+        result_label = "Seizure Detected"
+        highest_event_risk = "Medium"  # Conservative risk since events weren't individually characterized
+    else:
+        result_label = "No seizure events detected"
+
     n_ev = len(enriched_events)
     trend_summary = (
         f"{n_ev} event{'s' if n_ev != 1 else ''} detected with {highest_event_risk.lower()} overall heuristic risk."
         if enriched_events
-        else "No seizure events survived post-processing for this recording."
+        else (
+            f"Model detected seizure activity in {n_windows_above_50} window(s) (max probability {raw_prob_max:.1%}, "
+            f"seizure ratio {seizure_ratio:.1%}) but post-processing filters removed all discrete events."
+            if model_detects_seizure
+            else "No seizure events detected in this recording."
+        )
     )
-    # Confidence score: when seizures are detected, use the highest event mean probability.
-    # When no seizures, confidence reflects certainty of the 'no seizure' result:
-    # a low raw_prob_max means higher confidence that no seizure occurred.
+
+    # ── Confidence score ──────────────────────────────────────────
+    # Confidence = how certain the system is in its OWN final prediction.
+    # NEVER invert when the model shows high seizure probabilities.
     if enriched_events:
+        # Post-processed events exist: use the strongest event
         confidence_score = round(max(event["mean_probability"] for event in enriched_events) * 100, 1)
+    elif model_detects_seizure:
+        # Model detects seizure but post-processing killed events:
+        # confidence is based on how strong the model's seizure signal is
+        top_probs = raw_probabilities[raw_probabilities > 0.5]
+        if len(top_probs) > 0:
+            confidence_score = round(float(np.percentile(top_probs, 75)) * 100, 1)
+        else:
+            confidence_score = round(raw_prob_max * 100, 1)
     else:
-        # Invert: if max prob was 0.08 → 92% confident no seizure; if 0.4 → 60% confident
-        confidence_score = round((1.0 - float(inference_result["raw_prob_max"])) * 100, 1)
+        # Genuinely no seizure: confidence reflects how clean the signal is
+        if raw_prob_max < 0.1:
+            confidence_score = 95.0  # Very confident: nothing even close
+        elif raw_prob_max < 0.2:
+            confidence_score = 88.0
+        elif raw_prob_max < 0.3:
+            confidence_score = 78.0
+        elif raw_prob_max < 0.4:
+            confidence_score = 65.0
+        else:
+            confidence_score = round((1.0 - raw_prob_max) * 100, 1)  # Borderline
     payload = {
         "recording_id": filename,
         "file_name": filename,
@@ -407,7 +451,7 @@ def build_full_report_payload(
         "quality_score": quality["mean_quality_score"],
         "duration_minutes": round(float(inference_result["metadata"].get("duration_sec", 0.0)) / 60, 1),
         "missing_channels": quality["missing_channels"] or "None",
-        "risk_level": highest_event_risk if enriched_events else "Low",
+        "risk_level": highest_event_risk if (enriched_events or model_detects_seizure) else "Low",
         "trend_summary": trend_summary,
         "early_warning": early_warning_flag,
         "se_flag": status_epilepticus,

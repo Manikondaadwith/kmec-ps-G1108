@@ -85,15 +85,25 @@ def _compute_reliability(quality_grade: Any, duration_minutes: Any, confidence_s
     quality_value = str(quality_grade).lower() if quality_grade else "unknown"
     normalized_conf = _normalize_confidence_value(confidence_score)
 
-    if duration_value is not None and duration_value > 0 and duration_value < 20:
-        reasons.append(f"recording duration is short at {duration_value:.1f} minutes")
+    # Confidence checked FIRST — very low confidence always = Low
+    if normalized_conf is not None and normalized_conf < 0.30:
+        reasons.append(f"model confidence is very low at {normalized_conf * 100:.1f}%")
+        return ("Low", reasons)
+
     if quality_value in {"poor", "unreliable"}:
         reasons.append(f"signal quality is {quality_grade}")
+    if duration_value is not None and duration_value > 0 and duration_value < 10:
+        reasons.append(f"recording duration is very short at {duration_value:.1f} minutes")
+    elif duration_value is not None and duration_value > 0 and duration_value < 20:
+        reasons.append(f"recording duration is short at {duration_value:.1f} minutes")
     if normalized_conf is not None and normalized_conf < 0.8:
         reasons.append(f"model confidence is below target at {normalized_conf * 100:.1f}%")
 
     if reasons:
-        return ("Low" if duration_value is not None and duration_value < 20 or quality_value in {"poor", "unreliable"} else "Moderate", reasons)
+        # Low if quality is poor or very short duration
+        if quality_value in {"poor", "unreliable"} or (duration_value is not None and duration_value < 10):
+            return ("Low", reasons)
+        return ("Moderate", reasons)
 
     if normalized_conf is not None and normalized_conf < 0.9:
         return ("Moderate", [f"model confidence is acceptable but not ideal at {normalized_conf * 100:.1f}%"])

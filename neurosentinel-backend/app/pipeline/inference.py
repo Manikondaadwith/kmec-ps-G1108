@@ -112,42 +112,58 @@ def compute_output_domain_shift(raw_probabilities: np.ndarray) -> float:
 
 
 def domain_adaptive_post_process(probabilities: np.ndarray, domain_shift: float, stride_sec: float = 1.0) -> tuple[list[tuple[float, float]], float, float, dict[str, Any]]:
+    # Two-tier approach:
+    # HIGH domain shift (foreign data like Siena): strict filtering to suppress FP
+    #   — model produces elevated baseline (median 0.41-0.81) on foreign data
+    #   — strict thresholds eliminate cross-dataset false alarms
+    # LOW/NO domain shift (in-domain like CHB-MIT/Helsinki): relaxed filtering
+    #   — model baselines are low (median ~0.001), genuine seizures spike clearly
+    #   — relaxed thresholds catch shorter/sparser seizures without FP risk
     if domain_shift >= 0.7:
+        # HIGH domain shift: preserve original strict filtering for FP suppression
         smooth_window = 13
         min_duration = 20.0
         min_mean = 0.88
         sustained_seconds = 8
         sustained_threshold = 0.88
         smoothed = _smooth(probabilities, window=smooth_window)
-        high = 0.90
+        high = 0.90  # fixed — seizures must clearly exceed elevated baseline
         low = 0.75
+        threshold_mode = "fixed_strict"
     elif domain_shift >= 0.4:
+        # MODERATE domain shift: moderately strict
         smooth_window = 11
-        min_duration = 20.0
-        min_mean = 0.93
-        sustained_seconds = 8
-        sustained_threshold = 0.90
-        smoothed = _smooth(probabilities, window=smooth_window)
-        high = max(float(np.percentile(smoothed, 99.5)), 0.5)
-        low = high * 0.7
-    elif domain_shift >= 0.15:
-        smooth_window = 9
-        min_duration = 18.0
-        min_mean = 0.91
-        sustained_seconds = 6
-        sustained_threshold = 0.87
-        smoothed = _smooth(probabilities, window=smooth_window)
-        high = max(float(np.percentile(smoothed, 99.0)), 0.5)
-        low = high * 0.7
-    else:
-        smooth_window = 7
         min_duration = 15.0
-        min_mean = 0.90
+        min_mean = 0.80
         sustained_seconds = 5
-        sustained_threshold = 0.85
+        sustained_threshold = 0.75
         smoothed = _smooth(probabilities, window=smooth_window)
-        high = max(float(np.percentile(smoothed, 99.0)), 0.5)
+        high = max(float(np.percentile(smoothed, 99)), 0.5)
         low = high * 0.7
+        threshold_mode = "percentile_moderate"
+    elif domain_shift >= 0.15:
+        # LOW domain shift: relaxed but still cautious
+        smooth_window = 7
+        min_duration = 10.0
+        min_mean = 0.65
+        sustained_seconds = 4
+        sustained_threshold = 0.55
+        smoothed = _smooth(probabilities, window=smooth_window)
+        high = max(float(np.percentile(smoothed, 97)), 0.5)
+        low = high * 0.65
+        threshold_mode = "percentile_relaxed"
+    else:
+        # NO domain shift (in-domain data): permissive thresholds
+        # Model baselines are very low (~0.001), so even moderate spikes are real
+        smooth_window = 5
+        min_duration = 8.0
+        min_mean = 0.55
+        sustained_seconds = 3
+        sustained_threshold = 0.45
+        smoothed = _smooth(probabilities, window=smooth_window)
+        high = max(float(np.percentile(smoothed, 95)), 0.5)
+        low = high * 0.6
+        threshold_mode = "percentile_permissive"
 
     config = {
         "smooth_window": smooth_window,
@@ -155,7 +171,7 @@ def domain_adaptive_post_process(probabilities: np.ndarray, domain_shift: float,
         "min_mean_prob": min_mean,
         "sustained_sec": sustained_seconds,
         "sustained_thresh": sustained_threshold,
-        "threshold_mode": "fixed" if domain_shift >= 0.7 else "percentile",
+        "threshold_mode": threshold_mode,
     }
 
     events = _hysteresis(smoothed, high, low, stride_sec)
