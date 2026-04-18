@@ -1,5 +1,5 @@
 export type ScoutRole = 'clinician' | 'researcher' | 'patient' | null
-export type ScoutPageContext = 'dashboard' | 'report' | 'onboarding' | 'settings' | 'general'
+export type ScoutPageContext = 'dashboard' | 'report' | 'onboarding' | 'settings' | 'history' | 'general'
 export type ReportStatus = 'pending' | 'processing' | 'completed' | 'failed'
 
 export type ReportEvent = {
