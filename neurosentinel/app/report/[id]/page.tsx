@@ -231,7 +231,7 @@ export default function ReportPage() {
   const scoutAutoPrompt = useMemo(() => {
     if (!report || normalizeReportStatus(report.status) !== 'completed') return null
     return {
-      content: `Summarize "${report.filename || 'this report'}" for me in detail.`,
+      content: `Summarize "${report.filename || 'this report'}" for me in detail. Include the result, reliability, confidence, signal quality, and explain clearly why reliability is low if there are any limitations.`,
       visible: false,
     }
   }, [report])
@@ -250,12 +250,9 @@ export default function ReportPage() {
     (report?.event_count ?? 0) > 0 ||
     normalizedResultLabel === 'seizure detected' ||
     normalizedResultLabel.includes('seizure-pattern activity detected')
-  const resultCardClasses = isSeizureDetected
-    ? 'border-red-200 bg-red-50 text-red-950 shadow-xl shadow-red-100/70'
-    : 'border-emerald-200 bg-emerald-50 text-emerald-950 shadow-xl shadow-emerald-100/80'
-  const resultChipClasses = isSeizureDetected
-    ? 'bg-red-600 text-white ring-red-200'
-    : 'bg-emerald-600 text-white ring-emerald-200'
+  const statusBadgeClasses = isSeizureDetected
+    ? 'bg-red-100 text-red-900 border-red-300 shadow-sm shadow-red-100/80'
+    : 'bg-emerald-100 text-emerald-900 border-emerald-300 shadow-sm shadow-emerald-100/80'
 
 
   const riskClasses = (() => {
@@ -354,18 +351,7 @@ export default function ReportPage() {
                 </div>
                 <div className="flex-1">
                   <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3">
-                    <div className={`inline-flex items-center gap-3 rounded-2xl border px-4 py-3 shadow-lg ${resultCardClasses}`}>
-                      <span className={`inline-flex items-center rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ring-2 ${resultChipClasses}`}>
-                        Result
-                      </span>
-                      <div className="flex flex-col">
-                        <span className="text-[11px] font-black uppercase tracking-[0.18em] opacity-60">Clinical outcome</span>
-                        <span className="text-[18px] font-black tracking-tight">
-                          {report.result_label || 'Analysis Pending'}
-                        </span>
-                      </div>
-                    </div>
-                    <StatusBadge report={report} showBorder />
+                    <StatusBadge report={report} showBorder showDot={false} className={statusBadgeClasses} />
                     <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-gray-400">
                       Conf: {report.confidence_score?.toFixed(1) || '0'}%
                     </span>

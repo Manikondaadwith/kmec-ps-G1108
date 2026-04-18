@@ -19,9 +19,9 @@ export const STATUS_CONFIG: Record<StatusType, StatusConfig> = {
   no_seizure: {
     label: 'No Seizure',
     color: 'green',
-    bg: 'bg-green-100',
-    text: 'text-green-700',
-    border: 'border-green-500',
+    bg: 'bg-emerald-100',
+    text: 'text-emerald-900',
+    border: 'border-emerald-300',
   },
   failed: {
     label: 'Analysis Failed',

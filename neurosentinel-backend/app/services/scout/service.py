@@ -553,6 +553,17 @@ def _build_patient_summary(
             f"The overall risk level is {risk} and the model's confidence in this assessment is {confidence}."
         )
 
+    reliability_reasons = details["reliability_reasons"]
+    if reliability_reasons:
+        paragraphs.append(
+            f"Overall report reliability is {details['reliability_level'].lower()}. "
+            f"This is mainly because " + ", and ".join(reliability_reasons) + "."
+        )
+    else:
+        paragraphs.append(
+            f"Overall report reliability is {details['reliability_level'].lower()} based on the available recording quality, duration, and confidence signals."
+        )
+
     # Quality & duration
     paragraphs.append(
         f"The recording was {duration} long and the signal quality was graded as {quality}. "
@@ -652,6 +663,7 @@ def _build_clinician_summary(
     lines.append(f"- **Report:** {details['filename']}")
     lines.append(f"- **Result:** {details['result_label']} | **Risk:** {details['risk_level']} | **Confidence:** {details['confidence_text']} | **Events:** {details['event_count']}")
     lines.append(f"- **Duration:** {details['duration_text']} | **Quality:** {details['quality_grade']} ({details['quality_score']}/1.0)")
+    lines.append(f"- **Reliability:** {_format_reliability_block(details)}")
 
     if probability_summary:
         lines.append(
@@ -726,7 +738,9 @@ def _build_researcher_summary(
         f"model confidence {details['confidence_text']}, "
         f"event count {details['event_count']}. "
         f"Recording duration was {details['duration_text']} with signal quality graded {details['quality_grade']} "
-        f"(score {details['quality_score']}/1.0). Domain shift: {details['domain_shift']}."
+        f"(score {details['quality_score']}/1.0). "
+        f"Reliability is {details['reliability_level'].lower()} because " + "; ".join(details["reliability_reasons"]) + ". "
+        f"Domain shift: {details['domain_shift']}."
     )
 
     # Probability & events
@@ -960,7 +974,8 @@ class ScoutService:
             "clinician": (
                 "Be clinical, structured, and metric-dense. Provide concise paragraph-style responses. Do not use bulleted lists or pipe-separated lines for regular responses unless explicitly requested. "
                 "MANDATORY: Provide strict HEALTH INTERPRETATION (explain significance of findings) and ACTIONABLE GUIDANCE (suggest what to do next, e.g., 'consider video-EEG monitoring'). "
-                "Focus purely on interpretation and next steps."
+                "Focus purely on interpretation and next steps. "
+                "When a current report is open, explicitly account for reliability, confidence, duration, and signal quality."
             ),
             "researcher": (
                 "Be technical and methodological. Use a hybrid of narrative context and embedded metrics. Include confidence bounds, methodology cues, and domain shift notes. Balance readability with data density."
@@ -970,7 +985,8 @@ class ScoutService:
                 "MANDATORY: Provide clear HEALTH INTERPRETATION (explain in simple terms what the result means and possible reasons like abnormal electrical activity or seizure patterns). "
                 "MANDATORY: Provide ACTIONABLE GUIDANCE (suggest what to do next and what kind of follow-up is needed, e.g., 'Consult your neurologist'). "
                 "MANDATORY: Include health tips about medication adherence, sleep hygiene, stress management, and trigger avoidance. "
-                "If past reports/trends are available, compare trends (e.g., 'Compared to your previous reports, activity appears stable')."
+                "If past reports/trends are available, compare trends (e.g., 'Compared to your previous reports, activity appears stable'). "
+                "When a current report is open, explicitly explain reliability in plain language and say why it is low, moderate, or high."
             ),
         }
         history_lines = [f"{message['role']}: {message['content']}" for message in history[-8:]]
@@ -1054,6 +1070,7 @@ class ScoutService:
                 f"CRITICAL: You MUST calibrate EVERY response for the '{role}' role. "
                 f"{'Write in plain, calm, and brief language. Avoid jargon. No numbered lists or bullets ever.' if role == 'patient' else 'Use precise clinical terminology with structured metric-dense findings.' if role == 'clinician' else 'Use technical, methodological language with metrics and confidence bounds.'}",
                 f"Current page: {context.page}",
+                "REPORT RULE: If a current report is available, treat reliability as part of the core result and mention it whenever you summarize the report.",
                 "GLOBAL RULE: Unless you are generating the initial comprehensive auto-summary of a new EEG report, YOUR RESPONSES MUST BE EXTREMELY CONCISE, PRECISE, AND STRAIGHT TO THE POINT. No filler words, no lengthy paragraphs.",
                 "--- CURRENT REPORT ---",
                 *report_context_lines,
