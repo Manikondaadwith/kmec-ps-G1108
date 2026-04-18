@@ -78,7 +78,7 @@ def _build_patient_email(report: dict[str, Any], filename: str, app_url: str) ->
     </div>
 
     <div style="text-align: center; margin: 24px 0;">
-        <a href="{app_url}/dashboard/eeg-reports" style="display: inline-block; background: linear-gradient(135deg, #00F0FF, #818CF8); color: #0A0A0F; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 12px; text-decoration: none; letter-spacing: 0.5px;">View Full Report in App</a>
+        <a href="{app_url}" style="display: inline-block; background: linear-gradient(135deg, #00F0FF, #818CF8); color: #0A0A0F; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 12px; text-decoration: none; letter-spacing: 0.5px;">View Full Report in App</a>
     </div>
 
     <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 24px 0;" />
@@ -120,7 +120,7 @@ def _build_clinician_email(report: dict[str, Any], filename: str, app_url: str) 
     <p style="font-size: 13px; color: #C8C8D4; margin: 0 0 16px 0;">Clinical PDF is attached. For full structured analysis with explainability outputs, probability timelines, and SCOUT AI summary, access the report in the application.</p>
 
     <div style="text-align: center; margin: 24px 0;">
-        <a href="{app_url}/dashboard/eeg-reports" style="display: inline-block; background: linear-gradient(135deg, #00F0FF, #818CF8); color: #0A0A0F; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 12px; text-decoration: none; letter-spacing: 0.5px;">Open in NeuroSentinel AI</a>
+        <a href="{app_url}" style="display: inline-block; background: linear-gradient(135deg, #00F0FF, #818CF8); color: #0A0A0F; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 12px; text-decoration: none; letter-spacing: 0.5px;">Open in NeuroSentinel AI</a>
     </div>
 
     <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 24px 0;" />
@@ -154,7 +154,7 @@ def _build_researcher_email(report: dict[str, Any], filename: str, app_url: str)
     <p style="font-size: 13px; color: #C8C8D4; margin: 0 0 16px 0;">For the full technical breakdown - including probability timelines, channel importance rankings, attention heatmaps, band power analysis, and SCOUT AI methodology notes - open the report in the application.</p>
 
     <div style="text-align: center; margin: 24px 0;">
-        <a href="{app_url}/dashboard/eeg-reports" style="display: inline-block; background: linear-gradient(135deg, #00F0FF, #818CF8); color: #0A0A0F; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 12px; text-decoration: none; letter-spacing: 0.5px;">Open in NeuroSentinel AI</a>
+        <a href="{app_url}" style="display: inline-block; background: linear-gradient(135deg, #00F0FF, #818CF8); color: #0A0A0F; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 12px; text-decoration: none; letter-spacing: 0.5px;">Open in NeuroSentinel AI</a>
     </div>
 
     <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 24px 0;" />
@@ -182,7 +182,7 @@ def _build_timeout_email(filename: str, app_url: str) -> str:
     </div>
 
     <div style="text-align: center; margin: 24px 0;">
-        <a href="{app_url}/dashboard" style="display: inline-block; background: rgba(255,255,255,0.08); color: #00F0FF; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 12px; text-decoration: none; border: 1px solid rgba(0,240,255,0.2);">Return to Dashboard</a>
+        <a href="{app_url}" style="display: inline-block; background: rgba(255,255,255,0.08); color: #00F0FF; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 12px; text-decoration: none; border: 1px solid rgba(0,240,255,0.2);">Return to App</a>
     </div>
 
     <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 24px 0;" />
@@ -211,7 +211,7 @@ def _build_failure_email(filename: str, app_url: str, error_msg: str | None = No
     </div>
 
     <div style="text-align: center; margin: 24px 0;">
-        <a href="{app_url}/dashboard" style="display: inline-block; background: rgba(255,255,255,0.08); color: #FF3366; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 12px; text-decoration: none; border: 1px solid rgba(255,51,102,0.2);">Return to Dashboard</a>
+        <a href="{app_url}" style="display: inline-block; background: rgba(255,255,255,0.08); color: #FF3366; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 12px; text-decoration: none; border: 1px solid rgba(255,51,102,0.2);">Return to App</a>
     </div>
 
     <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 24px 0;" />
@@ -238,7 +238,7 @@ def _build_aborted_email(filename: str, app_url: str) -> str:
     </div>
 
     <div style="text-align: center; margin: 24px 0;">
-        <a href="{app_url}/dashboard" style="display: inline-block; background: rgba(0,240,255,0.08); color: #00F0FF; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 12px; text-decoration: none; border: 1px solid rgba(0,240,255,0.2);">Back to Dashboard</a>
+        <a href="{app_url}" style="display: inline-block; background: rgba(0,240,255,0.08); color: #00F0FF; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 12px; text-decoration: none; border: 1px solid rgba(0,240,255,0.2);">Back to App</a>
     </div>
 
     <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 24px 0;" />
@@ -265,7 +265,7 @@ def _build_size_email(filename: str, app_url: str, limit_mb: int) -> str:
     </div>
 
     <div style="text-align: center; margin: 24px 0;">
-        <a href="{app_url}/dashboard" style="display: inline-block; background: rgba(255,255,255,0.08); color: #FFD700; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 12px; text-decoration: none; border: 1px solid rgba(255,215,0,0.2);">Return to Dashboard</a>
+        <a href="{app_url}" style="display: inline-block; background: rgba(255,255,255,0.08); color: #FFD700; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 12px; text-decoration: none; border: 1px solid rgba(255,215,0,0.2);">Return to App</a>
     </div>
 
     <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 24px 0;" />
