@@ -82,7 +82,7 @@ class AnalysisService:
                 "quality_grade": report_updates.get("quality_grade"),
             }
 
-            sent = send_report_notification(
+            sent, err = send_report_notification(
                 to_email=user_email,
                 report=report_data,
                 filename=filename,
@@ -99,7 +99,7 @@ class AnalysisService:
             if sent:
                 logger.info("Report completion email sent for %s to %s", filename, user_email)
             else:
-                logger.info("Email notification skipped or failed for %s", filename)
+                logger.info("Email notification skipped or failed for %s: %s", filename, err)
         except Exception as email_exc:
             logger.warning("Email notification failed for %s (non-fatal): %s", filename, email_exc)
 

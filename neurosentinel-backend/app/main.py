@@ -424,7 +424,7 @@ def create_app(settings: Settings | None = None, load_model_on_startup: bool = F
                 "quality_grade": "Excellent",
             }
             
-            sent = send_report_notification(
+            sent, err = send_report_notification(
                 to_email=email,
                 report=test_report,
                 filename="test_connection.edf",
@@ -449,7 +449,11 @@ def create_app(settings: Settings | None = None, load_model_on_startup: bool = F
                     }
                 }
             else:
-                return {"status": "failed", "message": "SMTP sending failed. Check backend logs for authentication errors."}
+                return {
+                    "status": "failed", 
+                    "message": f"SMTP sending failed: {err}",
+                    "details": "Check your SMTP_USER and SMTP_PASSWORD (if using Gmail, ensure it's a 16-character App Password)."
+                }
         except Exception as e:
             return {"status": "error", "message": str(e)}
 

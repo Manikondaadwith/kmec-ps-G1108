@@ -248,12 +248,14 @@ def send_report_email_resend(
         )
         if response.status_code in (200, 201):
             logger.info("Report email sent to %s via Resend for file %s", to_email, filename)
-            return True
-        logger.warning("Resend API returned %s: %s", response.status_code, response.text[:200])
-        return False
+            return True, None
+        err = f"Resend API returned {response.status_code}: {response.text[:200]}"
+        logger.warning(err)
+        return False, err
     except Exception as exc:
-        logger.warning("Failed to send email via Resend: %s", exc)
-        return False
+        err = f"Failed to send email via Resend: {exc}"
+        logger.warning(err)
+        return False, err
 
 
 def send_report_email_smtp(
@@ -269,7 +271,7 @@ def send_report_email_smtp(
     role: str | None,
     pdf_bytes: bytes | None = None,
     use_tls: bool = True,
-) -> bool:
+) -> tuple[bool, str | None]:
     """Send report notification via SMTP."""
     subject = _get_subject(report, filename)
     html = _build_email_html(report, filename, role)
@@ -291,6 +293,9 @@ def send_report_email_smtp(
         )
         msg.attach(pdf_part)
 
+    # Clean SMTP password (remove spaces common in Gmail app passwords)
+    clean_password = smtp_password.replace(" ", "") if smtp_password else ""
+
     try:
         if use_tls:
             server = smtplib.SMTP(smtp_host, smtp_port, timeout=30)
@@ -300,17 +305,19 @@ def send_report_email_smtp(
         else:
             server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=30)
 
-        server.login(smtp_user, smtp_password)
+        server.login(smtp_user, clean_password)
         server.send_message(msg)
         server.quit()
         logger.info("Report email sent to %s via SMTP (%s) for file %s", to_email, smtp_host, filename)
-        return True
+        return True, None
     except smtplib.SMTPAuthenticationError as exc:
-        logger.error("SMTP authentication failed for %s — check SMTP_USER/SMTP_PASSWORD: %s", smtp_host, exc)
-        return False
+        err = f"SMTP authentication failed for {smtp_host} (likely wrong credentials): {exc}"
+        logger.error(err)
+        return False, err
     except Exception as exc:
-        logger.warning("Failed to send email via SMTP (%s): %s", smtp_host, exc)
-        return False
+        err = f"Failed to send email via SMTP ({smtp_host}): {exc}"
+        logger.warning(err)
+        return False, err
 
 
 def send_report_notification(
@@ -327,11 +334,12 @@ def send_report_notification(
     smtp_user: str | None = None,
     smtp_password: str | None = None,
     smtp_from_email: str | None = None,
-) -> bool:
+) -> tuple[bool, str | None]:
     """Send report completion notification. Tries Resend first, then SMTP fallback."""
     if not to_email:
-        logger.warning("No email address provided — skipping report notification.")
-        return False
+        err = "No email address provided — skipping report notification."
+        logger.warning(err)
+        return False, err
 
     # Try Resend first
     if resend_api_key:
@@ -361,7 +369,7 @@ def send_report_notification(
         )
 
     logger.info("No email provider configured (RESEND_API_KEY or SMTP_*). Skipping email notification for %s.", filename)
-    return False
+    return False, "No email provider configured."
 
 
 def send_timeout_notification(
