@@ -270,7 +270,6 @@ def send_report_email_smtp(
     filename: str,
     role: str | None,
     pdf_bytes: bytes | None = None,
-    use_tls: bool = True,
 ) -> tuple[bool, str | None]:
     """Send report notification via SMTP."""
     subject = _get_subject(report, filename)
@@ -297,13 +296,14 @@ def send_report_email_smtp(
     clean_password = smtp_password.replace(" ", "") if smtp_password else ""
 
     try:
-        if use_tls:
+        # Auto-detect SSL/TLS based on port
+        if smtp_port == 465:
+            server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=30)
+        else:
             server = smtplib.SMTP(smtp_host, smtp_port, timeout=30)
             server.ehlo()
             server.starttls()
             server.ehlo()
-        else:
-            server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=30)
 
         server.login(smtp_user, clean_password)
         server.send_message(msg)
