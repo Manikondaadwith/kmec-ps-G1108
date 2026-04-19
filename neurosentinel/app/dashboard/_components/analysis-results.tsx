@@ -61,35 +61,23 @@ export function AnalysisResults({ data, uploadState = 'idle', uploadFilename }: 
       <section className="space-y-4">
         <div className="clinical-card-inner">
           <SectionLabel>Analysis status</SectionLabel>
-          <div className="mt-4 flex flex-col items-center justify-center py-6 text-center">
-            <div className="clinical-spinner mb-5" />
-            <div className="text-lg font-semibold text-[var(--text-heading)] mb-1">
-              {getAnalysisHeadline(activeAnalysis.status)}
-            </div>
-            <div className="text-[13px] text-[var(--text-secondary)] mb-6 max-w-sm">
-              {getAnalysisDescription(activeAnalysis.filename, activeAnalysis.status)}
-            </div>
-            
-            <div className="w-full max-w-xs mb-6">
-              <div className="clinical-progress-track">
-                <div 
-                  className={`clinical-progress-fill ${activeAnalysis.status === 'processing' ? 'clinical-progress-indeterminate' : ''}`} 
-                  style={activeAnalysis.status === 'uploading' ? { width: `${activeAnalysis.progress || 0}%` } : {}}
-                />
+          <div className="mt-4 flex items-center gap-3 py-4">
+            <span
+              className="clinical-dot clinical-dot-primary clinical-dot-pulse"
+              style={{ width: 8, height: 8, flexShrink: 0 }}
+            />
+            <div>
+              <div className="text-[14px] font-semibold" style={{ color: 'var(--text-heading)' }}>
+                {activeAnalysis.status === 'uploading'
+                  ? `Uploading ${activeAnalysis.filename}…`
+                  : `Processing ${activeAnalysis.filename}…`}
               </div>
-              {activeAnalysis.status === 'uploading' && (
-                <div className="mt-2 text-[11px] font-bold text-[var(--accent-primary)] uppercase tracking-wider">
-                  {activeAnalysis.progress || 0}% Uploaded
-                </div>
-              )}
+              <div className="text-[12px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                {activeAnalysis.status === 'uploading'
+                  ? 'File is being streamed to the analysis server.'
+                  : 'NeuroSentinel AI is running inference. You can safely navigate away.'}
+              </div>
             </div>
-
-            <button 
-              onClick={() => void abortAnalysis()}
-              className="clinical-btn-danger-outline"
-            >
-              {getAnalysisActionLabel(activeAnalysis.status)}
-            </button>
           </div>
         </div>
       </section>

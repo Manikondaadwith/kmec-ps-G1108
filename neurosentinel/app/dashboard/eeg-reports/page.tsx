@@ -683,57 +683,6 @@ export default function AnalysisHistoryPage() {
       <div className="clinical-fade-in clinical-page-content">
         <div className="clinical-page-container" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
 
-          {/* ── Active Analysis Card (Pinned to Top) ── */}
-          {currentAnalysis && (
-            <section
-              style={{
-                background: 'rgba(14, 116, 144, 0.02)',
-                border: '1px solid rgba(14, 116, 144, 0.12)',
-                borderRadius: 'var(--radius-xl)',
-                padding: '24px 32px',
-                display: 'grid',
-                gridTemplateColumns: 'minmax(0, 1fr) auto',
-                alignItems: 'center',
-                gap: 24,
-                boxShadow: 'var(--shadow-sm)',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-                <div style={{ position: 'relative' }}>
-                  <div className="clinical-spinner" />
-                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyItems: 'center', padding: '0 0 0 14px' }}>
-                    <span className="text-[10px] font-bold text-[var(--accent-primary)]">{currentAnalysis.progress || 0}%</span>
-                  </div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-primary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>
-                    {getAnalysisStatusLabel(currentAnalysis.status)}
-                  </div>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-heading)', marginBottom: 4 }}>
-                    {currentAnalysis.filename}
-                  </div>
-                  <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                    {getAnalysisDescription(currentAnalysis.filename, currentAnalysis.status)}
-                  </div>
-                </div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div className="clinical-progress-track" style={{ width: 120 }}>
-                  <div 
-                    className={`clinical-progress-fill ${currentAnalysis.status === 'processing' ? 'clinical-progress-indeterminate' : ''}`} 
-                    style={currentAnalysis.status === 'uploading' ? { width: `${currentAnalysis.progress || 0}%` } : {}}
-                  />
-                </div>
-                <button 
-                  onClick={() => void abortAnalysis()}
-                  className="clinical-btn-danger-outline"
-                  style={{ height: 36, padding: '0 16px', fontSize: 13 }}
-                >
-                  {getAnalysisActionLabel(currentAnalysis.status)}
-                </button>
-              </div>
-            </section>
-          )}
 
           {/* ══════════════════════════════════════
               HERO — lighter version of dashboard hero
@@ -1036,6 +985,58 @@ export default function AnalysisHistoryPage() {
 
           {/* Bottom spacer */}
           <div style={{ height: 16 }} />
+
+          {/* ── Current Processing Panel (Bottom) ── */}
+          {currentAnalysis && (
+            <section
+              style={{
+                position: 'sticky',
+                bottom: 24,
+                zIndex: 40,
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border-default)',
+                borderRadius: 'var(--radius-xl)',
+                padding: '20px 28px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 24,
+                boxShadow: 'var(--shadow-lg)',
+                marginTop: 24,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <div className="clinical-spinner-sm" style={{ width: 20, height: 20, borderWidth: 2 }} />
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-heading)', marginBottom: 2 }}>
+                    {currentAnalysis.filename}
+                  </div>
+                  <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                    {currentAnalysis.status === 'uploading'
+                      ? `Uploading ${currentAnalysis.filename}…`
+                      : `Processing ${currentAnalysis.filename}…`}
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                {currentAnalysis.status === 'uploading' && (
+                  <div className="clinical-progress-track" style={{ width: 100 }}>
+                    <div
+                      className="clinical-progress-fill"
+                      style={{ width: `${currentAnalysis.progress || 0}%` }}
+                    />
+                  </div>
+                )}
+                <button
+                  onClick={() => void abortAnalysis()}
+                  className="clinical-btn-danger-outline"
+                  style={{ height: 36, padding: '0 16px', fontSize: 13 }}
+                >
+                  {currentAnalysis.status === 'uploading' ? 'Cancel Upload' : 'Abort Analysis'}
+                </button>
+              </div>
+            </section>
+          )}
         </div>
       </div>
     </>
