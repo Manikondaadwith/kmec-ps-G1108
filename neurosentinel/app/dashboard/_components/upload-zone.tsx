@@ -216,7 +216,7 @@ export function UploadZone({
     if (!currentAnalysis) return
 
     const s = stateRef.current.s
-    const file = stateRef.current.file || new File([], currentAnalysis.filename)
+    const file = ('file' in stateRef.current && stateRef.current.file) ? stateRef.current.file : new File([], currentAnalysis.filename)
 
     if (currentAnalysis.status === 'aborted') {
       updateState({ s: 'idle' })
