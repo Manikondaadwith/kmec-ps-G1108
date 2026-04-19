@@ -200,15 +200,24 @@ def _summarize_user_preferences(user_profile: dict[str, Any] | None) -> list[str
 def _build_recent_report_context_lines(
     recent_reports: list[dict[str, Any]],
     current_report: dict[str, Any] | None,
+    role: str,
 ) -> list[str]:
     if not recent_reports:
         return ["No recent reports are available for this account."]
 
     current_report_id = str(current_report.get("id")) if isinstance(current_report, dict) and current_report.get("id") is not None else None
-    lines = [
-        f"Recent report count on this signed-in account: {len(recent_reports)}.",
-        "Historical reports belong to this account and are not guaranteed to represent the same patient, encounter, or recording session unless continuity is explicitly confirmed.",
-    ]
+
+    # For clinicians, reports may be from different patients
+    if role == "clinician":
+        lines = [
+            f"Recent report count on this account: {len(recent_reports)}.",
+            "IMPORTANT: As this user is a clinician, these reports likely belong to DIFFERENT patients. Do NOT assume continuity, trends, or compare them as a patient history. Each report is independent unless the clinician explicitly states otherwise.",
+        ]
+    else:
+        lines = [
+            f"Recent report count on this account: {len(recent_reports)}.",
+            "These reports belong to this user's account. For patients and researchers, you may compare trends, track patterns over time, and reference past results when relevant.",
+        ]
 
     comparable_reports = 0
     for report in recent_reports:
@@ -216,17 +225,42 @@ def _build_recent_report_context_lines(
             continue
         details = _collect_report_details(report)
         comparable_reports += 1
+        events = details.get("events", [])
+        event_summary = f"{len(events)} event(s) detected" if events else "no seizure events"
+
         lines.append(
-            f"Historical report {comparable_reports}: "
-            f"{details['filename']} | result {details['result_label']} | "
-            f"reliability {details['reliability_level']} | confidence {details['confidence_text']} | "
-            f"created {report.get('created_at') or 'unknown'}"
+            f"Past report #{comparable_reports}: "
+            f"\"{details['filename']}\" | result: {details['result_label']} | "
+            f"risk: {details['risk_level']} | confidence: {details['confidence_text']} | "
+            f"reliability: {details['reliability_level']} | duration: {details['duration_text']} | "
+            f"quality: {details['quality_grade']} | {event_summary} | "
+            f"created: {report.get('created_at') or 'unknown'}"
         )
-        if comparable_reports >= 4:
+        # Include key recommendations for each past report
+        if details.get("recommendations") and comparable_reports <= 3:
+            lines.append(f"  → Recommendation: {details['recommendations'][0]}")
+        if details.get("top_regions") and comparable_reports <= 3:
+            if isinstance(details["top_regions"][0], (list, tuple)):
+                region_text = ", ".join(name for name, _ in details["top_regions"][:3])
+            else:
+                region_text = ", ".join(str(r) for r in details["top_regions"][:3])
+            lines.append(f"  → Active regions: {region_text}")
+
+        if comparable_reports >= 8:
             break
 
     if comparable_reports == 0:
         lines.append("No prior reports beyond the current report are available for comparison.")
+
+    # For patients/researchers, add trend summary across reports
+    if role != "clinician" and comparable_reports >= 2:
+        seizure_count = sum(1 for r in recent_reports if (r.get("result_label") or "").lower().startswith("seizure"))
+        no_seizure_count = sum(1 for r in recent_reports if (r.get("result_label") or "").lower().startswith("no seizure"))
+        lines.append(
+            f"TREND OVERVIEW: Out of {len(recent_reports)} total reports, "
+            f"{seizure_count} detected seizures and {no_seizure_count} found no seizures. "
+            f"Use this to discuss patterns and progress with the user when relevant."
+        )
 
     return lines
 
@@ -240,6 +274,20 @@ def _build_page_data_context_lines(page_data: dict[str, Any] | None) -> list[str
     stats = page_data.get("stats") if isinstance(page_data.get("stats"), dict) else {}
     latest_report = page_data.get("latest_report") if isinstance(page_data.get("latest_report"), dict) else None
     recent_reports = page_data.get("recent_reports") if isinstance(page_data.get("recent_reports"), list) else []
+    active_analysis = page_data.get("active_analysis") if isinstance(page_data.get("active_analysis"), dict) else None
+
+    if active_analysis:
+        status = active_analysis.get("status", "unknown")
+        filename = active_analysis.get("filename", "unknown file")
+        progress = active_analysis.get("progress", 0)
+        if status == "uploading":
+            lines.append(f"ACTIVE JOB: The user is currently uploading \"{filename}\" ({progress}% complete). The file has not been analyzed yet.")
+        elif status == "processing":
+            lines.append(f"ACTIVE JOB: The file \"{filename}\" has been uploaded and is currently being processed by NeuroSentinel AI. The report is not ready yet.")
+        else:
+            lines.append(f"ACTIVE JOB: \"{filename}\" is in state \"{status}\".")
+    else:
+        lines.append("ACTIVE JOB: No file is currently being uploaded or processed.")
 
     if summary:
         lines.append(f"Page summary: {summary}")
@@ -950,10 +998,53 @@ def _needs_response_normalization(message: str) -> bool:
 def _deterministic_fallback(context: ScoutContext, user_profile: dict[str, Any] | None, recent_reports: list[dict[str, Any]], report: dict[str, Any] | None) -> str:
     query = context.message.lower()
     role = _normalize_role(context.role or (user_profile or {}).get("role"))
+
+    # Active analysis awareness
+    page_data = context.page_data if isinstance(context.page_data, dict) else {}
+    active_analysis = page_data.get("active_analysis") if isinstance(page_data.get("active_analysis"), dict) else None
+
+    if active_analysis and any(term in query for term in ["upload", "uploading", "processing", "status", "happening", "progress", "file", "current"]):
+        status = active_analysis.get("status", "unknown")
+        filename = active_analysis.get("filename", "your file")
+        progress = active_analysis.get("progress", 0)
+        if status == "uploading":
+            return f"I can see \"{filename}\" is currently uploading — it's at {progress}% right now. The file is being securely streamed to the analysis server. Keep the tab open for the best experience."
+        elif status == "processing":
+            return f"\"{filename}\" has been uploaded and is now being analyzed by NeuroSentinel AI. The report should be ready shortly. You can safely navigate away — I'll let you know when it's done."
+        else:
+            return f"\"{filename}\" is currently in \"{status}\" state."
+
     if any(term in query for term in ["diagnose", "treat", "medication", "prescribe"]):
-        return "I can explain NeuroSentinel results and product behavior, but I cannot diagnose, prescribe, or recommend treatment changes."
-    if any(term in query for term in ["upload", "start", "tour", "dashboard"]):
+        return "I can explain NeuroSentinel results and provide general health guidance, but I cannot diagnose, prescribe, or recommend specific treatment changes. Please consult your healthcare provider."
+
+    if any(term in query for term in ["upload", "start", "tour", "dashboard"]) and not active_analysis:
         return "Start on the dashboard, upload an EDF file, and NeuroSentinel will create a pending report immediately while the backend analyzes the recording asynchronously."
+
+    # Past results / history queries
+    if any(term in query for term in ["past", "history", "previous", "old report", "my results", "my reports", "trend"]):
+        if recent_reports:
+            latest = recent_reports[0]
+            latest_details = _collect_report_details(latest)
+            count = len(recent_reports)
+            if role == "clinician":
+                return (
+                    f"You have {count} report(s) in your account history. "
+                    f"Most recent: \"{latest_details['filename']}\" — {latest_details['result_label']}, "
+                    f"risk {latest_details['risk_level']}, confidence {latest_details['confidence_text']}. "
+                    f"Note: as a clinician, these may belong to different patients."
+                )
+            else:
+                seizure_count = sum(1 for r in recent_reports if (r.get("result_label") or "").lower().startswith("seizure"))
+                return (
+                    f"You have {count} report(s) on your account. "
+                    f"Most recent: \"{latest_details['filename']}\" — {latest_details['result_label']}, "
+                    f"risk {latest_details['risk_level']}, confidence {latest_details['confidence_text']}. "
+                    f"Across all reports, {seizure_count} detected seizure activity. "
+                    f"Would you like me to go into more detail about any specific report?"
+                )
+        else:
+            return "You don't have any reports yet. Upload an EEG file from the dashboard to get started."
+
     history_comparison_answer = _answer_history_comparison_question((report or context.current_report), recent_reports, role, context.message)
     if history_comparison_answer:
         return history_comparison_answer
@@ -969,10 +1060,16 @@ def _deterministic_fallback(context: ScoutContext, user_profile: dict[str, Any] 
         return _build_report_reply((report or context.current_report), role)  # type: ignore[arg-type]
 
     recent_count = len(recent_reports)
+    active_note = ""
+    if active_analysis:
+        status = active_analysis.get("status", "unknown")
+        filename = active_analysis.get("filename", "a file")
+        active_note = f" I can see \"{filename}\" is currently {status}."
+
     return (
         f"{SCOUT_FULL_NAME} is online in {role} mode. "
-        f"I can help with onboarding, uploads, and report explanation. "
-        f"You currently have {recent_count} recent report(s)."
+        f"I can help with onboarding, uploads, report explanation, and health guidance. "
+        f"You have {recent_count} recent report(s).{active_note}"
     )
 
 
@@ -1126,7 +1223,7 @@ class ScoutService:
             ),
         }
         history_lines = [f"{message['role']}: {message['content']}" for message in history[-8:]]
-        reports_summary = _build_recent_report_context_lines(recent_reports, current_report)
+        reports_summary = _build_recent_report_context_lines(recent_reports, current_report, role)
         snippet_text = [f"{snippet['title']}: {snippet['body']}" for snippet in product_snippets]
         user_profile_lines = _summarize_user_preferences(user_profile)
 
@@ -1193,23 +1290,66 @@ class ScoutService:
             ),
         }
 
+        # Role-specific intelligence rules
+        role_intelligence = {
+            "patient": (
+                "PATIENT INTELLIGENCE RULES:\n"
+                "- You have FULL access to this user's past EEG analysis reports. Proactively reference them when relevant.\n"
+                "- When asked about past results, trends, or history, use the RECENT REPORTS section below to give specific answers with filenames, dates, and outcomes.\n"
+                "- Provide MEDICAL RECOMMENDATIONS based on the findings: sleep hygiene, stress management, medication adherence, dietary tips, trigger avoidance, when to see a neurologist.\n"
+                "- Compare trends across reports: 'Your last 3 reports all showed no seizure activity — that's a positive trend.'\n"
+                "- If seizures were detected, explain what brain regions were involved and what that might mean in simple terms.\n"
+                "- Be proactive: if the user has a high-risk report, gently recommend urgent follow-up.\n"
+                "- You are this patient's trusted health companion inside NeuroSentinel. Be supportive, knowledgeable, and actionable."
+            ),
+            "clinician": (
+                "CLINICIAN INTELLIGENCE RULES:\n"
+                "- This user is a clinician who may upload EEGs from DIFFERENT patients. Do NOT assume report continuity.\n"
+                "- Do NOT compare past reports as if they belong to the same patient unless the clinician explicitly says so.\n"
+                "- Focus on the CURRENT report's clinical significance, interpretation, and management considerations.\n"
+                "- You may reference how many reports the clinician has processed and their overall statistics, but never personalize medical advice.\n"
+                "- Provide differential diagnoses considerations, management protocols, and clinical decision support based on the current report findings.\n"
+                "- Be efficient and metric-driven."
+            ),
+            "researcher": (
+                "RESEARCHER INTELLIGENCE RULES:\n"
+                "- You may compare past reports for methodological purposes (model performance, domain shift patterns, signal quality trends).\n"
+                "- Provide statistical context: seizure detection rates, confidence distributions, reliability patterns across analyses.\n"
+                "- Reference past reports to discuss model behavior and consistency.\n"
+                "- Include epidemiological context when relevant."
+            ),
+        }
+
+        # Active analysis awareness rules
+        active_analysis_rules = (
+            "ACTIVE ANALYSIS AWARENESS:\n"
+            "- The PAGE CONTEXT section below tells you if a file is currently being uploaded or processed.\n"
+            "- If a file is UPLOADING: Tell the user you can see their upload in progress, mention the filename and progress. Reassure them the file is being securely streamed.\n"
+            "- If a file is PROCESSING: Tell the user their file is being analyzed by the AI. Let them know the report will be ready soon and they can navigate away safely.\n"
+            "- If NO active job: Do not mention uploading or processing unless asked.\n"
+            "- When asked 'what's happening?' or 'is my file uploading?', check the ACTIVE JOB line in PAGE CONTEXT and respond accordingly."
+        )
+
         return "\n".join(
             [
-                f"You are {SCOUT_FULL_NAME}, the bounded in-product assistant for NeuroSentinel AI.",
-                "You help with onboarding, product help, and report explanation.",
-                "Never diagnose, prescribe, or recommend treatment changes.",
+                f"You are {SCOUT_FULL_NAME}, the intelligent clinical assistant powering NeuroSentinel AI.",
+                "You are NOT a generic chatbot. You are a specialized clinical intelligence layer that has deep access to the user's EEG analysis data, account history, active processing state, and profile.",
+                "You help with onboarding, product guidance, report explanation, medical context, health recommendations, and real-time awareness of what the user is doing.",
+                "Never diagnose, prescribe, or recommend specific treatment changes — but you CAN and SHOULD provide general medical guidance, health tips, lifestyle recommendations, and clinical context based on findings.",
                 "If a value is missing from context, say it is unknown.",
                 f"User role: {role}",
                 f"Role instruction: {role_instructions[role]}",
                 format_rules[role],
+                role_intelligence[role],
+                active_analysis_rules,
                 f"CRITICAL: You MUST calibrate EVERY response for the '{role}' role. "
                 f"{'Write in plain, calm, and brief language. Avoid jargon. No numbered lists or bullets ever.' if role == 'patient' else 'Use precise clinical terminology with structured metric-dense findings.' if role == 'clinician' else 'Use technical, methodological language with metrics and confidence bounds.'}",
                 f"Current page: {context.page}",
                 "PRIMARY CONTEXT RULE: When a current report is open, treat the CURRENT REPORT block below as the primary source of truth over general assumptions.",
                 "REPORT RULE: If a current report is available, treat reliability as part of the core result and mention it whenever you summarize the report.",
                 "RELIABILITY RULE: If the report explicitly includes a Reliability label, acknowledge that the label is present and state its exact value before elaborating.",
-                "HISTORY SAFETY RULE: Recent reports are account history only. Do not assume they belong to the same patient, same encounter, or same recording unless continuity is explicitly confirmed.",
-                "CLINICIAN SAFETY RULE: If a clinician asks you to compare the current report with prior reports, include a caution that prior account history may refer to different patients or different recording contexts.",
+                "HISTORY AWARENESS: You have access to the user's recent reports in the RECENT REPORTS section. When the user asks about 'my past results', 'my history', 'previous reports', or 'trends', reference this data directly with specific filenames, dates, and outcomes. Do NOT say you cannot access past data — you CAN.",
+                "MEDICAL RECOMMENDATIONS: When discussing seizure findings, provide appropriate health guidance based on severity. For patients: sleep, diet, stress, medication adherence, when to seek emergency care. For clinicians: management protocols, differential considerations, follow-up timelines.",
                 "GLOBAL RULE: Unless you are generating the initial comprehensive auto-summary of a new EEG report, YOUR RESPONSES MUST BE EXTREMELY CONCISE, PRECISE, AND STRAIGHT TO THE POINT. No filler words, no lengthy paragraphs.",
                 "--- USER PROFILE ---",
                 *user_profile_lines,
@@ -1225,3 +1365,4 @@ class ScoutService:
                 *snippet_text,
             ]
         )
+

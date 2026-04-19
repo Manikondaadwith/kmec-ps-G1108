@@ -140,6 +140,12 @@ export type ScoutPageData = {
   recentReports?: ReportRecord[]
   stats?: ScoutPageStats | null
   summary?: string | null
+  activeAnalysis?: {
+    filename: string
+    status: string
+    progress: number
+    startedAt: string
+  } | null
 }
 
 export type ReliabilityDetails = {
