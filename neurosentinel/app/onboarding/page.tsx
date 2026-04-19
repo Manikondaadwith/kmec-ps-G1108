@@ -159,6 +159,7 @@ export default function OnboardingPage() {
           <div>
             <div className="text-[11px] font-bold tracking-[0.15em] text-[#10B981] uppercase">NeuroSentinel AI</div>
             <h1 className="text-[17px] font-bold text-[#0F172A] tracking-tight" style={{ fontFamily: "'Outfit', sans-serif" }}>SCOUT · Clinical Assistant</h1>
+            <p className="text-[10px] font-semibold text-[#94A3B8] tracking-wide mt-0.5">Seizure Clinical Operations &amp; Understanding Tool</p>
           </div>
         </div>
 

@@ -117,7 +117,7 @@ function ScoutInterpretationCard({
           </div>
           <div>
             <h3 className="text-sm font-black uppercase tracking-widest text-[#1E293B]">SCOUT Clinical Interpretation</h3>
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-tight">Signal Capture & Observation Unified Tool</p>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-tight">Seizure Clinical Operations & Understanding Tool</p>
           </div>
         </div>
         {lockedAutoSummary && (
