@@ -216,8 +216,16 @@ export function UploadZone({
     if (!currentAnalysis) return
 
     const s = stateRef.current.s
-    if (s === 'idle' || s === 'drag') {
-      const file = new File([], currentAnalysis.filename)
+    const file = stateRef.current.file || new File([], currentAnalysis.filename)
+
+    if (currentAnalysis.status === 'aborted') {
+      updateState({ s: 'idle' })
+      setUploadProgress(null)
+      stopPolling()
+      return
+    }
+
+    if (s === 'idle' || s === 'drag' || s === 'ready') {
       if (currentAnalysis.status === 'processing') {
         updateState({
           s: 'processing',
@@ -236,8 +244,20 @@ export function UploadZone({
         currentJobIdRef.current = currentAnalysis.id
         setUploadProgress(currentAnalysis.progress || 0)
       }
+    } else if (s === 'uploading') {
+      if (currentAnalysis.status === 'processing') {
+        updateState({
+          s: 'processing',
+          file,
+          msg: 'Analysis is running in the background.',
+          reportId: currentAnalysis.id
+        } as State)
+        startCompletionPolling(currentAnalysis.id, file)
+      } else if (currentAnalysis.status === 'uploading') {
+        setUploadProgress(currentAnalysis.progress || 0)
+      }
     }
-  }, [currentAnalysis, startCompletionPolling, updateState])
+  }, [currentAnalysis, startCompletionPolling, updateState, stopPolling])
 
   /**
    * DIRECT BACKEND UPLOAD ARCHITECTURE (Unlimited 1GB Bypassing Supabase)
@@ -393,9 +413,11 @@ export function UploadZone({
           summary: result.summary || 'Your EEG is being analysed in the background.',
           report_json: null,
         })
-        onAnalysisComplete(normalized)
-        setUploadProgress(null)
-        updateState({ s: 'processing', file, msg: 'Your EEG is being analysed. You can safely close this page — we\'ll email you the report when it\'s ready.', reportId })
+        if (mountedRef.current) {
+          onAnalysisComplete(normalized)
+          setUploadProgress(null)
+          updateState({ s: 'processing', file, msg: 'Your EEG is being analysed. You can safely close this page — we\'ll email you the report when it\'s ready.', reportId })
+        }
 
         setCurrentAnalysis({
           id: reportId,
@@ -415,7 +437,9 @@ export function UploadZone({
         })
 
         // Start polling to detect completion
-        startCompletionPolling(reportId, file)
+        if (mountedRef.current) {
+          startCompletionPolling(reportId, file)
+        }
       }
     } catch (analysisError: any) {
       console.error('[UploadZone] Analysis error:', analysisError)
