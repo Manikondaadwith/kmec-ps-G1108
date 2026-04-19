@@ -1,4 +1,4 @@
-'use client'
+'use client' // Triggering Vercel Redeploy
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 import { normalizeReportStatus } from '@/lib/neurosentinel/types'
