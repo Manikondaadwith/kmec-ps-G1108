@@ -26,7 +26,7 @@ export const DESIGN_PHILOSOPHY = {
   summary: 'Clean white-themed clinical aesthetics, focusing on clarity, trust, and professional efficiency.',
 }
 
-export const SCOUT_FULL_NAME = 'SCOUT • Clinical Assistant'
+export const SCOUT_FULL_NAME = 'SCOUT — Seizure Clinical Operations & Understanding Tool'
 
 export const COLOUR_PALETTE = [
   { name: 'Pure White', value: '#FFFFFF' },
