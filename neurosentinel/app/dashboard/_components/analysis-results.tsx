@@ -5,12 +5,7 @@ import { useMemo } from 'react'
 import { formatConfidence, formatDurationMinutes, getReportSummary, normalizeReportStatus, type ReportRecord, getReliability } from '@/lib/neurosentinel/types'
 import { StatusBadge } from './status-badge'
 import { ReliabilityBadge } from './reliability-badge'
-import {
-  getAnalysisActionLabel,
-  getAnalysisDescription,
-  getAnalysisHeadline,
-  useAnalysis,
-} from '@/lib/context/analysis-context'
+import { useAnalysis } from '@/lib/context/analysis-context'
 
 import type { UploadState } from './upload-zone'
 
@@ -25,7 +20,7 @@ function SectionLabel({ children, icon }: { children: string; icon?: React.React
 
 
 export function AnalysisResults({ data, uploadState = 'idle', uploadFilename }: { data: ReportRecord | null; uploadState?: UploadState; uploadFilename?: string }) {
-  const { currentAnalysis, abortAnalysis } = useAnalysis()
+  const { currentAnalysis } = useAnalysis()
   const hasReport = data != null
   const status = normalizeReportStatus(data?.status)
   const reportJson = data?.report_json
