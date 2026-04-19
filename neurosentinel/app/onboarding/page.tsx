@@ -72,7 +72,7 @@ export default function OnboardingPage() {
       await new Promise(r => setTimeout(r, 400))
       if (!mounted) return
       
-      await pushMessage('scout', "Hi, I’m SCOUT — your clinical assistant inside NeuroSentinel AI.", 800)
+      await pushMessage('scout', "Hi, I’m SCOUT — Seizure Clinical Operations & Understanding Tool. I’m your clinical assistant inside NeuroSentinel AI.", 800)
       if (!mounted) return
 
       await pushMessage('scout', "Before we begin, I need your role so I can tailor how I present insights.", 1200)
