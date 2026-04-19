@@ -81,7 +81,7 @@ PRODUCTION_METRICS = {
     "zero_shot_siena_events_per_hour": 1.67,
 }
 
-SCOUT_FULL_NAME = "SCOUT — Signal Capture & Observation Unified Tool"
+SCOUT_FULL_NAME = "SCOUT — Seizure Clinical Operations & Understanding Tool"
 
 
 def top_items(items: Sequence[tuple[str, float]], count: int = 3) -> list[tuple[str, float]]:
