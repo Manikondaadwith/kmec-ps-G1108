@@ -2,49 +2,16 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+
 import { createClient } from '@/lib/supabase/client'
 import { normalizeReport, normalizeReportStatus, type ReportRecord } from '@/lib/neurosentinel/types'
 import { StatusBadge } from '../_components/status-badge'
 import { ReliabilityBadge } from '../_components/reliability-badge'
-import {
-  getAnalysisActionLabel,
-  getAnalysisDescription,
-  getAnalysisStatusLabel,
-  useAnalysis,
-} from '@/lib/context/analysis-context'
+import { useAnalysis } from '@/lib/context/analysis-context'
 
 /* ─────────────────────────────────────────────────────────────
    Helpers
 ───────────────────────────────────────────────────────────── */
-
-function getStatusMeta(status: string): {
-  label: string
-  badgeClass: string
-  dotClass: string
-  dotPulse: boolean
-} {
-  if (status === 'completed')
-    return {
-      label: 'Completed',
-      badgeClass: 'clinical-badge clinical-badge-success',
-      dotClass: 'clinical-dot clinical-dot-success',
-      dotPulse: false,
-    }
-  if (status === 'failed')
-    return {
-      label: 'Failed',
-      badgeClass: 'clinical-badge clinical-badge-danger',
-      dotClass: 'clinical-dot clinical-dot-danger',
-      dotPulse: false,
-    }
-  return {
-    label: 'Processing',
-    badgeClass: 'clinical-badge clinical-badge-processing',
-    dotClass: 'clinical-dot clinical-dot-primary clinical-dot-pulse',
-    dotPulse: true,
-  }
-}
 
 
 function getKeyResult(report: ReportRecord): { primary: string; secondary: string; isSeizure: boolean } {
@@ -251,7 +218,6 @@ function AnalysisCard({
   density?: 'comfortable' | 'compact'
   isAlternating?: boolean
 }) {
-  const router = useRouter()
   const status = normalizeReportStatus(report.status)
   const isFailed = status === 'failed'
   const isProcessing = status === 'processing'

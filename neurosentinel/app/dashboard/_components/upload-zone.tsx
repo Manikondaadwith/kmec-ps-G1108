@@ -36,7 +36,7 @@ export function UploadZone({
   onUploadStateChange?: (state: UploadState, filename?: string) => void
   shouldAutoRedirect?: boolean
 }) {
-  const { setCurrentAnalysis, abortAnalysis: globalAbort, registerAbortHandler } = useAnalysis()
+  const { currentAnalysis, setCurrentAnalysis, abortAnalysis: globalAbort, registerAbortHandler } = useAnalysis()
   const [state, setState] = useState<State>({ s: 'idle' })
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -82,33 +82,7 @@ export function UploadZone({
     }
   }, [stopPolling])
 
-  // Sync state with global currentAnalysis to persist UI across navigation
-  useEffect(() => {
-    if (!currentAnalysis) return
 
-    const s = stateRef.current.s
-    if (s === 'idle' || s === 'drag') {
-      const file = new File([], currentAnalysis.filename)
-      if (currentAnalysis.status === 'processing') {
-        updateState({
-          s: 'processing',
-          file,
-          msg: 'Analysis is running in the background.',
-          reportId: currentAnalysis.id
-        } as State)
-        currentJobIdRef.current = currentAnalysis.id
-        startCompletionPolling(currentAnalysis.id, file)
-      } else if (currentAnalysis.status === 'uploading') {
-        updateState({
-          s: 'uploading',
-          file,
-          msg: 'Uploading EDF to secure storage...',
-        } as State)
-        currentJobIdRef.current = currentAnalysis.id
-        setUploadProgress(currentAnalysis.progress || 0)
-      }
-    }
-  }, [currentAnalysis, startCompletionPolling, updateState])
 
   const pickFile = useCallback(
     (file: File) => {
@@ -236,6 +210,34 @@ export function UploadZone({
       }
     }, 4000)
   }, [dismissNotification, onAnalysisComplete, registerAbortHandler, router, shouldAutoRedirect, showNotification, stopPolling, updateState])
+
+  // Sync state with global currentAnalysis to persist UI across navigation
+  useEffect(() => {
+    if (!currentAnalysis) return
+
+    const s = stateRef.current.s
+    if (s === 'idle' || s === 'drag') {
+      const file = new File([], currentAnalysis.filename)
+      if (currentAnalysis.status === 'processing') {
+        updateState({
+          s: 'processing',
+          file,
+          msg: 'Analysis is running in the background.',
+          reportId: currentAnalysis.id
+        } as State)
+        currentJobIdRef.current = currentAnalysis.id
+        startCompletionPolling(currentAnalysis.id, file)
+      } else if (currentAnalysis.status === 'uploading') {
+        updateState({
+          s: 'uploading',
+          file,
+          msg: 'Uploading EDF to secure storage...',
+        } as State)
+        currentJobIdRef.current = currentAnalysis.id
+        setUploadProgress(currentAnalysis.progress || 0)
+      }
+    }
+  }, [currentAnalysis, startCompletionPolling, updateState])
 
   /**
    * DIRECT BACKEND UPLOAD ARCHITECTURE (Unlimited 1GB Bypassing Supabase)
