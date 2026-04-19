@@ -16,9 +16,16 @@ export function ReportNotificationToast() {
 
   if (isOnDashboard) return null
 
+  // Only show toasts for COMPLETED / FAILED / ABORTED — never for uploading/processing
+  const visibleNotifications = notifications.filter(
+    (n) => n.status === 'completed' || n.status === 'failed' || n.status === 'aborted'
+  )
+
+  if (visibleNotifications.length === 0) return null
+
   return (
     <div className="fixed right-5 top-5 z-[9999] flex flex-col gap-3">
-      {notifications.slice().reverse().map((n) => (
+      {visibleNotifications.slice().reverse().map((n) => (
         <SingleToast key={n.jobId} notification={n} />
       ))}
     </div>
@@ -96,27 +103,16 @@ function SingleToast({ notification }: { notification: ReportNotification }) {
   const isSuccess = notification.status === 'completed'
   const isFailed = notification.status === 'failed' || notification.status === 'aborted'
   const isAborted = notification.status === 'aborted'
-  const isInProgress = notification.status === 'uploading' || notification.status === 'processing'
 
-  const accentColor = isSuccess ? '#10B981' : isFailed ? '#EF4444' : '#3B82F6'
+  const accentColor = isSuccess ? '#10B981' : '#EF4444'
   const statusLabel = isSuccess
     ? 'Report Ready'
     : isAborted
       ? `Cancelled: ${notification.filename}`
-      : isFailed
-      ? 'Analysis Failed'
-      : notification.status === 'uploading'
-        ? `Uploading: ${notification.filename}`
-        : `Processing: ${notification.filename}`
+      : 'Analysis Failed'
 
   const subtext = isSuccess ? notification.filename : null
-  const sublabel = notification.status === 'uploading'
-    ? 'File is uploading'
-    : notification.status === 'processing'
-      ? 'Analysis in progress'
-      : isAborted
-        ? 'Cancelled just now'
-        : 'Completed just now'
+  const sublabel = isAborted ? 'Cancelled just now' : isSuccess ? 'Completed just now' : 'Failed'
 
   return (
     <div
@@ -129,7 +125,7 @@ function SingleToast({ notification }: { notification: ReportNotification }) {
     >
       <div className="flex items-start gap-3">
         <div
-          className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${isInProgress ? 'animate-pulse' : ''}`}
+          className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
           style={{ background: accentColor, boxShadow: `0 0 10px ${accentColor}40` }}
         />
         
@@ -153,19 +149,6 @@ function SingleToast({ notification }: { notification: ReportNotification }) {
           ×
         </button>
       </div>
-
-      {isInProgress && (
-        <div className="w-full overflow-hidden rounded-full mt-1.5" style={{ height: 4, background: '#F3F4F6' }}>
-          <div
-            className="h-full rounded-full"
-            style={{
-              background: `linear-gradient(90deg, ${accentColor}, #93C5FD)`,
-              animation: 'progressIndeterminate 1.8s ease-in-out infinite',
-              width: '50%',
-            }}
-          />
-        </div>
-      )}
 
       {isSuccess && notification.reportId && (
         <div className="flex items-center gap-2 pt-1.5 mt-1 border-t border-gray-100 w-full">
