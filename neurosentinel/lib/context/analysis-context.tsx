@@ -157,10 +157,16 @@ export function AnalysisProvider({ children }: { children: React.ReactNode }) {
   )
 }
 
+const ANALYSIS_NOOP_CONTEXT: AnalysisContextType = {
+  currentAnalysis: null,
+  setCurrentAnalysis: () => {},
+  abortAnalysis: async () => {},
+  refreshStatus: async () => {},
+  registerAbortHandler: () => {},
+}
+
 export function useAnalysis() {
   const context = useContext(AnalysisContext)
-  if (context === undefined) {
-    throw new Error('useAnalysis must be used within an AnalysisProvider')
-  }
-  return context
+  // Return safe no-op when used outside AnalysisProvider (e.g. root layout pages like /login, /terms)
+  return context ?? ANALYSIS_NOOP_CONTEXT
 }
