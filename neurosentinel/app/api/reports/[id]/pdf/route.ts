@@ -401,7 +401,7 @@ class MedicalPDFBuilder {
     this.page.drawRectangle({ x: 0, y: this.height - 88, width: this.width, height: 4, color: ACCENT_BLUE })
 
     this.page.drawText('NEUROSENTINEL AI', { x: this.mx, y: this.height - 32, size: 16, font: this.bold, color: WHITE })
-    this.page.drawText('Signal Capture & Observation Unified Tool  |  Automated EEG Analysis Platform', {
+    this.page.drawText('Seizure Clinical Operations & Understanding Tool  |  Automated EEG Analysis Platform', {
       x: this.mx, y: this.height - 46, size: 7.5, font: this.font, color: rgb(0.533, 0.6, 0.733),
     })
 

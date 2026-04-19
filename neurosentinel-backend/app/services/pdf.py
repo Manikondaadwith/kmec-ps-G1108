@@ -591,7 +591,7 @@ class _MedicalReportPDF:
 
         self.pdf.setFont("Helvetica", 8)
         self.pdf.setFillColor(HexColor("#8899BB"))
-        self.pdf.drawString(MARGIN_X, PAGE_HEIGHT - 46, "Signal Capture & Observation Unified Tool  |  Automated EEG Analysis Platform")
+        self.pdf.drawString(MARGIN_X, PAGE_HEIGHT - 46, "Seizure Clinical Operations & Understanding Tool  |  Automated EEG Analysis Platform")
 
         self.pdf.setFillColor(white)
         self.pdf.setFont("Helvetica-Bold", 12)

@@ -40,7 +40,7 @@ export function ScoutPanel({
               SCOUT Clinical Assistant
             </h3>
             <p className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter mt-0.5">
-              Signal Capture & Observation Unified Tool
+              Seizure Clinical Operations & Understanding Tool
             </p>
           </div>
         </div>

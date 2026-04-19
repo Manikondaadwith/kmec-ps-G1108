@@ -480,7 +480,7 @@ export function ScoutFloating() {
                   SCOUT · Clinical Intelligence Assistant
                 </span>
                 <span className="text-[10px] text-[#6B7280] font-medium tracking-tight">
-                  Signal Capture & Observation Unified Tool
+                  Seizure Clinical Operations & Understanding Tool
                 </span>
               </div>
             </div>
