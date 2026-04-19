@@ -82,6 +82,34 @@ export function UploadZone({
     }
   }, [stopPolling])
 
+  // Sync state with global currentAnalysis to persist UI across navigation
+  useEffect(() => {
+    if (!currentAnalysis) return
+
+    const s = stateRef.current.s
+    if (s === 'idle' || s === 'drag') {
+      const file = new File([], currentAnalysis.filename)
+      if (currentAnalysis.status === 'processing') {
+        updateState({
+          s: 'processing',
+          file,
+          msg: 'Analysis is running in the background.',
+          reportId: currentAnalysis.id
+        } as State)
+        currentJobIdRef.current = currentAnalysis.id
+        startCompletionPolling(currentAnalysis.id, file)
+      } else if (currentAnalysis.status === 'uploading') {
+        updateState({
+          s: 'uploading',
+          file,
+          msg: 'Uploading EDF to secure storage...',
+        } as State)
+        currentJobIdRef.current = currentAnalysis.id
+        setUploadProgress(currentAnalysis.progress || 0)
+      }
+    }
+  }, [currentAnalysis, startCompletionPolling, updateState])
+
   const pickFile = useCallback(
     (file: File) => {
       resetUploadState()
@@ -444,6 +472,7 @@ export function UploadZone({
     }
   }
 
+  const displayProgress = currentAnalysis?.progress ?? uploadProgress
   const dragging = state.s === 'drag'
 
   return (
@@ -567,14 +596,14 @@ export function UploadZone({
               {state.msg}
             </div>
 
-            {uploadProgress !== null ? (
+            {displayProgress !== null ? (
               <div className="mt-5 w-full max-w-md px-2">
                 <div className="mb-2 flex justify-between text-[12px]" style={{ color: 'var(--text-muted)' }}>
                   <span>{state.s === 'processing' ? 'Upload complete — analysing in background' : 'Uploading EDF to secure storage...'}</span>
-                  <span className="font-medium" style={{ color: 'var(--accent-primary)' }}>{uploadProgress}%</span>
+                  <span className="font-medium" style={{ color: 'var(--accent-primary)' }}>{displayProgress}%</span>
                 </div>
                 <div className="clinical-progress-track">
-                  <div className="clinical-progress-fill" style={{ width: `${uploadProgress}%` }} />
+                  <div className="clinical-progress-fill" style={{ width: `${displayProgress}%` }} />
                 </div>
               </div>
             ) : state.s === 'processing' ? (

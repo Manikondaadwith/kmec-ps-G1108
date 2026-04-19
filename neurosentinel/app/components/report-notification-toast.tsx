@@ -14,25 +14,18 @@ export function ReportNotificationToast() {
   // Determine if user is currently on the main dashboard upload page
   const isOnDashboard = pathname === '/dashboard'
 
-  if (isOnDashboard) return null
-
-  // Only show toasts for COMPLETED / FAILED / ABORTED — never for uploading/processing
-  const visibleNotifications = notifications.filter(
-    (n) => n.status === 'completed' || n.status === 'failed' || n.status === 'aborted'
-  )
-
-  if (visibleNotifications.length === 0) return null
+  if (notifications.length === 0) return null
 
   return (
     <div className="fixed right-5 top-5 z-[9999] flex flex-col gap-3">
-      {visibleNotifications.slice().reverse().map((n) => (
-        <SingleToast key={n.jobId} notification={n} />
+      {notifications.slice().reverse().map((n) => (
+        <SingleToast key={n.jobId} notification={n} isOnDashboard={isOnDashboard} />
       ))}
     </div>
   )
 }
 
-function SingleToast({ notification }: { notification: ReportNotification }) {
+function SingleToast({ notification, isOnDashboard }: { notification: ReportNotification; isOnDashboard: boolean }) {
   const { updateNotification, dismissNotification } = useReportNotification()
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -113,6 +106,9 @@ function SingleToast({ notification }: { notification: ReportNotification }) {
 
   const subtext = isSuccess ? notification.filename : null
   const sublabel = isAborted ? 'Cancelled just now' : isSuccess ? 'Completed just now' : 'Failed'
+
+  const isVisible = isSuccess || isFailed || isAborted
+  if (isOnDashboard || !isVisible) return null
 
   return (
     <div
