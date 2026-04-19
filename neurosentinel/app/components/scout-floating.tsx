@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { ScoutAvatar } from './scout-avatar'
 import { ScoutConversation } from './scout-conversation'
 import { ensureUserProfile } from '@/lib/user-profile'
+import { useAnalysis } from '@/lib/context/analysis-context'
 import { useScoutFloatingConversation, useScoutConversation } from './scout-provider'
 import {
   SCOUT_FULL_NAME,
@@ -93,6 +94,7 @@ export function ScoutFloating() {
     initialMessage: string
   } | null>(null)
   const [pageData, setPageData] = useState<ScoutPageData | null>(null)
+  const { currentAnalysis } = useAnalysis()
   const resizeRef = useRef<{ startX: number; startY: number; width: number; height: number } | null>(null)
   const userIdRef = useRef<string | null>(null)
 
@@ -220,22 +222,32 @@ export function ScoutFloating() {
           failedReports: reports.filter((report) => report.status === 'failed').length,
         }
 
+        const activeJobSummary = currentAnalysis
+          ? ` An EEG file "${currentAnalysis.filename}" is currently ${currentAnalysis.status === 'uploading' ? `uploading (${currentAnalysis.progress || 0}% complete)` : 'being processed by the AI backend'}.`
+          : ''
+
         const summary =
           pageContext === 'history'
             ? reports.length
-              ? `Analysis history is open with ${reports.length} recent report${reports.length === 1 ? '' : 's'} available for review.`
-              : 'Analysis history is open, but no reports are available yet.'
+              ? `Analysis history is open with ${reports.length} recent report${reports.length === 1 ? '' : 's'} available for review.${activeJobSummary}`
+              : `Analysis history is open, but no reports are available yet.${activeJobSummary}`
             : pageContext === 'settings'
               ? 'Settings page is open. SCOUT should answer with awareness of the user role and recent report state.'
               : reports[0]
-                ? `Latest dashboard analysis is ${reports[0].result_label || reports[0].status} for ${reports[0].filename}.`
-                : 'Dashboard is open and waiting for the first EEG upload.'
+                ? `Latest dashboard analysis is ${reports[0].result_label || reports[0].status} for ${reports[0].filename}.${activeJobSummary}`
+                : `Dashboard is open and waiting for the first EEG upload.${activeJobSummary}`
 
         setPageData({
           latestReport: reports[0] ?? null,
           recentReports: reports,
           stats,
           summary,
+          activeAnalysis: currentAnalysis ? {
+            filename: currentAnalysis.filename,
+            status: currentAnalysis.status,
+            progress: currentAnalysis.progress,
+            startedAt: currentAnalysis.startedAt,
+          } : null,
         })
       } catch (error) {
         console.error('[ScoutFloating] Failed to load page context:', error)
@@ -244,7 +256,7 @@ export function ScoutFloating() {
     }
 
     void loadPageData()
-  }, [hidden, pageContext, supabase])
+  }, [hidden, pageContext, supabase, currentAnalysis])
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {

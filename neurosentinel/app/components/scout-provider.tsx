@@ -100,6 +100,7 @@ function serializePageData(pageData: ScoutPageData | null | undefined) {
     recent_reports: Array.isArray(pageData.recentReports) ? pageData.recentReports.map((report) => serializeReport(report)).filter(Boolean) : [],
     stats: pageData.stats ?? null,
     summary: pageData.summary ?? null,
+    active_analysis: pageData.activeAnalysis ?? null,
   }
 }
 
