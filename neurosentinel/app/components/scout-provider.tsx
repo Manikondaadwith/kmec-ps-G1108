@@ -349,6 +349,7 @@ export function useScoutConversation({
   reportId = null,
   currentReport = null,
   pageData = null,
+  stateKey,
   initialMessage,
 }: {
   page: ScoutPageContext
