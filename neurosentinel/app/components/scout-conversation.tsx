@@ -27,6 +27,7 @@ type ScoutConversationProps = {
   initialMessage: string
   quickPrompts: string[]
   autoPrompt?: { content: string; visible: boolean } | null
+  stateKey?: string
 }
 
 
@@ -41,6 +42,7 @@ export function ScoutConversation({
   initialMessage,
   quickPrompts,
   autoPrompt = null,
+  stateKey,
 }: ScoutConversationProps) {
   const [input, setInput] = useState('')
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
@@ -53,6 +55,7 @@ export function ScoutConversation({
     currentReport,
     pageData,
     initialMessage,
+    stateKey,
   })
 
   const sendMessageRef = useRef(sendMessage)

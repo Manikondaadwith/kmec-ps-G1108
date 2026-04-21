@@ -119,6 +119,7 @@ export function ScoutFloating() {
   }
 
   // Use the hook to get collective loading/unread status
+  // We use a constant stateKey to ensure the chat is persistent across page changes
   const { loading, hasUnread, markRead } = useScoutConversation({
     page: activeSessionInput.page,
     role: activeSessionInput.role,
@@ -126,6 +127,7 @@ export function ScoutFloating() {
     currentReport: activeSessionInput.currentReport ?? null,
     pageData: activeSessionInput.pageData ?? null,
     initialMessage: activeSessionInput.initialMessage,
+    stateKey: 'persistent-scout',
   })
 
   useEffect(() => {
@@ -505,6 +507,7 @@ export function ScoutFloating() {
               pageData={activeSession.pageData ?? pageData}
               initialMessage={activeSession.initialMessage}
               quickPrompts={quickPrompts}
+              stateKey="persistent-scout"
             />
           </div>
 
