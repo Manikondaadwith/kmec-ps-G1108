@@ -32,7 +32,7 @@ type FloatingConversationRequest = {
 
 type ContextValue = {
   conversations: Record<string, ConversationState>
-  ensureConversation: (page: ScoutPageContext, reportId: string | null | undefined, initialMessage: string) => Promise<void>
+  ensureConversation: (page: ScoutPageContext, reportId: string | null | undefined, initialMessage: string, stateKey?: string) => Promise<void>
   sendMessage: (options: {
     page: ScoutPageContext
     role?: ScoutContextPayload['role']
