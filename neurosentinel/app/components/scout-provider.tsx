@@ -42,16 +42,18 @@ type ContextValue = {
     initialMessage: string
     content: string
     silent?: boolean
+    stateKey?: string
   }) => Promise<void>
-  stopMessage: (page: ScoutPageContext, reportId: string | null | undefined) => void
-  markRead: (page: ScoutPageContext, reportId: string | null | undefined) => void
+  stopMessage: (page: ScoutPageContext, reportId: string | null | undefined, stateKey?: string) => void
+  markRead: (page: ScoutPageContext, reportId: string | null | undefined, stateKey?: string) => void
   floatingConversation: FloatingConversationRequest | null
   presentFloatingConversation: (options: Omit<FloatingConversationRequest, 'token'>) => void
 }
 
 const ScoutContext = createContext<ContextValue | null>(null)
 
-function getConversationKey(page: ScoutPageContext, reportId: string | null | undefined) {
+function getConversationKey(page: ScoutPageContext, reportId: string | null | undefined, stateKey?: string) {
+  if (stateKey) return stateKey
   return reportId ? `${page}:${reportId}` : `${page}:global`
 }
 
@@ -118,8 +120,8 @@ export function ScoutProvider({ children }: { children: React.ReactNode }) {
       const newUserId = session?.user?.id ?? null
       const prevSessionId = sessionIdRef.current
 
+      // Handle sign-out or session end
       if (event === 'SIGNED_OUT' || !newUserId) {
-        // User signed out — purge everything
         sessionIdRef.current = null
         setConversations({})
         setFloatingConversation(null)
@@ -129,8 +131,9 @@ export function ScoutProvider({ children }: { children: React.ReactNode }) {
         return
       }
 
-      // Different user signed in, or fresh sign-in after being signed out
-      if (newUserId && newUserId !== prevSessionId) {
+      // Reset state if user has changed OR if it's a brand new login event
+      // This ensures "session-wise" fresh start even if it's the same user re-logging in
+      if (event === 'SIGNED_IN' || (newUserId && newUserId !== prevSessionId)) {
         sessionIdRef.current = newUserId
         setConversations({})
         setFloatingConversation(null)
@@ -142,8 +145,8 @@ export function ScoutProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe()
   }, [])
 
-  const ensureConversation = useCallback(async (page: ScoutPageContext, reportId: string | null | undefined, initialMessage: string) => {
-    const key = getConversationKey(page, reportId)
+  const ensureConversation = useCallback(async (page: ScoutPageContext, reportId: string | null | undefined, initialMessage: string, stateKey?: string) => {
+    const key = getConversationKey(page, reportId, stateKey)
     if (loadingRef.current[key]) return
     if (conversations[key]?.loaded) return
 
@@ -165,12 +168,12 @@ export function ScoutProvider({ children }: { children: React.ReactNode }) {
     loadingRef.current[key] = false
   }, [conversations])
 
-  const sendMessage = useCallback<ContextValue['sendMessage']>(async ({ page, role = null, reportId = null, currentReport = null, pageData = null, initialMessage, content, silent = false }) => {
+  const sendMessage = useCallback<ContextValue['sendMessage']>(async ({ page, role = null, reportId = null, currentReport = null, pageData = null, initialMessage, content, silent = false, stateKey }) => {
     const trimmed = content.trim()
     if (!trimmed) return
 
-    const key = getConversationKey(page, reportId)
-    await ensureConversation(page, reportId, initialMessage)
+    const key = getConversationKey(page, reportId, stateKey)
+    await ensureConversation(page, reportId, initialMessage, stateKey)
 
     // When silent=true (auto-summarize), don't show the user message in the chat
     if (!silent) {
@@ -289,13 +292,13 @@ export function ScoutProvider({ children }: { children: React.ReactNode }) {
     }
   }, [conversations, ensureConversation])
 
-  const stopMessage = useCallback((page: ScoutPageContext, reportId: string | null | undefined) => {
-    const key = getConversationKey(page, reportId)
+  const stopMessage = useCallback((page: ScoutPageContext, reportId: string | null | undefined, stateKey?: string) => {
+    const key = getConversationKey(page, reportId, stateKey)
     abortControllersRef.current[key]?.abort()
   }, [])
 
-  const markRead = useCallback((page: ScoutPageContext, reportId: string | null | undefined) => {
-    const key = getConversationKey(page, reportId)
+  const markRead = useCallback((page: ScoutPageContext, reportId: string | null | undefined, stateKey?: string) => {
+    const key = getConversationKey(page, reportId, stateKey)
     setConversations((current) => {
       const existing = current[key]
       if (!existing || !existing.hasUnread) return current
@@ -353,6 +356,7 @@ export function useScoutConversation({
   reportId?: string | null
   currentReport?: ReportRecord | null
   pageData?: ScoutPageData | null
+  stateKey?: string
   initialMessage: string
 }) {
   const context = useContext(ScoutContext)
@@ -361,7 +365,7 @@ export function useScoutConversation({
     throw new Error('useScoutConversation must be used inside ScoutProvider.')
   }
 
-  const key = getConversationKey(page, reportId)
+  const key = getConversationKey(page, reportId, stateKey)
   const state = context.conversations[key] ?? {
     messages: getSeedMessages(page, reportId, initialMessage),
     loading: false,
@@ -371,16 +375,16 @@ export function useScoutConversation({
   }
 
   useEffect(() => {
-    void context.ensureConversation(page, reportId, initialMessage)
-  }, [context, initialMessage, page, reportId])
+    void context.ensureConversation(page, reportId, initialMessage, stateKey)
+  }, [context, initialMessage, page, reportId, stateKey])
 
   return {
     messages: state.messages,
     loading: state.loading,
     error: state.error,
     hasUnread: state.hasUnread,
-    sendMessage: (content: string, silent?: boolean) => context.sendMessage({ page, role, reportId, currentReport, pageData, initialMessage, content, silent }),
-    stopMessage: () => context.stopMessage(page, reportId),
-    markRead: () => context.markRead(page, reportId),
+    sendMessage: (content: string, silent?: boolean) => context.sendMessage({ page, role, reportId, currentReport, pageData, initialMessage, content, silent, stateKey }),
+    stopMessage: () => context.stopMessage(page, reportId, stateKey),
+    markRead: () => context.markRead(page, reportId, stateKey),
   }
 }
