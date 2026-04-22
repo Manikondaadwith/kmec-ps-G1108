@@ -37,9 +37,7 @@ export function Sidebar({ userEmail, userRole }: { userEmail: string; userRole: 
       {/* ── Logo ── */}
       <Link href="/dashboard" className="clinical-sidebar-logo">
         <div className="clinical-sidebar-logo-icon">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-            <path d="M2 12 Q4 8 6 12 Q8 16 10 12 Q12 8 14 12 Q16 16 18 12 Q20 8 22 12" stroke="#FFFFFF" strokeWidth="2.2" strokeLinecap="round" fill="none" />
-          </svg>
+          <img src="/logo.png" alt="NeuroSentinel AI Logo" className="w-8 h-8 object-contain" />
         </div>
         <div className="clinical-sidebar-logo-text">NeuroSentinel AI</div>
       </Link>
