@@ -58,7 +58,9 @@ function PageBackground() {
 function BrandHeader() {
   return (
     <div className="mb-8 flex flex-col items-center gap-3">
-
+      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+        <img src="/logo.png" alt="NeuroSentinel AI Logo" className="h-10 w-10 object-contain" />
+      </div>
       <div className="text-center">
         <h1
           className="text-[22px] font-bold tracking-tight"

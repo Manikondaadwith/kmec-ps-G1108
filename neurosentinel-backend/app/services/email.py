@@ -18,6 +18,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 DEFAULT_APP_URL = "https://neuro-sentinel-ai-6vfv.vercel.app"
+LOGO_URL = f"{DEFAULT_APP_URL}/logo.png"
 
 _SUBJECT_SEIZURE = "NeuroSentinel AI - Seizure Activity Detected in {filename}"
 _SUBJECT_NO_SEIZURE = "NeuroSentinel AI - No Seizure Activity Detected in {filename}"
@@ -63,6 +64,7 @@ def _build_patient_email(report: dict[str, Any], filename: str, app_url: str) ->
     return f"""
 <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0A0A0F; color: #E8E8F0; padding: 32px; border-radius: 16px;">
     <div style="text-align: center; margin-bottom: 24px;">
+        <img src="{LOGO_URL}" alt="NeuroSentinel AI" style="width: 48px; height: 48px; margin-bottom: 12px; border-radius: 8px;" />
         <h1 style="font-size: 20px; color: #00F0FF; margin: 0;">NeuroSentinel AI</h1>
         <p style="font-size: 11px; color: #565670; letter-spacing: 2px; text-transform: uppercase; margin-top: 4px;">EEG Analysis Report Ready</p>
     </div>
@@ -102,6 +104,7 @@ def _build_clinician_email(report: dict[str, Any], filename: str, app_url: str) 
     return f"""
 <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0A0A0F; color: #E8E8F0; padding: 32px; border-radius: 16px;">
     <div style="text-align: center; margin-bottom: 24px;">
+        <img src="{LOGO_URL}" alt="NeuroSentinel AI" style="width: 48px; height: 48px; margin-bottom: 12px; border-radius: 8px;" />
         <h1 style="font-size: 20px; color: #00F0FF; margin: 0;">NeuroSentinel AI</h1>
         <p style="font-size: 11px; color: #565670; letter-spacing: 2px; text-transform: uppercase; margin-top: 4px;">Clinical Report Notification</p>
     </div>
@@ -139,6 +142,7 @@ def _build_researcher_email(report: dict[str, Any], filename: str, app_url: str)
     return f"""
 <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0A0A0F; color: #E8E8F0; padding: 32px; border-radius: 16px;">
     <div style="text-align: center; margin-bottom: 24px;">
+        <img src="{LOGO_URL}" alt="NeuroSentinel AI" style="width: 48px; height: 48px; margin-bottom: 12px; border-radius: 8px;" />
         <h1 style="font-size: 20px; color: #00F0FF; margin: 0;">NeuroSentinel AI</h1>
         <p style="font-size: 11px; color: #565670; letter-spacing: 2px; text-transform: uppercase; margin-top: 4px;">Analysis Complete</p>
     </div>
@@ -167,6 +171,7 @@ def _build_timeout_email(filename: str, app_url: str) -> str:
     return f"""
 <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0A0A0F; color: #E8E8F0; padding: 32px; border-radius: 16px;">
     <div style="text-align: center; margin-bottom: 24px;">
+        <img src="{LOGO_URL}" alt="NeuroSentinel AI" style="width: 48px; height: 48px; margin-bottom: 12px; border-radius: 8px;" />
         <h1 style="font-size: 20px; color: #00F0FF; margin: 0;">NeuroSentinel AI</h1>
         <p style="font-size: 11px; color: #565670; letter-spacing: 2px; text-transform: uppercase; margin-top: 4px;">Analysis Halted</p>
     </div>
@@ -196,6 +201,7 @@ def _build_failure_email(filename: str, app_url: str, error_msg: str | None = No
     return f"""
 <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0A0A0F; color: #E8E8F0; padding: 32px; border-radius: 16px;">
     <div style="text-align: center; margin-bottom: 24px;">
+        <img src="{LOGO_URL}" alt="NeuroSentinel AI" style="width: 48px; height: 48px; margin-bottom: 12px; border-radius: 8px;" />
         <h1 style="font-size: 20px; color: #FF3366; margin: 0;">NeuroSentinel AI</h1>
         <p style="font-size: 11px; color: #565670; letter-spacing: 2px; text-transform: uppercase; margin-top: 4px;">Analysis Failed</p>
     </div>
@@ -224,6 +230,7 @@ def _build_aborted_email(filename: str, app_url: str) -> str:
     return f"""
 <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0A0A0F; color: #E8E8F0; padding: 32px; border-radius: 16px;">
     <div style="text-align: center; margin-bottom: 24px;">
+        <img src="{LOGO_URL}" alt="NeuroSentinel AI" style="width: 48px; height: 48px; margin-bottom: 12px; border-radius: 8px;" />
         <h1 style="font-size: 20px; color: #00F0FF; margin: 0;">NeuroSentinel AI</h1>
         <p style="font-size: 11px; color: #565670; letter-spacing: 2px; text-transform: uppercase; margin-top: 4px;">Analysis Aborted</p>
     </div>
@@ -251,6 +258,7 @@ def _build_size_email(filename: str, app_url: str, limit_mb: int) -> str:
     return f"""
 <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0A0A0F; color: #E8E8F0; padding: 32px; border-radius: 16px;">
     <div style="text-align: center; margin-bottom: 24px;">
+        <img src="{LOGO_URL}" alt="NeuroSentinel AI" style="width: 48px; height: 48px; margin-bottom: 12px; border-radius: 8px;" />
         <h1 style="font-size: 20px; color: #FFD700; margin: 0;">NeuroSentinel AI</h1>
         <p style="font-size: 11px; color: #565670; letter-spacing: 2px; text-transform: uppercase; margin-top: 4px;">Upload Size Exceeded</p>
     </div>
