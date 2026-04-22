@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { ensureUserProfile } from '@/lib/user-profile'
 
@@ -57,7 +58,7 @@ function PageBackground() {
 ───────────────────────────────────────────────── */
 function BrandHeader() {
   return (
-    <div className="mb-10 flex items-center justify-center gap-5">
+    <Link href="/dashboard" className="mb-10 flex items-center justify-center gap-5 transition-opacity hover:opacity-90">
       <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-black shadow-xl ring-1 ring-white/10">
         <img src="/logo.jpeg" alt="NeuroSentinel AI Logo" className="h-full w-full object-cover" />
       </div>
@@ -72,7 +73,7 @@ function BrandHeader() {
           AI-Powered Seizure Intelligence
         </p>
       </div>
-    </div>
+    </Link>
   )
 }
 
