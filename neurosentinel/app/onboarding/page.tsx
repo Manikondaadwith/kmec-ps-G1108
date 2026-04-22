@@ -155,7 +155,9 @@ export default function OnboardingPage() {
         
         {/* Header */}
         <div className="flex items-center gap-4 border-b border-[#E2E8F0] px-6 py-5 bg-white shrink-0 shadow-sm z-10">
-          <ScoutAvatar size={42} pulse={isTyping} />
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-sm ring-1 ring-slate-100">
+            <img src="/logo.png" alt="NeuroSentinel AI Logo" className="h-8 w-8 object-contain" />
+          </div>
           <div>
             <div className="text-[11px] font-bold tracking-[0.15em] text-[#10B981] uppercase">NeuroSentinel AI</div>
             <h1 className="text-[17px] font-bold text-[#0F172A] tracking-tight" style={{ fontFamily: "'Outfit', sans-serif" }}>SCOUT · Clinical Assistant</h1>
