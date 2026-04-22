@@ -106,6 +106,7 @@ export function UploadZone({
       abortRef.current = null
     }
     cancelledByUserRef.current = false
+    void globalAbort()
     resetUploadState()
     if (inputRef.current) inputRef.current.value = ''
   }
