@@ -18,7 +18,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 DEFAULT_APP_URL = "https://neuro-sentinel-ai-6vfv.vercel.app"
-LOGO_URL = f"{DEFAULT_APP_URL}/logo.png"
+LOGO_URL = f"{DEFAULT_APP_URL}/logo.jpeg"
 
 _SUBJECT_SEIZURE = "NeuroSentinel AI - Seizure Activity Detected in {filename}"
 _SUBJECT_NO_SEIZURE = "NeuroSentinel AI - No Seizure Activity Detected in {filename}"

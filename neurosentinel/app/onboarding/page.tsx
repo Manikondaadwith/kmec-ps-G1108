@@ -155,8 +155,8 @@ export default function OnboardingPage() {
         
         {/* Header */}
         <div className="flex items-center gap-4 border-b border-[#E2E8F0] px-6 py-5 bg-white shrink-0 shadow-sm z-10">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-sm ring-1 ring-slate-100">
-            <img src="/logo.png" alt="NeuroSentinel AI Logo" className="h-8 w-8 object-contain" />
+          <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl bg-black shadow-sm ring-1 ring-white/10">
+            <img src="/logo.jpeg" alt="NeuroSentinel AI Logo" className="h-full w-full object-cover" />
           </div>
           <div>
             <div className="text-[11px] font-bold tracking-[0.15em] text-[#10B981] uppercase">NeuroSentinel AI</div>
