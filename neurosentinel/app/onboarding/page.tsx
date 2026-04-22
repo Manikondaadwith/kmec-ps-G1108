@@ -1,9 +1,9 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { ScoutAvatar } from '@/app/components/scout-avatar'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { type ScoutRole } from '@/lib/scout-guide'
 import { ensureUserProfile, toDatabaseRole } from '@/lib/user-profile'
 
