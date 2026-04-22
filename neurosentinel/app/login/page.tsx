@@ -59,8 +59,8 @@ function PageBackground() {
 function BrandHeader() {
   return (
     <Link href="/dashboard" className="mb-10 flex items-center justify-center gap-5 transition-opacity hover:opacity-90">
-      <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-black shadow-xl ring-1 ring-white/10">
-        <img src="/logo.jpeg" alt="NeuroSentinel AI Logo" className="h-full w-full object-cover" />
+      <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-slate-200">
+        <img src="/logo.jpeg" alt="NeuroSentinel AI Logo" className="h-full w-full object-contain" />
       </div>
       <div className="text-left">
         <h1
