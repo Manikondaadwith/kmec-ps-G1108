@@ -35,11 +35,11 @@ export function Sidebar({ userEmail, userRole }: { userEmail: string; userRole: 
   return (
     <aside className="clinical-sidebar flex h-full w-60 shrink-0 flex-col">
       {/* ── Logo ── */}
-      <Link href="/dashboard" className="flex items-center gap-2.5 px-4 py-6 transition-opacity hover:opacity-90">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-black shadow-lg ring-1 ring-white/10">
+      <Link href="/dashboard" className="flex items-center gap-3 px-6 py-6 transition-opacity hover:opacity-80">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-black shadow-md border border-slate-200/10">
           <img src="/logo.jpeg" alt="" className="h-full w-full object-cover" />
         </div>
-        <div className="text-[17px] font-bold tracking-tight text-white" style={{ fontFamily: "'Outfit', sans-serif" }}>
+        <div className="text-[17px] font-bold tracking-tight" style={{ color: '#0F172A', fontFamily: "'Outfit', sans-serif" }}>
           NeuroSentinel AI
         </div>
       </Link>
