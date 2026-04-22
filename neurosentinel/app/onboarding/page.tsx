@@ -154,16 +154,16 @@ export default function OnboardingPage() {
       <div className="relative z-10 w-full max-w-[640px] h-[650px] max-h-[90vh] flex flex-col bg-white rounded-3xl border border-[#E2E8F0] shadow-2xl overflow-hidden">
         
         {/* Header */}
-        <div className="flex items-center gap-4 border-b border-[#E2E8F0] px-6 py-5 bg-white shrink-0 shadow-sm z-10">
-          <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl bg-black shadow-sm ring-1 ring-white/10">
-            <img src="/logo.jpeg" alt="NeuroSentinel AI Logo" className="h-full w-full object-cover" />
+        <Link href="/dashboard" className="flex items-center gap-4 border-b border-[#E2E8F0] px-6 py-5 bg-white shrink-0 shadow-sm z-10 transition-opacity hover:opacity-90">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-black shadow-sm ring-1 ring-white/10">
+            <img src="/logo.jpeg" alt="" className="h-full w-full object-cover" />
           </div>
           <div>
             <div className="text-[11px] font-bold tracking-[0.15em] text-[#10B981] uppercase">NeuroSentinel AI</div>
             <h1 className="text-[17px] font-bold text-[#0F172A] tracking-tight" style={{ fontFamily: "'Outfit', sans-serif" }}>SCOUT · Clinical Assistant</h1>
             <p className="text-[10px] font-semibold text-[#94A3B8] tracking-wide mt-0.5">Seizure Clinical Operations &amp; Understanding Tool</p>
           </div>
-        </div>
+        </Link>
 
         {/* Conversation Area */}
         <div 

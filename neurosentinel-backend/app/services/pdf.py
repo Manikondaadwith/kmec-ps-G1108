@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 from io import BytesIO
 from typing import Any
@@ -26,6 +27,10 @@ WHITE = white
 MARGIN_X = 48
 PAGE_WIDTH, PAGE_HEIGHT = letter
 CONTENT_WIDTH = PAGE_WIDTH - 2 * MARGIN_X
+
+# Path to logo for PDF generation
+_BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+LOGO_PATH = os.path.join(_BASE_DIR, "logo.jpeg")
 
 # ── Clinical channel label mapping (for clinician mode) ──
 CHANNEL_CLINICAL_LABELS: dict[str, str] = {
@@ -586,12 +591,24 @@ class _MedicalReportPDF:
         self.pdf.rect(0, PAGE_HEIGHT - 88, PAGE_WIDTH, 4, fill=1, stroke=0)
 
         self.pdf.setFillColor(white)
+        
+        # Draw Logo Image
+        if os.path.exists(LOGO_PATH):
+            try:
+                # Square logo, white/black themed - fits well in header
+                self.pdf.drawImage(LOGO_PATH, MARGIN_X, PAGE_HEIGHT - 48, width=32, height=32, mask='auto')
+                text_x_offset = 40
+            except Exception:
+                text_x_offset = 0
+        else:
+            text_x_offset = 0
+
         self.pdf.setFont("Helvetica-Bold", 16)
-        self.pdf.drawString(MARGIN_X, PAGE_HEIGHT - 32, "NEUROSENTINEL AI")
+        self.pdf.drawString(MARGIN_X + text_x_offset, PAGE_HEIGHT - 32, "NEUROSENTINEL AI")
 
         self.pdf.setFont("Helvetica", 8)
         self.pdf.setFillColor(HexColor("#8899BB"))
-        self.pdf.drawString(MARGIN_X, PAGE_HEIGHT - 46, "Seizure Clinical Operations & Understanding Tool  |  Automated EEG Analysis Platform")
+        self.pdf.drawString(MARGIN_X + text_x_offset, PAGE_HEIGHT - 46, "Seizure Clinical Operations & Understanding Tool  |  Automated EEG Analysis Platform")
 
         self.pdf.setFillColor(white)
         self.pdf.setFont("Helvetica-Bold", 12)

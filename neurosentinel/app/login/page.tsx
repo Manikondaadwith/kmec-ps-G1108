@@ -57,18 +57,18 @@ function PageBackground() {
 ───────────────────────────────────────────────── */
 function BrandHeader() {
   return (
-    <div className="mb-8 flex flex-col items-center gap-3">
-      <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl bg-black shadow-lg ring-1 ring-white/10">
+    <div className="mb-10 flex items-center justify-center gap-5">
+      <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-black shadow-xl ring-1 ring-white/10">
         <img src="/logo.jpeg" alt="NeuroSentinel AI Logo" className="h-full w-full object-cover" />
       </div>
-      <div className="text-center">
+      <div className="text-left">
         <h1
-          className="text-[22px] font-bold tracking-tight"
-          style={{ color: '#0F172A', fontFamily: "'Outfit', sans-serif", letterSpacing: '-0.3px' }}
+          className="text-[28px] font-bold tracking-tight"
+          style={{ color: '#0F172A', fontFamily: "'Outfit', sans-serif", letterSpacing: '-0.5px' }}
         >
           NeuroSentinel AI
         </h1>
-        <p className="mt-1 text-[11.5px] font-medium tracking-wide" style={{ color: '#0EA5A4' }}>
+        <p className="mt-1 text-[13px] font-medium tracking-wide" style={{ color: '#0EA5A4' }}>
           AI-Powered Seizure Intelligence
         </p>
       </div>
