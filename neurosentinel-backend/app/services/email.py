@@ -533,6 +533,8 @@ def send_timeout_notification(
     smtp_user: str | None = None,
     smtp_password: str | None = None,
     smtp_from_email: str | None = None,
+    relay_api_url: str | None = None,
+    internal_api_secret: str = "neurosentinel-internal-key-2026",
 ) -> bool:
     if not to_email:
         return False
@@ -550,6 +552,8 @@ def send_timeout_notification(
         smtp_user=smtp_user,
         smtp_password=smtp_password,
         smtp_from_email=smtp_from_email,
+        relay_api_url=relay_api_url,
+        internal_api_secret=internal_api_secret,
     )
 
 
@@ -566,6 +570,8 @@ def send_failure_notification(
     smtp_user: str | None = None,
     smtp_password: str | None = None,
     smtp_from_email: str | None = None,
+    relay_api_url: str | None = None,
+    internal_api_secret: str = "neurosentinel-internal-key-2026",
 ) -> bool:
     if not to_email:
         return False
@@ -583,6 +589,8 @@ def send_failure_notification(
         smtp_user=smtp_user,
         smtp_password=smtp_password,
         smtp_from_email=smtp_from_email,
+        relay_api_url=relay_api_url,
+        internal_api_secret=internal_api_secret,
     )
 
 
@@ -598,6 +606,8 @@ def send_aborted_notification(
     smtp_user: str | None = None,
     smtp_password: str | None = None,
     smtp_from_email: str | None = None,
+    relay_api_url: str | None = None,
+    internal_api_secret: str = "neurosentinel-internal-key-2026",
 ) -> bool:
     if not to_email:
         return False
@@ -615,6 +625,8 @@ def send_aborted_notification(
         smtp_user=smtp_user,
         smtp_password=smtp_password,
         smtp_from_email=smtp_from_email,
+        relay_api_url=relay_api_url,
+        internal_api_secret=internal_api_secret,
     )
 
 
@@ -631,6 +643,8 @@ def send_size_exceeded_notification(
     smtp_user: str | None = None,
     smtp_password: str | None = None,
     smtp_from_email: str | None = None,
+    relay_api_url: str | None = None,
+    internal_api_secret: str = "neurosentinel-internal-key-2026",
 ) -> bool:
     if not to_email:
         return False
@@ -648,6 +662,8 @@ def send_size_exceeded_notification(
         smtp_user=smtp_user,
         smtp_password=smtp_password,
         smtp_from_email=smtp_from_email,
+        relay_api_url=relay_api_url,
+        internal_api_secret=internal_api_secret,
     )
 
 
@@ -663,6 +679,8 @@ def _send_generic_notification(
     smtp_user: str | None,
     smtp_password: str | None,
     smtp_from_email: str | None,
+    relay_api_url: str | None = None,
+    internal_api_secret: str = "neurosentinel-internal-key-2026",
 ) -> bool:
     if resend_api_key:
         try:
@@ -683,6 +701,28 @@ def _send_generic_notification(
             if response.status_code in (200, 201):
                 return True
         except Exception:
+            pass
+
+    if relay_api_url:
+        payload = {
+            "to_email": to_email,
+            "subject": subject,
+            "html": html,
+        }
+        try:
+            response = httpx.post(
+                relay_api_url,
+                headers={
+                    "x-internal-secret": internal_api_secret,
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=40.0,
+            )
+            if response.status_code == 200:
+                return True
+        except Exception as exc:
+            logger.warning(f"Failed to send email via Vercel Relay: {exc}")
             pass
 
     if smtp_host and smtp_user and smtp_password:

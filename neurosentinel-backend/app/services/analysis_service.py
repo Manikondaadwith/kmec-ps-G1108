@@ -164,6 +164,8 @@ class AnalysisService:
                 smtp_password=self.settings.smtp_password,
                 smtp_from_email=self.settings.smtp_from_email,
                 app_url=self.settings.app_url,
+                relay_api_url=self.settings.relay_api_url,
+                internal_api_secret=self.settings.internal_api_secret,
             )
             logger.info("Timeout notification sent for %s to %s", filename, user_email)
         except Exception as exc:
@@ -189,6 +191,8 @@ class AnalysisService:
                 smtp_user=self.settings.smtp_user,
                 smtp_password=self.settings.smtp_password,
                 smtp_from_email=self.settings.smtp_from_email,
+                relay_api_url=self.settings.relay_api_url,
+                internal_api_secret=self.settings.internal_api_secret,
             )
             logger.info("Failure notification sent for %s to %s", filename, user_email)
         except Exception as exc:
@@ -213,6 +217,8 @@ class AnalysisService:
                 smtp_user=self.settings.smtp_user,
                 smtp_password=self.settings.smtp_password,
                 smtp_from_email=self.settings.smtp_from_email,
+                relay_api_url=self.settings.relay_api_url,
+                internal_api_secret=self.settings.internal_api_secret,
             )
             logger.info("Abortion notification sent for %s to %s", filename, user_email)
         except Exception as exc:
@@ -238,6 +244,8 @@ class AnalysisService:
                 smtp_user=self.settings.smtp_user,
                 smtp_password=self.settings.smtp_password,
                 smtp_from_email=self.settings.smtp_from_email,
+                relay_api_url=self.settings.relay_api_url,
+                internal_api_secret=self.settings.internal_api_secret,
             )
             logger.info("Size exceeded notification sent for %s to %s", filename, user_email)
         except Exception as exc:

@@ -131,7 +131,7 @@ export function AnalysisResults({ data, uploadState = 'idle', uploadFilename }: 
             >
               {getReportSummary(data)}
             </p>
-            {getReliability(data.confidence_score, data.duration_minutes, data.quality_grade) === 'Low' && (
+            {status === 'completed' && getReliability(data.confidence_score, data.duration_minutes, data.quality_grade) === 'Low' && (
               <div className="mt-4">
                 <p className="text-[13px] font-semibold mb-3" style={{ color: 'var(--accent-warning)' }}>
                   ⚠️ This result has low reliability and should not be considered conclusive.
