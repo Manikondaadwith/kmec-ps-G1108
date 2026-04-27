@@ -240,6 +240,7 @@ export default function ReportPage() {
       eventCount: report?.event_count ?? report?.report_json?.events?.length ?? 0,
       createdAt: report?.created_at,
       recordingDuration: report?.duration_minutes ? `${report.duration_minutes.toFixed(1)} min` : undefined,
+      diagnosticState: (report?.report_json?.diagnostic_state as string) || undefined,
     })
   }, [report, role])
 
@@ -260,20 +261,25 @@ export default function ReportPage() {
   const modelOutputs: any = reportJson?.model_outputs || {}
   const probabilityTimeline = modelOutputs?.probability_timeline
   const reliability = getReliabilityDetails(report?.confidence_score, report?.duration_minutes, report?.quality_grade)
-  const normalizedResultLabel = (report?.result_label || '').trim().toLowerCase()
-  const isSeizureDetected =
-    (report?.event_count ?? 0) > 0 ||
-    normalizedResultLabel === 'seizure detected' ||
-    normalizedResultLabel.includes('seizure-pattern activity detected')
+  const diagnosticState = (reportJson?.diagnostic_state as string) || (() => {
+    const label = (report?.result_label || '').toLowerCase()
+    if ((report?.event_count ?? 0) > 0 || label.includes('seizure detected')) return 'DETECTED'
+    if (label.includes('suspicious')) return 'SUSPICIOUS'
+    return 'CLEAR'
+  })()
+  const isSeizureDetected = diagnosticState === 'DETECTED'
+  const isSuspicious = diagnosticState === 'SUSPICIOUS'
   const statusBadgeClasses = isSeizureDetected
     ? 'bg-red-100 text-red-900 border-red-300 shadow-sm shadow-red-100/80'
-    : 'bg-emerald-100 text-emerald-900 border-emerald-300 shadow-sm shadow-emerald-100/80'
+    : isSuspicious
+      ? 'bg-amber-50 text-amber-800 border-amber-300 shadow-sm shadow-amber-100/80'
+      : 'bg-emerald-100 text-emerald-900 border-emerald-300 shadow-sm shadow-emerald-100/80'
 
 
   const riskClasses = (() => {
     const r = (report?.risk_level || '').toLowerCase()
     if (r === 'high' || r === 'critical') return { bg: 'bg-red-500', text: 'text-red-500', gradient: 'from-red-600 to-orange-500', icon: '⚠️' }
-    if (r === 'moderate' || r === 'medium') return { bg: 'bg-amber-500', text: 'text-amber-500', gradient: 'from-amber-500 to-orange-400', icon: '⚡' }
+    if (r === 'moderate' || r === 'medium') return { bg: 'bg-amber-500', text: 'text-amber-500', gradient: 'from-amber-500 to-orange-400', icon: isSuspicious ? '🔍' : '⚡' }
     if (r === 'low') return { bg: 'bg-emerald-500', text: 'text-emerald-500', gradient: 'from-emerald-500 to-teal-400', icon: '🧠' }
     return { bg: 'bg-gray-500', text: 'text-gray-500', gradient: 'from-gray-500 to-slate-400', icon: '📊' }
   })()
@@ -382,10 +388,18 @@ export default function ReportPage() {
                     </div>
                   </div>
                   <h1 className="mt-4 text-4xl sm:text-5xl font-black tracking-tight text-gray-900 antialiased">
-                    {isSeizureDetected ? 'Seizure-pattern activity detected' : 'No seizure activity detected'}
+                    {isSeizureDetected
+                      ? 'Seizure events detected'
+                      : isSuspicious
+                        ? 'Suspicious activity — no confirmed events'
+                        : 'No seizure activity detected'
+                    }
                   </h1>
                   <p className="mt-3 text-lg font-bold text-gray-400 max-w-xl">
-                    Automated EEG signal processing completed. Patterns analyzed from {report.duration_minutes?.toFixed(1)} minutes of recorded data.
+                    {isSuspicious
+                      ? `Seizure-like probability patterns were flagged but did not survive post-processing filters. ${report.duration_minutes?.toFixed(1)} minutes analyzed. Clinical correlation recommended.`
+                      : `Automated EEG signal processing completed. Patterns analyzed from ${report.duration_minutes?.toFixed(1)} minutes of recorded data.`
+                    }
                   </p>
 
                   {reliability.level === 'Low' && (
@@ -462,10 +476,22 @@ export default function ReportPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-50 ring-1 ring-red-100">
-                    <div className="h-1.5 w-1.5 rounded-full bg-red-500" />
-                    <span className="text-[9px] font-black text-red-700 uppercase">Detection Event</span>
-                  </div>
+                  {events.length > 0 ? (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-50 ring-1 ring-red-100">
+                      <div className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                      <span className="text-[9px] font-black text-red-700 uppercase">Confirmed Event</span>
+                    </div>
+                  ) : isSuspicious ? (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 ring-1 ring-amber-100">
+                      <div className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                      <span className="text-[9px] font-black text-amber-700 uppercase">Suspicious Patterns — No Confirmed Events</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 ring-1 ring-emerald-100">
+                      <div className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                      <span className="text-[9px] font-black text-emerald-700 uppercase">No Events</span>
+                    </div>
+                  )}
                 </div>
               </div>
               <ProbabilityTimeline
@@ -514,7 +540,7 @@ export default function ReportPage() {
                  <span className="text-xl">⚡</span>
                  <h2 className="text-sm font-black uppercase tracking-widest text-[#1E293B]">Detailed Event Breakdown</h2>
                </div>
-               <EventCards events={events} />
+               <EventCards events={events} diagnosticState={diagnosticState} />
             </section>
 
             {/* ─── § 8  QUALITY & METADATA ─── */}

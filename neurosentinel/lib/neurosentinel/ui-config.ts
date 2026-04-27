@@ -1,4 +1,4 @@
-export type StatusType = 'seizure_detected' | 'no_seizure' | 'failed' | 'processing' | 'pending' | 'aborted' | 'uploading'
+export type StatusType = 'seizure_detected' | 'suspicious_activity' | 'no_seizure' | 'failed' | 'processing' | 'pending' | 'aborted' | 'uploading' | 'inconclusive'
 
 export interface StatusConfig {
   label: string
@@ -16,12 +16,26 @@ export const STATUS_CONFIG: Record<StatusType, StatusConfig> = {
     text: 'text-orange-700',
     border: 'border-orange-500',
   },
+  suspicious_activity: {
+    label: 'Suspicious Activity',
+    color: 'amber',
+    bg: 'bg-amber-50',
+    text: 'text-amber-700',
+    border: 'border-amber-400',
+  },
   no_seizure: {
     label: 'No Seizure',
     color: 'green',
     bg: 'bg-emerald-100',
     text: 'text-emerald-900',
     border: 'border-emerald-300',
+  },
+  inconclusive: {
+    label: 'Inconclusive',
+    color: 'slate',
+    bg: 'bg-slate-100',
+    text: 'text-slate-600',
+    border: 'border-slate-400',
   },
   failed: {
     label: 'Analysis Failed',

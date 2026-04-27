@@ -159,7 +159,41 @@ def _risk_rank(risk_level: str) -> int:
     return {"Low": 0, "Medium": 1, "High": 2, "Critical": 3}.get(risk_level, 0)
 
 
-def _build_recommendations(risk: str, status_epilepticus: bool, early_warning: bool, event_count: int) -> list[str]:
+def _derive_suspicious_risk(
+    n_windows_above: int,
+    raw_prob_max: float,
+    seizure_ratio: float,
+    quality_grade: str,
+    domain_shift: float,
+) -> tuple[str, str]:
+    """Derive risk level and pattern_alert_level for SUSPICIOUS state.
+
+    Returns (risk_level, pattern_alert_level) where pattern_alert_level
+    is 'elevated' (high burden) or 'low' (marginal signal).
+    """
+    # Score the evidence burden (0-10)
+    score = 0.0
+    score += min(n_windows_above / 20, 3.0)          # up to 3 pts for window count
+    score += min(raw_prob_max * 3.0, 3.0)             # up to 3 pts for peak probability
+    score += min(seizure_ratio * 30, 2.0)             # up to 2 pts for seizure ratio
+    # Penalize for poor quality or high domain shift (less trustworthy signal)
+    if quality_grade.lower() in ("poor", "unreliable"):
+        score -= 1.5
+    if domain_shift >= 0.7:
+        score -= 1.0  # High domain shift = elevated FP risk
+    elif domain_shift >= 0.4:
+        score -= 0.5
+    score = max(0.0, min(10.0, score))
+
+    if score >= 5.0:
+        return ("Medium", "elevated")   # Elevated concern: many windows, high probability
+    elif score >= 2.0:
+        return ("Medium", "low")        # Low concern but still flagged
+    else:
+        return ("Low", "low")           # Marginal signal, likely noise
+
+
+def _build_recommendations(risk: str, status_epilepticus: bool, early_warning: bool, event_count: int, diagnostic_state: str = "CLEAR") -> list[str]:
     recommendations = []
     if status_epilepticus:
         recommendations.append("URGENT: status epilepticus is suspected from duration heuristics and needs immediate neurologist review.")
@@ -167,12 +201,16 @@ def _build_recommendations(risk: str, status_epilepticus: bool, early_warning: b
         recommendations.append("Critical risk pattern detected. Escalate to neurology immediately.")
     elif risk == "High":
         recommendations.append("High-risk pattern detected. Neurologist review is strongly recommended within 24 hours.")
+    elif diagnostic_state == "SUSPICIOUS":
+        recommendations.append("Suspicious seizure-like patterns detected by the model but no events survived post-processing filters. Neurologist review is recommended to evaluate clinical significance.")
     else:
         recommendations.append("Routine neurologist review is recommended for final interpretation.")
     if early_warning:
         recommendations.append("Pre-ictal trend detected. Monitor closely and correlate with direct clinical observation.")
     if event_count > 3:
         recommendations.append(f"Multiple events ({event_count}) were detected. Evaluate for seizure clustering.")
+    if diagnostic_state == "SUSPICIOUS":
+        recommendations.append("Consider extended or repeat EEG monitoring if clinical suspicion for seizures persists despite no confirmed events in this recording.")
     recommendations.append("Correlate all findings with direct clinical observation and patient history.")
     recommendations.append("Heuristic outputs are estimates and require clinical validation.")
     return recommendations
@@ -235,7 +273,7 @@ def generate_clinical_report(analysis_results: dict[str, Any]) -> dict[str, Any]
             "top_channels": top_channels,
             "top_regions": top_regions,
         },
-        "recommendations": _build_recommendations(risk, bool(status_epilepticus), bool(early_warning), len(events)),
+        "recommendations": _build_recommendations(risk, bool(status_epilepticus), bool(early_warning), len(events), report_dict.get("diagnostic_state", "CLEAR")),
     }
 
     event_markdown = ""
@@ -385,55 +423,83 @@ def build_full_report_payload(
     status_epilepticus = any(float(event["duration_sec"]) > 300 for event in enriched_events)
 
     # ── Raw-probability seizure detection ──────────────────────────
-    # The post-processing gauntlet (smoothing, hysteresis, min-duration,
-    # mean-filter, sustained-filter) can kill real seizure events,
-    # especially in long recordings with sparse/short seizures or in
-    # recordings with many seizures (where domain-shift raises thresholds).
-    # To prevent false negatives we also check the raw model output directly.
     raw_prob_max = float(inference_result["raw_prob_max"])
-    seizure_ratio = float((raw_probabilities > 0.5).mean())  # fraction of windows above 0.5
+    seizure_ratio = float((raw_probabilities > 0.5).mean())
     n_windows_above_50 = int((raw_probabilities > 0.5).sum())
     model_detects_seizure = raw_prob_max > 0.5 or seizure_ratio > 0.05
 
+    # ══════════════════════════════════════════════════════════════
+    # DIAGNOSTIC STATE MACHINE — single source of truth
+    # ══════════════════════════════════════════════════════════════
+    # DETECTED     → post-processed events exist (confirmed seizure)
+    # SUSPICIOUS   → model saw seizure-like patterns, but post-processing
+    #                removed all discrete events (no confirmed events)
+    # CLEAR        → model did not detect any seizure-like activity
+    # ──────────────────────────────────────────────────────────────
     if enriched_events:
+        diagnostic_state = "DETECTED"
         result_label = "Seizure Detected"
     elif model_detects_seizure:
-        # Post-processing killed all events, but the model clearly sees seizures
-        result_label = "Seizure Detected"
-        highest_event_risk = "Medium"  # Conservative risk since events weren't individually characterized
+        diagnostic_state = "SUSPICIOUS"
+        result_label = "Suspicious Activity"
+        # Risk is derived from evidence burden, not hardcoded
+        suspicious_risk, pattern_alert_level = _derive_suspicious_risk(
+            n_windows_above_50,
+            raw_prob_max,
+            seizure_ratio,
+            quality["dominant_grade"],
+            float(inference_result.get("output_domain_shift", 0.0)),
+        )
+        highest_event_risk = suspicious_risk
     else:
-        result_label = "No seizure events detected"
+        diagnostic_state = "CLEAR"
+        result_label = "No Seizure"
+        pattern_alert_level = None
+
+    # Suppressed candidate info for SUSPICIOUS state transparency
+    suppressed_candidates = None
+    if diagnostic_state == "SUSPICIOUS":
+        pp_config = inference_result.get("post_process_config", {})
+        suppressed_candidates = {
+            "n_windows_above_threshold": n_windows_above_50,
+            "max_probability": round(raw_prob_max, 4),
+            "seizure_ratio": round(seizure_ratio, 4),
+            "pattern_alert_level": pattern_alert_level,
+            "filter_criteria": {
+                "min_duration_sec": pp_config.get("min_duration"),
+                "min_mean_prob": pp_config.get("min_mean_prob"),
+                "sustained_sec": pp_config.get("sustained_sec"),
+                "sustained_threshold": pp_config.get("sustained_thresh"),
+            },
+            "reason": "Seizure-like probability spikes were detected but did not meet post-processing criteria "
+                      "(minimum duration, sustained threshold, or mean probability filters). "
+                      "This may indicate brief, sub-threshold, or borderline epileptiform patterns.",
+        }
 
     n_ev = len(enriched_events)
-    trend_summary = (
-        f"{n_ev} event{'s' if n_ev != 1 else ''} detected with {highest_event_risk.lower()} overall heuristic risk."
-        if enriched_events
-        else (
-            f"Model detected seizure activity in {n_windows_above_50} window(s) (max probability {raw_prob_max:.1%}, "
-            f"seizure ratio {seizure_ratio:.1%}) but post-processing filters removed all discrete events."
-            if model_detects_seizure
-            else "No seizure events detected in this recording."
+    if diagnostic_state == "DETECTED":
+        trend_summary = f"{n_ev} event{'s' if n_ev != 1 else ''} detected with {highest_event_risk.lower()} overall heuristic risk."
+    elif diagnostic_state == "SUSPICIOUS":
+        trend_summary = (
+            f"Model flagged {n_windows_above_50} window(s) with seizure-like probability (max {raw_prob_max:.1%}, "
+            f"seizure ratio {seizure_ratio:.1%}), but post-processing filters removed all discrete events. "
+            f"No confirmed seizure events. Clinical correlation recommended."
         )
-    )
+    else:
+        trend_summary = "No seizure activity detected in this recording."
 
     # ── Confidence score ──────────────────────────────────────────
-    # Confidence = how certain the system is in its OWN final prediction.
-    # NEVER invert when the model shows high seizure probabilities.
-    if enriched_events:
-        # Post-processed events exist: use the strongest event
+    if diagnostic_state == "DETECTED":
         confidence_score = round(max(event["mean_probability"] for event in enriched_events) * 100, 1)
-    elif model_detects_seizure:
-        # Model detects seizure but post-processing killed events:
-        # confidence is based on how strong the model's seizure signal is
+    elif diagnostic_state == "SUSPICIOUS":
         top_probs = raw_probabilities[raw_probabilities > 0.5]
         if len(top_probs) > 0:
             confidence_score = round(float(np.percentile(top_probs, 75)) * 100, 1)
         else:
             confidence_score = round(raw_prob_max * 100, 1)
     else:
-        # Genuinely no seizure: confidence reflects how clean the signal is
         if raw_prob_max < 0.1:
-            confidence_score = 95.0  # Very confident: nothing even close
+            confidence_score = 95.0
         elif raw_prob_max < 0.2:
             confidence_score = 88.0
         elif raw_prob_max < 0.3:
@@ -441,23 +507,28 @@ def build_full_report_payload(
         elif raw_prob_max < 0.4:
             confidence_score = 65.0
         else:
-            confidence_score = round((1.0 - raw_prob_max) * 100, 1)  # Borderline
+            confidence_score = round((1.0 - raw_prob_max) * 100, 1)
+
+    risk_level = highest_event_risk if diagnostic_state in ("DETECTED", "SUSPICIOUS") else "Low"
+
     payload = {
         "recording_id": filename,
         "file_name": filename,
+        "diagnostic_state": diagnostic_state,
         "result_label": result_label,
         "confidence_score": confidence_score,
         "quality_grade": quality["dominant_grade"],
         "quality_score": quality["mean_quality_score"],
         "duration_minutes": round(float(inference_result["metadata"].get("duration_sec", 0.0)) / 60, 1),
         "missing_channels": quality["missing_channels"] or "None",
-        "risk_level": highest_event_risk if (enriched_events or model_detects_seizure) else "Low",
+        "risk_level": risk_level,
         "trend_summary": trend_summary,
         "early_warning": early_warning_flag,
         "se_flag": status_epilepticus,
         "channel_importance_summary": ", ".join(f"{name} ({score:.3f})" for name, score in top_channels) if top_channels else "Unavailable",
         "top_regions": top_regions,
         "events": enriched_events,
+        "suppressed_candidates": suppressed_candidates,
         "model_outputs": {
             "probability_timeline": [round(float(probability), 4) for probability in raw_probabilities.tolist()],
             "probability_summary": {
@@ -486,16 +557,32 @@ def build_full_report_payload(
     }
 
     clinical_report = generate_clinical_report(payload)
-    summary_text = (
-        f"{result_label}. {n_ev} event{'s' if n_ev != 1 else ''}, {payload['risk_level']} risk, "
-        f"signal quality {payload['quality_grade'].lower()}, confidence {confidence_score:.1f}%."
-    )
+
+    # State-driven summary text
+    if diagnostic_state == "DETECTED":
+        summary_text = (
+            f"Seizure Detected. {n_ev} event{'s' if n_ev != 1 else ''}, {risk_level} risk, "
+            f"signal quality {payload['quality_grade'].lower()}, confidence {confidence_score:.1f}%."
+        )
+    elif diagnostic_state == "SUSPICIOUS":
+        summary_text = (
+            f"Suspicious Activity. {n_windows_above_50} window(s) flagged (max prob {raw_prob_max:.1%}), "
+            f"0 confirmed events after filtering, {risk_level} risk, "
+            f"signal quality {payload['quality_grade'].lower()}, confidence {confidence_score:.1f}%."
+        )
+    else:
+        summary_text = (
+            f"No Seizure. 0 events, Low risk, "
+            f"signal quality {payload['quality_grade'].lower()}, confidence {confidence_score:.1f}%."
+        )
+
     return {
         "summary_text": summary_text,
         "result_label": result_label,
+        "diagnostic_state": diagnostic_state,
         "confidence_score": confidence_score,
         "event_count": len(enriched_events),
-        "risk_level": payload["risk_level"],
+        "risk_level": risk_level,
         "quality_grade": payload["quality_grade"],
         "duration_minutes": payload["duration_minutes"],
         "report_json": {

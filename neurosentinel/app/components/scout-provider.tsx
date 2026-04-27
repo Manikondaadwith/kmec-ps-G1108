@@ -113,7 +113,75 @@ export function ScoutProvider({ children }: { children: React.ReactNode }) {
   const abortControllersRef = useRef<Record<string, AbortController | null>>({})
   const sessionIdRef = useRef<string | null>(null)
 
-  // ── Clear all conversations on sign-out / sign-in ──
+  // ── sessionStorage persistence helpers ──
+  const STORAGE_PREFIX = 'scout_conversations_'
+
+  const persistToStorage = useCallback((userId: string, convs: Record<string, ConversationState>) => {
+    try {
+      // Only persist messages and loaded state — skip transient fields
+      const serializable: Record<string, { messages: ScoutMessage[]; loaded: boolean }> = {}
+      for (const [key, state] of Object.entries(convs)) {
+        if (state.loaded && state.messages.length > 0) {
+          serializable[key] = { messages: state.messages, loaded: true }
+        }
+      }
+      sessionStorage.setItem(`${STORAGE_PREFIX}${userId}`, JSON.stringify(serializable))
+    } catch {
+      // sessionStorage quota or access error — non-fatal
+    }
+  }, [])
+
+  const hydrateFromStorage = useCallback((userId: string): Record<string, ConversationState> => {
+    try {
+      const raw = sessionStorage.getItem(`${STORAGE_PREFIX}${userId}`)
+      if (!raw) return {}
+      const parsed = JSON.parse(raw) as Record<string, { messages: ScoutMessage[]; loaded: boolean }>
+      const hydrated: Record<string, ConversationState> = {}
+      for (const [key, state] of Object.entries(parsed)) {
+        if (Array.isArray(state.messages) && state.messages.length > 0) {
+          hydrated[key] = {
+            messages: state.messages,
+            loading: false,
+            error: null,
+            loaded: true,
+            hasUnread: false,
+          }
+        }
+      }
+      return hydrated
+    } catch {
+      return {}
+    }
+  }, [])
+
+  const clearStorage = useCallback((userId?: string | null) => {
+    try {
+      if (userId) {
+        sessionStorage.removeItem(`${STORAGE_PREFIX}${userId}`)
+      }
+      // Also clear any stale keys from other sessions
+      for (let i = sessionStorage.length - 1; i >= 0; i--) {
+        const key = sessionStorage.key(i)
+        if (key?.startsWith(STORAGE_PREFIX)) {
+          sessionStorage.removeItem(key)
+        }
+      }
+    } catch {
+      // non-fatal
+    }
+  }, [])
+
+  // ── Persist conversations to sessionStorage on every change ──
+  const conversationsRef = useRef(conversations)
+  conversationsRef.current = conversations
+  useEffect(() => {
+    const userId = sessionIdRef.current
+    if (userId && Object.keys(conversations).length > 0) {
+      persistToStorage(userId, conversations)
+    }
+  }, [conversations, persistToStorage])
+
+  // ── Clear all conversations on sign-out / hydrate on sign-in ──
   useEffect(() => {
     const supabase = createClient()
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -122,6 +190,7 @@ export function ScoutProvider({ children }: { children: React.ReactNode }) {
 
       // Handle sign-out or session end
       if (event === 'SIGNED_OUT' || !newUserId) {
+        clearStorage(prevSessionId)
         sessionIdRef.current = null
         setConversations({})
         setFloatingConversation(null)
@@ -131,11 +200,11 @@ export function ScoutProvider({ children }: { children: React.ReactNode }) {
         return
       }
 
-      // Reset state if user has changed OR if it's a brand new login event
-      // This ensures "session-wise" fresh start even if it's the same user re-logging in
+      // New login or user switch: hydrate from sessionStorage
       if (event === 'SIGNED_IN' || (newUserId && newUserId !== prevSessionId)) {
         sessionIdRef.current = newUserId
-        setConversations({})
+        const hydrated = hydrateFromStorage(newUserId)
+        setConversations(hydrated)
         setFloatingConversation(null)
         loadingRef.current = {}
         Object.values(abortControllersRef.current).forEach((c) => c?.abort())
@@ -143,7 +212,7 @@ export function ScoutProvider({ children }: { children: React.ReactNode }) {
       }
     })
     return () => subscription.unsubscribe()
-  }, [])
+  }, [hydrateFromStorage, clearStorage])
 
   const ensureConversation = useCallback(async (page: ScoutPageContext, reportId: string | null | undefined, initialMessage: string, stateKey?: string) => {
     const key = getConversationKey(page, reportId, stateKey)
@@ -152,8 +221,8 @@ export function ScoutProvider({ children }: { children: React.ReactNode }) {
 
     loadingRef.current[key] = true
 
-    // Session-specific: don't load previous chat history from DB.
-    // Start every session fresh with just the initial greeting.
+    // Seed with initial greeting — sessionStorage may already have messages
+    // which would be caught by the `loaded` check above
     setConversations((current) => ({
       ...current,
       [key]: {

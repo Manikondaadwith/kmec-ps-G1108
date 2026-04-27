@@ -11,6 +11,7 @@ type ScoutReportContext = {
   eventCount?: number
   createdAt?: string
   recordingDuration?: string
+  diagnosticState?: string
 }
 
 type ScoutResponseOptions = {
@@ -269,11 +270,11 @@ export function getRoleToneSummary(role: ScoutRole) {
 
 export function getReportExplainerOpening(role: ScoutRole, report?: ScoutReportContext | null) {
   if (report?.status === 'pending') {
-    return 'The report is queued for backend analysis. I’ll notify you once the processing completes.'
+    return 'The report is queued for backend analysis. I\'ll notify you once the processing completes.'
   }
 
   if (report?.status === 'processing') {
-    return 'Analysis in progress. I’m currently processing the signal and generating your clinical briefing.'
+    return 'Analysis in progress. I\'m currently processing the signal and generating your clinical briefing.'
   }
 
   if (report?.status === 'failed') {
@@ -282,10 +283,34 @@ export function getReportExplainerOpening(role: ScoutRole, report?: ScoutReportC
 
   // --- Completed Report Summary ---
   const fileName = report?.fileName ? ` (${report.fileName})` : ''
-  const result = report?.result || 'Analysis complete'
-  const risk = report?.riskLevel ? ` with ${report.riskLevel.toLowerCase()} risk` : ''
+  const risk = report?.riskLevel ? ` Risk level: ${report.riskLevel.toLowerCase()}.` : ''
+  
+  // Use diagnostic_state as the grounding truth — never hallucinate "seizure detected"
+  // when the state is SUSPICIOUS (0 confirmed events)
+  const diagnosticState = report?.diagnosticState
+  
+  if (diagnosticState === 'DETECTED') {
+    const eventCount = report?.eventCount ?? 0
+    return `I've analyzed your EEG recording${fileName}. ${eventCount} seizure event${eventCount !== 1 ? 's' : ''} confirmed after post-processing.${risk} I'm preparing a detailed summary for you now.`
+  }
+  
+  if (diagnosticState === 'SUSPICIOUS') {
+    return `I've analyzed your EEG recording${fileName}. The model detected suspicious seizure-like patterns, but no events survived post-processing filters — meaning no confirmed seizure events.${risk} I'm preparing a detailed summary for you now.`
+  }
+  
+  if (diagnosticState === 'CLEAR') {
+    return `I've analyzed your EEG recording${fileName}. No seizure activity was detected.${risk} I'm preparing a detailed summary for you now.`
+  }
 
-  return `I’ve analyzed your EEG recording${fileName}. ${result}${risk}. I’m preparing a detailed summary for you now.`
+  // Backward compat fallback: derive from result_label
+  const result = report?.result || 'Analysis complete'
+  const resultLower = result.toLowerCase()
+  
+  if (resultLower.includes('suspicious')) {
+    return `I've analyzed your EEG recording${fileName}. Suspicious patterns were flagged but no confirmed seizure events.${risk} I'm preparing a detailed summary for you now.`
+  }
+  
+  return `I've analyzed your EEG recording${fileName}. ${result}.${risk} I'm preparing a detailed summary for you now.`
 }
 
 export function buildScoutResponse({ lastMessage, role = null, page = 'general', report = null }: ScoutResponseOptions) {
