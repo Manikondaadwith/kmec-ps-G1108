@@ -19,7 +19,25 @@ export function StatusBadge({ report, status, showDot = true, showBorder = false
   if (report) {
     const normalized = normalizeReportStatus(report.status)
     if (normalized === 'completed') {
-      statusKey = (report.event_count ?? 0) > 0 ? 'seizure_detected' : 'no_seizure'
+      // Use diagnostic_state from report_json as single source of truth
+      const diagnosticState = report.report_json?.diagnostic_state
+      if (diagnosticState === 'DETECTED') {
+        statusKey = 'seizure_detected'
+      } else if (diagnosticState === 'SUSPICIOUS') {
+        statusKey = 'suspicious_activity'
+      } else if (diagnosticState === 'CLEAR') {
+        statusKey = 'no_seizure'
+      } else {
+        // Backward compat: fallback to result_label
+        const label = (report.result_label || '').toLowerCase()
+        if (label.includes('suspicious')) {
+          statusKey = 'suspicious_activity'
+        } else if ((report.event_count ?? 0) > 0 || label.includes('seizure detected')) {
+          statusKey = 'seizure_detected'
+        } else {
+          statusKey = 'no_seizure'
+        }
+      }
     } else if (normalized === 'failed') {
       statusKey = report.error_message?.toLowerCase().includes('cancelled') || report.error_message?.toLowerCase().includes('abort') 
         ? 'aborted' 

@@ -2,6 +2,7 @@
 
 type Props = {
   events: any[]
+  diagnosticState?: string
 }
 
 function formatTimestamp(sec: number | undefined) {
@@ -20,16 +21,23 @@ function riskBadgeStyle(risk: string) {
   return { bg: '#F9FAFB', border: '#F3F4F6', text: '#64748B' }
 }
 
-export function EventCards({ events }: Props) {
+export function EventCards({ events, diagnosticState }: Props) {
   if (events.length === 0) {
+    const isSuspicious = diagnosticState === 'SUSPICIOUS'
+
     return (
       <div className="rounded-3xl border border-dashed border-gray-200 bg-gray-50/50 px-8 py-10 text-center">
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-gray-200 mb-4">
-          <span className="text-xl">✅</span>
+          <span className="text-xl">{isSuspicious ? '🔍' : '✅'}</span>
         </div>
-        <h3 className="text-base font-bold text-gray-900">No Seizure Events Detected</h3>
-        <p className="mt-1 text-sm text-gray-500 max-w-[280px] mx-auto">
-          The intelligence model did not identify any abnormal epileptiform patterns in this EEG recording.
+        <h3 className="text-base font-bold text-gray-900">
+          {isSuspicious ? 'No Confirmed Seizure Events' : 'No Seizure Events Detected'}
+        </h3>
+        <p className="mt-1 text-sm text-gray-500 max-w-[360px] mx-auto">
+          {isSuspicious
+            ? 'The model detected seizure-like probability patterns, but they did not meet post-processing criteria (minimum duration, sustained threshold). Clinical correlation is recommended.'
+            : 'The intelligence model did not identify any abnormal epileptiform patterns in this EEG recording.'
+          }
         </p>
       </div>
     )

@@ -58,7 +58,11 @@ def _safe_report_summary(report: dict[str, Any] | None) -> str:
     risk_level = report.get("risk_level") or "unknown"
     confidence = report.get("confidence_score")
     confidence_text = f"{confidence:.1f}%" if isinstance(confidence, (int, float)) else "unknown"
-    return f"Current report: {result_label}, risk {risk_level}, confidence {confidence_text}. Summary: {summary}"
+    diagnostic_state = (report.get("report_json") or {}).get("diagnostic_state") or "unknown"
+    return (
+        f"Current report: {result_label} (diagnostic state: {diagnostic_state}), "
+        f"risk {risk_level}, confidence {confidence_text}. Summary: {summary}"
+    )
 
 
 def _format_pct(value: Any) -> str:
@@ -148,10 +152,16 @@ def _collect_report_details(report: dict[str, Any]) -> dict[str, Any]:
     if isinstance(explicit_reliability_reasons, list) and explicit_reliability_reasons:
         reliability_reasons = [str(reason) for reason in explicit_reliability_reasons if str(reason).strip()]
     report_keywords = report.get("report_keywords") if isinstance(report.get("report_keywords"), list) else []
+    diagnostic_state = report_json.get("diagnostic_state") or "unknown"
+    suppressed = report_json.get("suppressed_candidates") if isinstance(report_json.get("suppressed_candidates"), dict) else None
+    pattern_alert_level = (suppressed or {}).get("pattern_alert_level") or "unknown"
 
     return {
         "filename": report.get("filename") or report_json.get("file_name") or "this report",
         "result_label": report.get("result_label") or report_json.get("result_label") or "unknown",
+        "diagnostic_state": diagnostic_state,
+        "suppressed_candidates": suppressed,
+        "pattern_alert_level": pattern_alert_level,
         "risk_level": report.get("risk_level") or report_json.get("risk_level") or summary.get("overall_risk") or "unknown",
         "confidence_text": _format_pct(confidence_value),
         "duration_text": _format_minutes(duration_value),
@@ -702,14 +712,31 @@ def _build_patient_summary(
 
     paragraphs: list[str] = []
 
-    # Opening
-    if result.lower() == "seizure detected" or (isinstance(event_count, int) and event_count > 0):
+    # Opening — state-aware: never say 'seizure detected' when state is SUSPICIOUS
+    diagnostic_state = details.get("diagnostic_state", "unknown")
+    suppressed = details.get("suppressed_candidates")
+
+    if diagnostic_state == "DETECTED" or (diagnostic_state == "unknown" and isinstance(event_count, int) and event_count > 0):
         paragraphs.append(
             f"I have finished reviewing your EEG recording \"{filename}\". "
             f"The analysis has detected seizure-like activity in the recording. "
             f"Specifically, the system flagged {event_count} segment(s) that show patterns consistent with seizure events, "
             f"and the overall risk level has been assessed as {risk}. "
             f"The model's confidence in this finding is {confidence}."
+        )
+    elif diagnostic_state == "SUSPICIOUS":
+        n_windows = (suppressed or {}).get("n_windows_above_threshold", "multiple")
+        max_prob = (suppressed or {}).get("max_probability")
+        max_prob_text = f" (highest probability: {max_prob:.1%})" if isinstance(max_prob, (int, float)) else ""
+        alert_level = details.get("pattern_alert_level", "low")
+        alert_word = "significant" if alert_level == "elevated" else "some"
+        paragraphs.append(
+            f"I have finished reviewing your EEG recording \"{filename}\". "
+            f"The analysis found {alert_word} suspicious patterns — the model flagged {n_windows} segment(s) "
+            f"with seizure-like probability{max_prob_text}. However, none of these segments met the strict "
+            f"post-processing criteria required to be classified as confirmed seizure events. "
+            f"This means the recording shows activity that warrants attention, but no definitive seizure events were identified. "
+            f"The overall risk level is {risk} and the model's confidence is {confidence}."
         )
     else:
         paragraphs.append(
@@ -826,6 +853,7 @@ def _build_clinician_summary(
     lines: list[str] = []
 
     lines.append(f"- **Report:** {details['filename']}")
+    lines.append(f"- **Diagnostic State:** {details.get('diagnostic_state', 'unknown')}")
     lines.append(f"- **Result:** {details['result_label']} | **Risk:** {details['risk_level']} | **Confidence:** {details['confidence_text']} | **Events:** {details['event_count']}")
     lines.append(f"- **Duration:** {details['duration_text']} | **Quality:** {details['quality_grade']} ({details['quality_score']}/1.0)")
     lines.append(f"- **Reliability:** {_format_reliability_block(details)}")
@@ -842,6 +870,11 @@ def _build_clinician_summary(
         lines.append(f"- **Primary event:** {_format_event_brief(events[0])}")
         if len(events) > 1:
             lines.append(f"- **Additional events:** {len(events) - 1} segment(s) flagged for review")
+    elif details.get("diagnostic_state") == "SUSPICIOUS":
+        suppressed = details.get("suppressed_candidates")
+        n_win = (suppressed or {}).get("n_windows_above_threshold", "?")
+        alert_level = details.get("pattern_alert_level", "low")
+        lines.append(f"- **Event burden:** zero confirmed | {n_win} suppressed candidate window(s) | alert level: {alert_level}")
     else:
         lines.append("- **Event burden:** zero for the analyzed recording window")
 
@@ -923,6 +956,13 @@ def _build_researcher_summary(
         lines.append(f"Primary event: {_format_event_brief(events[0])}.")
         if len(events) > 1:
             lines.append(f"Additional events: {len(events) - 1} segment(s) require cross-validation against raw traces.")
+    elif details.get("diagnostic_state") == "SUSPICIOUS":
+        suppressed = details.get("suppressed_candidates")
+        n_win = (suppressed or {}).get("n_windows_above_threshold", "?")
+        max_p = (suppressed or {}).get("max_probability")
+        max_p_text = f", peak probability {max_p:.1%}" if isinstance(max_p, (int, float)) else ""
+        lines.append(f"Event burden: zero confirmed after post-processing. {n_win} candidate window(s) suppressed{max_p_text}.")
+        lines.append("Post-processing filters (min duration, sustained threshold) removed all candidate events. Cross-validate with raw traces.")
     else:
         lines.append("Event burden: zero after post-processing filters for the analyzed window.")
 
@@ -1230,9 +1270,11 @@ class ScoutService:
         report_context_lines: list[str] = []
         if current_report:
             details = _collect_report_details(current_report)
+            diagnostic_state = details.get("diagnostic_state", "unknown")
             report_context_lines.extend(
                 [
                     _safe_report_summary(current_report),
+                    f"Diagnostic state: {diagnostic_state}",
                     f"Result: {details['result_label']}",
                     f"Risk: {details['risk_level']}",
                     f"Confidence: {details['confidence_text']}",
@@ -1245,8 +1287,25 @@ class ScoutService:
                     f"Domain shift: {details['domain_shift']}",
                 ]
             )
+            # Suppressed candidate context for SUSPICIOUS state
+            suppressed = details.get("suppressed_candidates")
+            if diagnostic_state == "SUSPICIOUS" and suppressed:
+                report_context_lines.extend([
+                    f"Pattern alert level: {details.get('pattern_alert_level', 'unknown')}",
+                    f"Suppressed candidates: {suppressed.get('n_windows_above_threshold', '?')} window(s) above threshold",
+                    f"Max suppressed probability: {suppressed.get('max_probability', '?')}",
+                    f"Seizure ratio: {suppressed.get('seizure_ratio', '?')}",
+                    f"Filter reason: {suppressed.get('reason', 'unknown')}",
+                    "CRITICAL: diagnostic_state is SUSPICIOUS. This means NO confirmed seizure events exist. "
+                    "NEVER say 'seizure detected' or 'seizure events were found'. "
+                    "Say 'suspicious patterns' or 'seizure-like patterns flagged but not confirmed'.",
+                ])
+            elif diagnostic_state == "CLEAR":
+                report_context_lines.append(
+                    "CRITICAL: diagnostic_state is CLEAR. NO seizure activity was detected. Do not suggest otherwise."
+                )
             if details["events"]:
-                report_context_lines.append(f"Representative event: {_format_event_brief(details['events'][0])}.")
+                report_context_lines.append(f"Representative event: {_format_event_brief(details['events'][0])}.") 
             if details["top_channels"]:
                 channel_text = ", ".join(f"{channel} ({score:.3f})" for channel, score in details["top_channels"][:3])
                 report_context_lines.append(f"Top channels: {channel_text}")
