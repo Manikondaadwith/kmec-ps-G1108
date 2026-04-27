@@ -273,7 +273,7 @@ def generate_clinical_report(analysis_results: dict[str, Any]) -> dict[str, Any]
             "top_channels": top_channels,
             "top_regions": top_regions,
         },
-        "recommendations": _build_recommendations(risk, bool(status_epilepticus), bool(early_warning), len(events), report_dict.get("diagnostic_state", "CLEAR")),
+        "recommendations": _build_recommendations(risk, bool(status_epilepticus), bool(early_warning), len(events), analysis_results.get("diagnostic_state", "CLEAR")),
     }
 
     event_markdown = ""
@@ -439,6 +439,7 @@ def build_full_report_payload(
     if enriched_events:
         diagnostic_state = "DETECTED"
         result_label = "Seizure Detected"
+        pattern_alert_level = None
     elif model_detects_seizure:
         diagnostic_state = "SUSPICIOUS"
         result_label = "Suspicious Activity"
