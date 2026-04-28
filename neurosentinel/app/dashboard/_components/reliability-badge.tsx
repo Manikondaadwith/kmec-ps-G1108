@@ -17,10 +17,10 @@ export function ReliabilityBadge({ confidence, duration, signalQuality, classNam
 
   return (
     <span 
-      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold border transition-all ${config.bg} ${config.text} ${config.border} ${className}`}
+      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${config.bg} ${config.text} ${config.border} ${className}`}
     >
+      {config.icon && <span>{config.icon}</span>}
       {config.label}
-      {config.icon && <span className="ml-0.5">{config.icon}</span>}
     </span>
   )
 }

@@ -382,11 +382,6 @@ export default function ReportPage() {
                       signalQuality={report.quality_grade}
                     />
                   </div>
-                  <div className="mt-3 flex flex-col gap-0.5">
-                    <div className="text-[12px] text-gray-500 font-medium">
-                      <span className="text-gray-900 font-bold">Reliability is {reliability.level}</span>
-                    </div>
-                  </div>
                   <h1 className="mt-4 text-4xl sm:text-5xl font-black tracking-tight text-gray-900 antialiased">
                     {isSeizureDetected
                       ? 'Seizure events detected'
