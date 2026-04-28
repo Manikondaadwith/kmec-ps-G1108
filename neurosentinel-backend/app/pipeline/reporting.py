@@ -230,6 +230,8 @@ def generate_clinical_report(analysis_results: dict[str, Any]) -> dict[str, Any]
     top_channels = analysis_results.get("channel_importance_summary", "N/A")
     top_regions = analysis_results.get("top_regions", [])
     timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+    diagnostic_state = analysis_results.get("diagnostic_state", "CLEAR")
+    suppressed = analysis_results.get("suppressed_candidates")
 
     badge = {"Low": "🟢", "Medium": "🟡", "High": "🟠", "Critical": "🔴"}.get(risk, "⚪")
 
@@ -316,7 +318,8 @@ def generate_clinical_report(analysis_results: dict[str, Any]) -> dict[str, Any]
 
 | | |
 |---|---|
-| Seizure Events Detected | **{len(events)}** |
+| Seizure Events Detected | **{len(events)}**{' (suspicious candidate activity suppressed by post-processing)' if diagnostic_state == 'SUSPICIOUS' else ''} |
+| Diagnostic State | **{diagnostic_state}** |
 | Overall Risk Level | {badge} **{risk}** |
 | Early Warning Signal | {'Yes' if early_warning else 'No'} |
 | Status Epilepticus Flag | {'Yes' if status_epilepticus else 'No'} |
@@ -324,7 +327,14 @@ def generate_clinical_report(analysis_results: dict[str, Any]) -> dict[str, Any]
 Trend: {trend_summary}
 
 ## 3. Detected Events
-{event_markdown if events else '_No seizure events detected in this recording._'}
+{event_markdown if events else (
+    f'_No confirmed seizure events. However, the model flagged {suppressed["n_windows_above_threshold"]} '
+    f'candidate window(s) with seizure-like probability (max {suppressed["max_probability"]:.1%}, '
+    f'seizure ratio {suppressed["seizure_ratio"]:.1%}). These did not meet post-processing '
+    f'criteria and were suppressed. Clinical correlation is recommended._'
+    if diagnostic_state == 'SUSPICIOUS' and suppressed
+    else '_No seizure events detected in this recording._'
+)}
 
 ## 4. Brain Region & Channel Analysis
 
