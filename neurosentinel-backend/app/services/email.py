@@ -21,6 +21,7 @@ DEFAULT_APP_URL = "https://neuro-sentinel-ai-6vfv.vercel.app"
 LOGO_URL = f"{DEFAULT_APP_URL}/logo.jpeg"
 
 _SUBJECT_SEIZURE = "NeuroSentinel AI - Seizure Activity Detected in {filename}"
+_SUBJECT_SUSPICIOUS = "NeuroSentinel AI - Suspicious Patterns Found in {filename}"
 _SUBJECT_NO_SEIZURE = "NeuroSentinel AI - No Seizure Activity Detected in {filename}"
 _SUBJECT_TIMEOUT = "NeuroSentinel AI - EEG Analysis Timed Out for {filename}"
 _SUBJECT_FAILED = "NeuroSentinel AI - EEG Analysis Failed for {filename}"
@@ -38,22 +39,35 @@ def _build_patient_email(report: dict[str, Any], filename: str, app_url: str) ->
     event_count = report.get("event_count", 0) or 0
     confidence = report.get("confidence_score")
     confidence_text = f"{confidence:.1f}%" if isinstance(confidence, (int, float)) else "unknown"
-    seizure_detected = result.lower() == "seizure detected" or (isinstance(event_count, int) and event_count > 0)
+    diagnostic_state = report.get("diagnostic_state", "")
+    seizure_detected = diagnostic_state == "DETECTED" or result.lower() == "seizure detected" or (isinstance(event_count, int) and event_count > 0)
+    is_suspicious = diagnostic_state == "SUSPICIOUS"
 
     if seizure_detected:
         opening = (
             f'Your EEG recording "{filename}" has been analysed by NeuroSentinel AI. '
-            f"The analysis has detected seizure-like activity - {event_count} segment(s) were flagged "
+            f"The analysis has detected seizure-like activity — {event_count} segment(s) were flagged "
             f"with an overall risk level of {risk} and model confidence of {confidence_text}."
         )
         action = (
             "We recommend sharing this report with your healthcare provider or neurologist as soon as possible. "
             "Please do not make any changes to your medication or treatment without consulting your doctor first."
         )
+    elif is_suspicious:
+        opening = (
+            f'Your EEG recording "{filename}" has been analysed by NeuroSentinel AI. '
+            f"The analysis found suspicious patterns that warrant attention — the model flagged candidate "
+            f"seizure-like activity, but these patterns did not meet the strict criteria for confirmed seizure events. "
+            f"The overall risk level is {risk} with model confidence of {confidence_text}."
+        )
+        action = (
+            "We recommend sharing this report with your neurologist so they can evaluate whether further "
+            "testing, such as a repeat or extended EEG, is appropriate. There is no need for emergency action."
+        )
     else:
         opening = (
             f'Your EEG recording "{filename}" has been analysed by NeuroSentinel AI. '
-            f"The good news is that no seizure activity was detected in this recording. "
+            f"No seizure activity was detected in this recording. "
             f"The overall risk level is {risk} with model confidence of {confidence_text}."
         )
         action = (
@@ -294,9 +308,11 @@ def _build_email_html(report: dict[str, Any], filename: str, role: str | None, a
 def _get_subject(report: dict[str, Any], filename: str) -> str:
     result = report.get("result_label", "")
     event_count = report.get("event_count", 0) or 0
-    seizure = result.lower() == "seizure detected" or (isinstance(event_count, int) and event_count > 0)
-    if seizure:
+    diagnostic_state = report.get("diagnostic_state", "")
+    if diagnostic_state == "DETECTED" or result.lower() == "seizure detected" or (isinstance(event_count, int) and event_count > 0):
         return _SUBJECT_SEIZURE.format(filename=filename)
+    if diagnostic_state == "SUSPICIOUS":
+        return _SUBJECT_SUSPICIOUS.format(filename=filename)
     return _SUBJECT_NO_SEIZURE.format(filename=filename)
 
 

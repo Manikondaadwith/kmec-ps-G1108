@@ -378,7 +378,7 @@ def _narrative_clinician(
             parts.append(f"The dominant frequency band during the event was categorised as {dom_band}-range activity.")
     else:
         parts.append(
-            f"Analysis of {filename} identified no ictal events surviving post-processing filtering over a {duration_min:.1f}-minute recording."
+            f"Analysis of {filename} identified no confirmed ictal events over a {duration_min:.1f}-minute recording."
         )
         if confidence_score < 70:
             parts.append(
@@ -387,7 +387,7 @@ def _narrative_clinician(
             )
         if p_max > 0:
             parts.append(
-                f"Peak probability was {p_max:.4f}, below the event detection threshold, against a baseline mean of {p_mean:.4f}."
+                f"Peak probability was {p_max:.4f} against a baseline mean of {p_mean:.4f}."
             )
         parts.append("If clinical suspicion persists, consider prolonged monitoring or ambulatory video-EEG.")
 
@@ -484,14 +484,16 @@ def _narrative_researcher(
 #  Role-aware recommendation builders
 # ═══════════════════════════════════════════════════════════════════
 
-def _build_patient_recommendations(events: list, early_warning: bool, se_flag: bool) -> list[str]:
+def _build_patient_recommendations(events: list, early_warning: bool, se_flag: bool, diagnostic_state: str = "CLEAR") -> list[str]:
     recs: list[str] = []
     if se_flag:
         recs.append("The system detected signs of prolonged seizure activity. Please contact your neurologist or medical team as soon as possible.")
     if events:
         recs.append("Share this report with your neurologist or treating physician so they can explain what these findings mean for you specifically.")
+    elif diagnostic_state == "SUSPICIOUS":
+        recs.append("Suspicious patterns were flagged but no confirmed seizure events were found. Share this report with your neurologist to determine whether further testing is needed.")
     else:
-        recs.append("While no seizure activity was detected in this recording, continue to follow your neurologist's guidance for ongoing monitoring.")
+        recs.append("No seizure activity was detected in this recording. Continue to follow your neurologist's guidance for ongoing monitoring.")
     if early_warning:
         recs.append("An early warning pattern was detected — be sure to mention this when you discuss the report with your doctor.")
     recs.append("Please bring a printed copy of this report to your next medical appointment for review by your neurologist.")
@@ -759,6 +761,8 @@ class _MedicalReportPDF:
         top_channels_raw = cr_explainability.get("top_channels") or self.data.get("channel_importance_summary", "")
         top_regions = cr_explainability.get("top_regions") or self.data.get("top_regions", [])
         result_label = self.data.get("result_label", "Unknown")
+        diagnostic_state = self.data.get("diagnostic_state", "CLEAR")
+        suppressed_candidates = self.data.get("suppressed_candidates")
         confidence = self.data.get("confidence_score", 0)
         raw_meta = self.data.get("metadata", {}) or {}
         model_outputs = self.data.get("model_outputs", {}) or {}
@@ -1042,7 +1046,18 @@ class _MedicalReportPDF:
 
         self._section_header("Detected Seizure Events" if role != "researcher" else "Detected Events", "§4")
         if not events:
-            self._text_block("No seizure events were detected in this recording.", font_size=9)
+            if diagnostic_state == "SUSPICIOUS" and suppressed_candidates:
+                n_win = suppressed_candidates.get("n_windows_above_threshold", "multiple")
+                max_p = suppressed_candidates.get("max_probability")
+                max_p_str = f" (max probability {max_p:.1%})" if isinstance(max_p, (int, float)) else ""
+                self._text_block(
+                    f"No confirmed seizure events. However, the model flagged {n_win} candidate window(s) "
+                    f"with seizure-like probability{max_p_str} that did not meet post-processing criteria "
+                    f"(minimum duration, sustained threshold). Clinical correlation is recommended.",
+                    font_size=9,
+                )
+            else:
+                self._text_block("No seizure events were detected in this recording.", font_size=9)
         else:
             # Build column spec based on role
             if role == "researcher":
@@ -1178,7 +1193,7 @@ class _MedicalReportPDF:
 
         if role == "patient":
             self._section_header("What To Do Next", "§6")
-            recommendations = _build_patient_recommendations(events, bool(early_warning), bool(se_flag))
+            recommendations = _build_patient_recommendations(events, bool(early_warning), bool(se_flag), diagnostic_state)
         elif role == "clinician":
             self._section_header("Clinical Recommendations", "§6")
             recommendations = _build_clinician_recommendations(events, risk_level, bool(early_warning), bool(se_flag), tc_list)

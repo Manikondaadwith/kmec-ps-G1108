@@ -426,9 +426,29 @@ _GENERAL_SEIZURE_CAUSES = (
 )
 
 
-def _get_severity_guidance_patient(risk: str, event_count: int | Any, se_flag: bool) -> str:
-    """Return warm, plain-language guidance based on severity for patients."""
+def _get_severity_guidance_patient(risk: str, event_count: int | Any, se_flag: bool, diagnostic_state: str = "unknown") -> str:
+    """Return warm, plain-language guidance based on severity for patients.
+
+    When diagnostic_state is SUSPICIOUS, guidance is calibrated to unconfirmed
+    findings — no emergency seizure precautions, focus on follow-up monitoring.
+    """
     risk_lower = (risk or "").lower()
+
+    # SUSPICIOUS state: no confirmed events — avoid emergency escalation
+    if diagnostic_state == "SUSPICIOUS":
+        if risk_lower in ("medium", "moderate"):
+            return (
+                "The analysis found suspicious patterns in your recording, but no confirmed seizure events. "
+                "We recommend sharing this report with your neurologist so they can decide whether further "
+                "evaluation — such as a repeat or extended EEG — is warranted. In the meantime, keep track "
+                "of any symptoms, maintain a regular sleep schedule, and manage stress. There is no need "
+                "for emergency action, but a follow-up consultation within the next few weeks is a good idea."
+            )
+        return (
+            "Some transient patterns were flagged in your recording, but they were not strong or sustained "
+            "enough to be classified as seizure events. This is worth mentioning to your doctor at your "
+            "next visit. Continue your usual routine and monitor for any new symptoms."
+        )
 
     if se_flag or risk_lower in ("critical", "high"):
         return (
@@ -463,8 +483,13 @@ def _get_severity_guidance_patient(risk: str, event_count: int | Any, se_flag: b
         )
 
 
-def _get_health_tips_patient(risk: str, event_count: int | Any) -> str:
-    """Comprehensive health, diet, and lifestyle tips for patients."""
+def _get_health_tips_patient(risk: str, event_count: int | Any, diagnostic_state: str = "unknown") -> str:
+    """Comprehensive health, diet, and lifestyle tips for patients.
+
+    Safety precautions (avoid swimming alone, medical ID) only added when
+    confirmed events exist or high/critical risk. SUSPICIOUS state gets
+    monitoring-focused tips instead of emergency precautions.
+    """
     risk_lower = (risk or "").lower()
     has_events = isinstance(event_count, int) and event_count > 0
 
@@ -492,6 +517,17 @@ def _get_health_tips_patient(risk: str, event_count: int | Any) -> str:
         "information is invaluable for your doctor when adjusting your treatment plan."
     )
 
+    # SUSPICIOUS state: monitoring tips, NOT emergency safety precautions
+    if diagnostic_state == "SUSPICIOUS":
+        monitoring = (
+            "Since suspicious patterns were flagged, keeping a symptom diary can be especially helpful. "
+            "Note any unusual sensations, brief episodes of confusion, or other neurological symptoms — even "
+            "subtle ones — along with the date, time, and what you were doing. This information can help your "
+            "neurologist decide whether further testing is needed."
+        )
+        return f"{tips}\n\n{diet}\n\n{lifestyle}\n\n{monitoring}"
+
+    # DETECTED with confirmed events: include full safety precautions
     if has_events or risk_lower in ("critical", "high", "moderate", "medium"):
         safety = (
             "For safety, let family members or housemates know what to do during a seizure: keep the person "
@@ -663,13 +699,21 @@ def _answer_report_question(report: dict[str, Any], role: str, message: str) -> 
         if details["recommendations"]:
             return "Top recommendation: " + str(details["recommendations"][0])
         if role == "patient":
-            return _get_severity_guidance_patient(details["risk_level"], details["event_count"], details["se_flag"])
+            return _get_severity_guidance_patient(details["risk_level"], details["event_count"], details["se_flag"], details.get("diagnostic_state", "unknown"))
         return _get_severity_guidance_clinician(details["risk_level"], details["event_count"], details["se_flag"])
 
     if any(term in query for term in ["event", "seizure", "segment", "episode"]):
         if details["events"]:
             return f"The report flagged {details['event_count']} event(s). Representative event: {_format_event_brief(details['events'][0])}."
-        return "No seizure events survived post-processing in this report."
+        if details.get("diagnostic_state") == "SUSPICIOUS":
+            suppressed = details.get("suppressed_candidates", {})
+            n_win = suppressed.get("n_windows_above_threshold", "multiple")
+            return (
+                f"No confirmed seizure events after post-processing. However, the model flagged {n_win} "
+                f"candidate window(s) with seizure-like probability that did not meet duration or sustained "
+                f"threshold criteria. Clinical correlation is recommended."
+            )
+        return "No seizure events were detected in this recording."
 
     if any(term in query for term in ["region", "brain region", "where", "channel"]):
         parts: list[str] = []
@@ -773,6 +817,15 @@ def _build_patient_summary(
             + (f"There were {len(events) - 1} additional segment(s) that also showed unusual patterns. " if len(events) > 1 else "")
             + "These flagged segments represent areas where the brainwave patterns looked different from what would typically be expected during normal activity."
         )
+    elif diagnostic_state == "SUSPICIOUS":
+        suppressed = details.get("suppressed_candidates", {})
+        n_win = suppressed.get("n_windows_above_threshold", "multiple")
+        paragraphs.append(
+            f"Although no confirmed seizure events were identified after filtering, the system did flag {n_win} "
+            f"segment(s) where the brainwave patterns showed brief, seizure-like characteristics. These segments "
+            f"were too short or intermittent to meet the strict criteria for a confirmed seizure event, but they "
+            f"suggest the presence of transient epileptiform-like activity that is worth mentioning to your doctor."
+        )
     else:
         paragraphs.append(
             "No segments in the recording showed patterns that the system considers concerning. "
@@ -816,12 +869,12 @@ def _build_patient_summary(
 
     # Severity-based what-to-do guidance
     paragraphs.append(
-        _get_severity_guidance_patient(risk, event_count, details["se_flag"])
+        _get_severity_guidance_patient(risk, event_count, details["se_flag"], diagnostic_state)
     )
 
     # Health, diet, and lifestyle tips
     paragraphs.append(
-        _get_health_tips_patient(risk, event_count)
+        _get_health_tips_patient(risk, event_count, diagnostic_state)
     )
 
     # Recommendations & disclaimer
