@@ -627,6 +627,109 @@ def _get_researcher_context(top_regions: list, risk: str) -> str:
     return epi
 
 
+def _get_clinician_counseling_block(risk: str, event_count: int | Any, diagnostic_state: str = "unknown", se_flag: bool = False) -> str:
+    """Concise patient counseling points for clinician auto-summaries — immediate actions, sleep, diet, lifestyle."""
+    risk_lower = (risk or "").lower()
+    has_events = isinstance(event_count, int) and event_count > 0
+    parts: list[str] = []
+
+    # Immediate actions
+    if se_flag:
+        parts.append(
+            "  Immediate: initiate SE protocol, ensure IV access, benzodiazepine loading. "
+            "Patient/family should call emergency services for seizures >5 min."
+        )
+    elif risk_lower in ("critical", "high") or (has_events and diagnostic_state == "DETECTED"):
+        parts.append(
+            "  Immediate: advise patient to avoid driving, swimming alone, and operating machinery until cleared. "
+            "Urgent neurology review within 24–48h. Advise family on seizure first aid (protect from injury, "
+            "do not restrain, time the event, call 911 if >5 min). Consider medical ID bracelet."
+        )
+    elif risk_lower in ("moderate", "medium"):
+        parts.append(
+            "  Immediate: schedule neurology follow-up within 1–2 weeks. Reinforce seizure precautions "
+            "(avoid unsupervised swimming/bathing, inform household contacts). Verify AED adherence."
+        )
+    elif diagnostic_state == "SUSPICIOUS":
+        parts.append(
+            "  Immediate: no emergency action required. Recommend follow-up consultation within 2–4 weeks. "
+            "Advise patient to keep a symptom diary (any unusual sensations, brief confusion episodes)."
+        )
+    else:
+        parts.append(
+            "  Immediate: routine follow-up. No urgent action required. Continue current regimen."
+        )
+
+    # Sleep
+    parts.append(
+        "  Sleep: reinforce 7–9h consistent sleep schedule. Sleep deprivation is the #1 modifiable seizure trigger. "
+        "Screen for sleep disorders if recurrent events."
+    )
+
+    # Diet
+    parts.append(
+        "  Diet: balanced regular meals (avoid fasting/hypoglycemia). Mediterranean-style diet supports neurological health. "
+        "Limit caffeine, avoid alcohol (both lower seizure threshold). "
+        "Check grapefruit interactions with current AEDs. Consider ketogenic diet referral for drug-resistant cases."
+    )
+
+    # Lifestyle
+    parts.append(
+        "  Lifestyle: moderate exercise (walking, cycling) is beneficial. Avoid extreme exhaustion/overheating. "
+        "Stress management (mindfulness, CBT) reduces seizure frequency. "
+        "Medication adherence is critical — counsel patient never to skip or self-adjust AED dosing."
+    )
+
+    return "\n".join(parts)
+
+
+def _get_researcher_clinical_implications(risk: str, event_count: int | Any, diagnostic_state: str = "unknown", se_flag: bool = False) -> str:
+    """Clinical implications and modifiable factors section for researcher auto-summaries."""
+    risk_lower = (risk or "").lower()
+    has_events = isinstance(event_count, int) and event_count > 0
+    sections: list[str] = ["Clinical implications and modifiable factors:"]
+
+    # Immediate actions
+    if se_flag or risk_lower in ("critical", "high"):
+        sections.append(
+            "Immediate actions: high-risk findings warrant urgent clinical review (24–48h). "
+            "Standard seizure precautions apply (driving restrictions, supervised water activities, "
+            "seizure first aid education for household contacts, medical ID bracelet)."
+        )
+    elif risk_lower in ("moderate", "medium"):
+        sections.append(
+            "Immediate actions: moderate-risk profile suggests neurology follow-up within 1–2 weeks. "
+            "Verify AED compliance and reinforce seizure precautions."
+        )
+    elif diagnostic_state == "SUSPICIOUS":
+        sections.append(
+            "Immediate actions: suspicious but unconfirmed patterns — no emergency intervention required. "
+            "Symptom diary recommended; repeat or extended EEG may clarify subclinical burden."
+        )
+    else:
+        sections.append(
+            "Immediate actions: low-risk profile — routine follow-up at next scheduled visit."
+        )
+
+    # Sleep, diet, lifestyle — evidence-based context
+    sections.append(
+        "Sleep: sleep deprivation is the most significant modifiable seizure trigger (literature-supported). "
+        "7–9h consistent schedule recommended; sleep disorder screening warranted for recurrent events."
+    )
+    sections.append(
+        "Diet and nutrition: Mediterranean-style dietary pattern shows positive association with neurological outcomes. "
+        "Hypoglycemia from meal-skipping is a documented seizure precipitant. Caffeine and alcohol lower seizure threshold. "
+        "Ketogenic diet is evidence-based for drug-resistant epilepsy (Cochrane review–supported)."
+    )
+    sections.append(
+        "Lifestyle and stress: moderate aerobic exercise correlates with reduced seizure frequency in observational studies. "
+        "Stress reduction techniques (mindfulness-based stress reduction, CBT) have demonstrated efficacy in seizure diary studies. "
+        "AED adherence is the single largest controllable variable in seizure recurrence prevention."
+    )
+
+    return " ".join(sections)
+
+
 # ═══════════════════════════════════════════════════════════════════
 # Report summary builders
 # ═══════════════════════════════════════════════════════════════════
@@ -968,6 +1071,10 @@ def _build_clinician_summary(
         for i, rec in enumerate(recommendations[:3], 1):
             lines.append(f"- **Rec {i}:** {rec}")
 
+    # Patient counseling points — immediate actions, sleep, diet, lifestyle
+    lines.append(f"- **Patient Counseling Points:**")
+    lines.append(_get_clinician_counseling_block(details['risk_level'], details['event_count'], details.get('diagnostic_state', 'unknown'), details['se_flag']))
+
     return "\n\n".join(lines)
 
 
@@ -1053,6 +1160,9 @@ def _build_researcher_summary(
     if recommendations:
         rec_text = "; ".join(recommendations[:3])
         lines.append(f"Recommendations: {rec_text}.")
+
+    # Clinical implications — immediate actions, sleep, diet, lifestyle
+    lines.append(_get_researcher_clinical_implications(details['risk_level'], details['event_count'], details.get('diagnostic_state', 'unknown'), details['se_flag']))
 
     return "\n".join(lines)
 
@@ -1300,11 +1410,15 @@ class ScoutService:
             "clinician": (
                 "Be clinical, structured, and metric-dense. Provide concise paragraph-style responses. Do not use bulleted lists or pipe-separated lines for regular responses unless explicitly requested. "
                 "MANDATORY: Provide strict HEALTH INTERPRETATION (explain significance of findings) and ACTIONABLE GUIDANCE (suggest what to do next, e.g., 'consider video-EEG monitoring'). "
+                "MANDATORY: Include patient counseling considerations — immediate actions, sleep hygiene, dietary guidance, lifestyle modifications, and medication adherence reminders. "
                 "Focus purely on interpretation and next steps. "
-                "When a current report is open, explicitly account for reliability, confidence, duration, and signal quality."
+                "When a current report is open, explicitly account for reliability, confidence, duration, and signal quality. "
+                "If the user explicitly requests a specific number of lines, points, or level of detail, you MUST fulfill that exact request — do not shorten or truncate."
             ),
             "researcher": (
-                "Be technical and methodological. Use a hybrid of narrative context and embedded metrics. Include confidence bounds, methodology cues, and domain shift notes. Balance readability with data density."
+                "Be technical and methodological. Use a hybrid of narrative context and embedded metrics. Include confidence bounds, methodology cues, and domain shift notes. Balance readability with data density. "
+                "MANDATORY: When discussing report findings, include clinical implications such as immediate recommended actions, lifestyle considerations (sleep, diet, stress), and follow-up guidance relevant to the research context. "
+                "If the user explicitly requests a specific number of lines, points, or level of detail, you MUST fulfill that exact request — do not shorten or truncate."
             ),
             "patient": (
                 "Be warm, calm, and conversational. Write in flowing paragraphs — NEVER use numbered lists, bullet points, or structured metric dumps. Explain everything in plain language. "
@@ -1384,21 +1498,23 @@ class ScoutService:
                 "- Write in warm, clear language. NEVER use numbered lists, bullet points, or structured data dumps.\n"
                 "- Explain medical terms in simple words. Use analogies when helpful.\n"
                 "- Keep a calm and reassuring tone throughout.\n"
-                "- For normal chat, keep responses extremely precise and brief (1-3 sentences maximum)."
+                "- For normal chat, keep responses extremely precise and brief (1-3 sentences maximum) UNLESS the user explicitly requests more detail or a specific number of lines/points."
             ),
             "clinician": (
                 "FORMATTING RULES FOR CLINICIAN MODE:\n"
                 "- Write in a professional, concise, and highly clinical tone.\n"
                 "- No excessive narrative — lead with core insights and data.\n"
                 "- NEVER format responses using pipe characters (|). Write in natural sentences.\n"
-                "- For normal chat, keep responses to 1-3 concise lines maximum."
+                "- For normal chat, keep responses to 1-3 concise lines maximum UNLESS the user explicitly requests more detail or a specific number of lines/points.\n"
+                "- When the user asks for a specific length (e.g. '10 lines', '5 points', 'detailed'), you MUST produce at least that many lines or points."
             ),
             "researcher": (
                 "FORMATTING RULES FOR RESEARCHER MODE:\n"
                 "- Focus on technical details, raw metrics, and methodology.\n"
                 "- Include confidence bounds and statistical measures.\n"
                 "- NEVER format responses using pipe characters (|). Write in natural sentences.\n"
-                "- For normal chat, keep responses to 1-3 concise lines maximum."
+                "- For normal chat, keep responses to 1-3 concise lines maximum UNLESS the user explicitly requests more detail or a specific number of lines/points.\n"
+                "- When the user asks for a specific length (e.g. '10 lines', '5 points', 'detailed'), you MUST produce at least that many lines or points."
             ),
         }
 
@@ -1421,6 +1537,7 @@ class ScoutService:
                 "- Focus on the CURRENT report's clinical significance, interpretation, and management considerations.\n"
                 "- You may reference how many reports the clinician has processed and their overall statistics, but never personalize medical advice.\n"
                 "- Provide differential diagnoses considerations, management protocols, and clinical decision support based on the current report findings.\n"
+                "- MANDATORY: When summarizing or discussing a report, include patient counseling points: immediate actions, sleep hygiene, dietary guidance, lifestyle modifications, and medication adherence reminders.\n"
                 "- Be efficient and metric-driven."
             ),
             "researcher": (
@@ -1428,7 +1545,9 @@ class ScoutService:
                 "- You may compare past reports for methodological purposes (model performance, domain shift patterns, signal quality trends).\n"
                 "- Provide statistical context: seizure detection rates, confidence distributions, reliability patterns across analyses.\n"
                 "- Reference past reports to discuss model behavior and consistency.\n"
-                "- Include epidemiological context when relevant."
+                "- Include epidemiological context when relevant.\n"
+                "- MANDATORY: When summarizing or discussing a report, include clinical implications: immediate recommended actions, sleep/diet/lifestyle modifiable factors, and evidence-based context for seizure management.\n"
+                "- If the user asks for a specific number of lines or points, you MUST produce at least that many — never truncate."
             ),
         }
 
@@ -1462,7 +1581,7 @@ class ScoutService:
                 "RELIABILITY RULE: If the report explicitly includes a Reliability label, acknowledge that the label is present and state its exact value before elaborating.",
                 "HISTORY AWARENESS: You have access to the user's recent reports in the RECENT REPORTS section. When the user asks about 'my past results', 'my history', 'previous reports', or 'trends', reference this data directly with specific filenames, dates, and outcomes. Do NOT say you cannot access past data — you CAN.",
                 "MEDICAL RECOMMENDATIONS: When discussing seizure findings, provide appropriate health guidance based on severity. For patients: sleep, diet, stress, medication adherence, when to seek emergency care. For clinicians: management protocols, differential considerations, follow-up timelines.",
-                "GLOBAL RULE: Unless you are generating the initial comprehensive auto-summary of a new EEG report, YOUR RESPONSES MUST BE EXTREMELY CONCISE, PRECISE, AND STRAIGHT TO THE POINT. No filler words, no lengthy paragraphs.",
+                "GLOBAL RULE: Unless you are generating the initial comprehensive auto-summary of a new EEG report, keep responses concise and focused. However, if the user EXPLICITLY requests a specific length, number of lines, number of points, or asks for 'detailed' or 'comprehensive' output, you MUST fully honor that request and produce the requested amount of content. Never truncate or shorten when the user specifies what they want.",
                 "--- USER PROFILE ---",
                 *user_profile_lines,
                 "--- CURRENT REPORT ---",
