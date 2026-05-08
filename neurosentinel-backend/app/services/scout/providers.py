@@ -59,7 +59,7 @@ class GeminiScoutProvider:
             "generationConfig": {
                 "temperature": 0.3,
                 "topP": 0.9,
-                "maxOutputTokens": 800,
+                "maxOutputTokens": 2048,
             },
         }
         async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -98,7 +98,7 @@ class GroqScoutProvider:
         payload = {
             "model": self.settings.groq_model,
             "temperature": 0.3,
-            "max_tokens": 700,
+            "max_tokens": 2048,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message},
@@ -144,7 +144,7 @@ class HuggingFaceScoutProvider:
         payload = {
             "inputs": prompt,
             "parameters": {
-                "max_new_tokens": 600,
+                "max_new_tokens": 1536,
                 "temperature": 0.3,
                 "return_full_text": False,
             },
