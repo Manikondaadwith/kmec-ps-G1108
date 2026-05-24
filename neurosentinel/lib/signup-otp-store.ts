@@ -1,5 +1,4 @@
 import crypto from 'crypto'
-import nodemailer from 'nodemailer'
 import { createClient } from '@supabase/supabase-js'
 
 const OTP_TTL_MS = 10 * 60 * 1000
@@ -45,21 +44,46 @@ function decodePayload(token: string) {
   return JSON.parse(rawPayload) as { email: string; otpHash: string; expiresAt: number }
 }
 
-function createTransport() {
-  const user = process.env.GMAIL_USER || 'manikondaadwith6@gmail.com'
-  const pass = process.env.GMAIL_APP_PASSWORD
+/**
+ * Send an email via the HuggingFace backend SMTP relay.
+ *
+ * Vercel's serverless functions block outbound SMTP (ports 465/587).
+ * nodemailer.sendMail() hangs → function times out → browser gets
+ * "TypeError: fetch failed" with no error message.
+ *
+ * Fix: delegate email sending to the HuggingFace backend which has
+ * unrestricted outbound network access and SMTP already configured.
+ */
+async function sendEmailViaBackend({
+  to,
+  subject,
+  html,
+  text,
+}: {
+  to: string
+  subject: string
+  html: string
+  text: string
+}): Promise<void> {
+  const backendUrl = process.env.NEUROSENTINEL_BACKEND_URL
+  const secret = process.env.INTERNAL_API_SECRET
 
-  if (!pass) {
-    throw new Error('Missing GMAIL_APP_PASSWORD in .env.local.')
-  }
+  if (!backendUrl) throw new Error('NEUROSENTINEL_BACKEND_URL env var is not set.')
+  if (!secret) throw new Error('INTERNAL_API_SECRET env var is not set.')
 
-  return nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      user,
-      pass,
+  const response = await fetch(`${backendUrl}/api/v1/internal/send-otp-email`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Internal-Secret': secret,
     },
+    body: JSON.stringify({ to, subject, html, text }),
   })
+
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(`Email relay failed (${response.status}): ${detail?.detail ?? 'Unknown error'}`)
+  }
 }
 
 function getAdminClient() {
@@ -100,11 +124,7 @@ export async function sendSignupOtp(email: string) {
   const otp = generateOtp()
   const expiresAt = Date.now() + OTP_TTL_MS
 
-  const transporter = createTransport()
-  const from = process.env.GMAIL_USER || 'manikondaadwith6@gmail.com'
-
-  await transporter.sendMail({
-    from: `"NeuroSentinel AI" <${from}>`,
+  await sendEmailViaBackend({
     to: normalizedEmail,
     subject: 'Your NeuroSentinel AI verification code',
     text: `Your NeuroSentinel AI verification code is ${otp}. It expires in 10 minutes.`,
@@ -184,11 +204,7 @@ export async function sendResetPasswordOtp(email: string) {
   const otp = generateOtp()
   const expiresAt = Date.now() + OTP_TTL_MS
 
-  const transporter = createTransport()
-  const from = process.env.GMAIL_USER || 'manikondaadwith6@gmail.com'
-
-  await transporter.sendMail({
-    from: `"NeuroSentinel AI" <${from}>`,
+  await sendEmailViaBackend({
     to: normalizedEmail,
     subject: 'Your NeuroSentinel AI password reset code',
     text: `Your NeuroSentinel AI password reset code is ${otp}. It expires in 10 minutes.`,
