@@ -64,7 +64,7 @@ export default function DashboardPage() {
     if (currentAnalysis) return
 
     let pollCount = 0
-    let intervalId: ReturnType<typeof window.setInterval> | null = null
+    let intervalId: number | null = null
 
     const startPolling = () => {
       if (document.hidden) return
