@@ -13,43 +13,34 @@ import { NextResponse, type NextRequest } from 'next/server'
  * API route and Server Component via createServerClient + getUser().
  */
 
-// Supabase stores the session in a cookie named sb-<project-ref>-auth-token.
-// The project ref is the subdomain of your Supabase URL.
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
-const PROJECT_REF = SUPABASE_URL.replace('https://', '').split('.')[0]
-const AUTH_COOKIE_NAME = `sb-${PROJECT_REF}-auth-token`
-
 function isLoggedIn(request: NextRequest): boolean {
-  // Primary: check the standard Supabase auth token cookie
-  if (request.cookies.has(AUTH_COOKIE_NAME)) return true
-
-  // Fallback: some Supabase versions split the token across numbered chunks
-  // e.g. sb-<ref>-auth-token.0, sb-<ref>-auth-token.1
-  const chunkCookie = `${AUTH_COOKIE_NAME}.0`
-  if (request.cookies.has(chunkCookie)) return true
-
-  return false
+  // Supabase auth cookies are always named sb-<project-ref>-auth-token
+  // or sb-<project-ref>-auth-token.0 (chunked). Scan all cookies so we
+  // don't need to hardcode or derive the project ref at runtime.
+  return request.cookies.getAll().some(
+    ({ name }) =>
+      name.startsWith('sb-') &&
+      (name.endsWith('-auth-token') || name.includes('-auth-token.'))
+  )
 }
 
 export function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
-  const loggedIn = isLoggedIn(request)
 
-  const isAuthPage = pathname === '/' || pathname === '/login'
+  // Only guard protected routes — if there's no auth cookie at all,
+  // send the user to the landing page.
+  // We do NOT redirect logged-in users away from '/' here because
+  // the cookie may be expired: the cookie exists but the session is dead.
+  // That would create an infinite loop (/ → /dashboard → / → ...).
+  // Let the individual pages handle "already logged in" redirects instead.
   const isProtectedPage =
     pathname.startsWith('/dashboard') ||
     pathname === '/onboarding' ||
     pathname.startsWith('/report/')
 
-  if (!loggedIn && isProtectedPage) {
+  if (isProtectedPage && !isLoggedIn(request)) {
     const url = request.nextUrl.clone()
     url.pathname = '/'
-    return NextResponse.redirect(url)
-  }
-
-  if (loggedIn && isAuthPage) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/dashboard'
     return NextResponse.redirect(url)
   }
 
