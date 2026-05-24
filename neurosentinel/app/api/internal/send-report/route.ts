@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import nodemailer from 'nodemailer'
 
-const CANONICAL_APP_URL = 'https://neuro-sentinel-ai-6vfv.vercel.app'
+const CANONICAL_APP_URL = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://neuro-sentinel-ai-6vfv.vercel.app').replace(/\/+$/, '')
 
 function normalizeEmailHtml(rawHtml: string) {
   return rawHtml.replace(/href=(["'])(https?:\/\/[^"'<>]+)\1/gi, (match, quote, url) => {
@@ -25,8 +25,13 @@ function normalizeEmailHtml(rawHtml: string) {
  */
 
 export async function POST(req: NextRequest) {
-  const secret = process.env.INTERNAL_API_SECRET || 'neurosentinel-internal-key-2026'
+  const secret = process.env.INTERNAL_API_SECRET
   const authHeader = req.headers.get('x-internal-secret')
+
+  if (!secret) {
+    console.error('[send-report] INTERNAL_API_SECRET env var is not set — rejecting relay request')
+    return NextResponse.json({ error: 'Server misconfiguration' }, { status: 500 })
+  }
 
   if (authHeader !== secret) {
     return NextResponse.json({ error: 'Unauthorized relay request' }, { status: 401 })

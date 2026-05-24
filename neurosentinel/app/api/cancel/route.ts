@@ -13,11 +13,10 @@ export async function POST() {
 
   try {
     const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    const {
       data: { session },
     } = await supabase.auth.getSession()
+
+    const user = session?.user ?? null
 
     if (!user || !session?.access_token) {
       return NextResponse.json(
@@ -38,7 +37,10 @@ export async function POST() {
       }
     )
 
-    const backendPayload = await backendResponse.json().catch(() => null)
+    const backendPayload = await backendResponse.json().catch((parseErr) => {
+      console.error('[api/cancel] Failed to parse backend JSON response:', parseErr)
+      return null
+    })
 
     if (!backendResponse.ok) {
       return NextResponse.json(

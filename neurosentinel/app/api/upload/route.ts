@@ -15,11 +15,10 @@ export async function POST(request: NextRequest) {
 
   try {
     const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    const {
       data: { session },
     } = await supabase.auth.getSession()
+
+    const user = session?.user ?? null
 
     if (!user || !session?.access_token) {
       return NextResponse.json(
@@ -51,7 +50,10 @@ export async function POST(request: NextRequest) {
       }
     )
 
-    const backendPayload = await backendResponse.json().catch(() => null)
+    const backendPayload = await backendResponse.json().catch((parseErr) => {
+      console.error('[api/upload] Failed to parse backend JSON response:', parseErr)
+      return null
+    })
 
     if (!backendResponse.ok) {
       const message =
