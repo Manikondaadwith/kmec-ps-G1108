@@ -111,13 +111,23 @@ function getAdminClient() {
 export async function userExistsForSignup(email: string) {
   const admin = getAdminClient()
   const normalizedEmail = normalizeEmail(email)
-  const { data, error } = await admin.from('users').select('id').eq('email', normalizedEmail).maybeSingle()
 
-  if (error) {
-    throw new Error(error.message)
-  }
+  // 1. Fast check — public.users profile table
+  const { data } = await admin
+    .from('users')
+    .select('id')
+    .eq('email', normalizedEmail)
+    .maybeSingle()
 
-  return Boolean(data?.id)
+  if (data?.id) return true
+
+  // 2. Auth.users check — catches users whose public profile is missing
+  //    (public.users and auth.users can get out of sync if a trigger failed)
+  //    Without this, OTP is sent successfully but createVerifiedSignup fails later.
+  const { data: authData } = await admin.auth.admin.listUsers({ perPage: 1000 })
+  return (authData?.users ?? []).some(
+    (u) => u.email?.toLowerCase() === normalizedEmail
+  )
 }
 
 export function generateOtp() {
