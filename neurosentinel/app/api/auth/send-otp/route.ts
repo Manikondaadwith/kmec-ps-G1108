@@ -18,7 +18,7 @@ export async function POST(req: Request) {
         {
           error: 'An account with this email already exists. Please sign in.',
           code: 'ACCOUNT_EXISTS',
-          redirectTo: '/login?message=An%20account%20with%20this%20email%20already%20exists.%20Please%20sign%20in.',
+          redirectTo: '/login',
         },
         { status: 409 }
       )
