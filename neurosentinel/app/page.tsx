@@ -445,7 +445,12 @@ export default function SignUpPage() {
     })
     const result = await response.json()
     if (!response.ok) {
-      if (response.status === 409 && result?.redirectTo) { window.location.href = result.redirectTo; return }
+      if (response.status === 409 && result?.redirectTo) {
+        window.location.href = result.redirectTo
+        // Throw so handleSignUp's catch block runs and setStep('otp') is never called.
+        // The browser is already navigating away so this error won't be visible.
+        throw new Error(result.error || 'An account with this email already exists.')
+      }
       throw new Error(result.error || 'Unable to send verification code.')
     }
     setVerificationToken(result.verificationToken || '')
