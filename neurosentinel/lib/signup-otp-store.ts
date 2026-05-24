@@ -78,6 +78,13 @@ async function sendEmailViaBackend({
       'X-Internal-Secret': secret,
     },
     body: JSON.stringify({ to, subject, html, text }),
+    // Fail fast before Vercel kills the serverless function (10s free / 30s pro).
+    // Without this, a sleeping HF Space causes the Vercel fn to timeout with no
+    // HTTP response → browser sees "TypeError: fetch failed" instead of an error msg.
+    signal: AbortSignal.timeout(8000),
+  }).catch((err: unknown) => {
+    const msg = err instanceof Error ? err.message : String(err)
+    throw new Error(`Could not reach email service: ${msg}. Please try again in a moment.`)
   })
 
   if (!response.ok) {
