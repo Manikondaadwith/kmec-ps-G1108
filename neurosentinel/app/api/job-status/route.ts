@@ -10,7 +10,10 @@ export async function GET() {
       method: 'GET',
     })
 
-    const payload = await backendResponse.json().catch(() => null)
+    const payload = await backendResponse.json().catch((parseErr) => {
+      console.error('[api/job-status] Failed to parse backend JSON response:', parseErr)
+      return null
+    })
 
     if (!backendResponse.ok) {
       return NextResponse.json(

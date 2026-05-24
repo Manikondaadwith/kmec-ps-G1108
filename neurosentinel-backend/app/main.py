@@ -347,11 +347,16 @@ def create_app(settings: Settings | None = None, load_model_on_startup: bool = F
 
     app = FastAPI(title="NeuroSentinel Backend", lifespan=lifespan)
 
-    # CORS — allow the Vercel frontend to reach the backend
+    # CORS — only allow the known frontend origins
     from fastapi.middleware.cors import CORSMiddleware
+    _allowed_origins = [
+        o.strip()
+        for o in (resolved_settings.app_url + "," + os.environ.get("EXTRA_CORS_ORIGINS", "")).split(",")
+        if o.strip()
+    ]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=_allowed_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -411,10 +416,11 @@ def create_app(settings: Settings | None = None, load_model_on_startup: bool = F
             "memory_mb": round(_get_memory_mb(), 1),
         }
 
-    # ── Debug Email ──────────────────────────────────────────────────────
+    # ── Debug Email ──────────────────────────────────────────────────────────
     @app.get("/api/v1/debug/email")
     async def debug_email(
         email: str,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
         state: BackendState = Depends(get_backend_state),
     ) -> dict[str, Any]:
         """Send a test email to verify SMTP configuration."""
@@ -466,9 +472,10 @@ def create_app(settings: Settings | None = None, load_model_on_startup: bool = F
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
-    # ── Cancel Job ───────────────────────────────────────────────────────
+    # ── Cancel Job ───────────────────────────────────────────────────────────
     @app.post("/api/v1/job/cancel")
     async def cancel_job(
+        user: AuthenticatedUser = Depends(get_authenticated_user),
         state: BackendState = Depends(get_backend_state),
     ) -> dict[str, Any]:
         """Cancel the current running job and release the system."""

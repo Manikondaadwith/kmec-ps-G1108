@@ -10,7 +10,11 @@ function normalizeEmail(email: string) {
 }
 
 function getOtpSecret() {
-  return process.env.OTP_SIGNING_SECRET || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'neurosentinel-ai'
+  const secret = process.env.OTP_SIGNING_SECRET
+  if (!secret) {
+    throw new Error('OTP_SIGNING_SECRET env var is not set. Cannot sign or verify OTP tokens.')
+  }
+  return secret
 }
 
 function hashOtp(email: string, otp: string) {

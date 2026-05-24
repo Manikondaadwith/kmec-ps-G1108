@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     
     # Relay settings (Vercel proxy)
     relay_api_url: str | None = Field(default=None, alias="RELAY_API_URL")
-    internal_api_secret: str = Field(default="neurosentinel-internal-key-2026", alias="INTERNAL_API_SECRET")
+    internal_api_secret: str = Field(alias="INTERNAL_API_SECRET")
 
     smtp_host: str | None = Field(default=None, alias="SMTP_HOST")
     smtp_port: int = Field(default=587, alias="SMTP_PORT")

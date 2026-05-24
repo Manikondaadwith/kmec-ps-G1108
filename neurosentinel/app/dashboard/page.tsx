@@ -63,11 +63,43 @@ export default function DashboardPage() {
     if (status !== 'pending' && status !== 'processing') return
     if (currentAnalysis) return
 
-    const interval = window.setInterval(() => {
-      void loadDashboardContext()
-    }, 5000)
+    let pollCount = 0
+    let intervalId: ReturnType<typeof window.setInterval> | null = null
 
-    return () => window.clearInterval(interval)
+    const startPolling = () => {
+      if (document.hidden) return
+      if (intervalId) return
+      // Exponential back-off: 5s → 10s → 20s → capped at 30s
+      const delayMs = Math.min(5000 * Math.pow(2, Math.floor(pollCount / 3)), 30_000)
+      intervalId = window.setInterval(() => {
+        if (document.hidden) return
+        pollCount++
+        void loadDashboardContext()
+      }, delayMs)
+    }
+
+    const stopPolling = () => {
+      if (intervalId) {
+        window.clearInterval(intervalId)
+        intervalId = null
+      }
+    }
+
+    const handleVisibility = () => {
+      if (document.hidden) {
+        stopPolling()
+      } else {
+        startPolling()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibility)
+    startPolling()
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility)
+      stopPolling()
+    }
   }, [latestAnalysis, loadDashboardContext, currentAnalysis])
 
 
