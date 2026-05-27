@@ -314,7 +314,7 @@ export default function ReportPage() {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
-      <header className="clinical-header sticky top-0 z-[60] px-8 h-16 flex justify-between items-center bg-white/95 backdrop-blur-sm border-b border-gray-200 shadow-sm">
+      <header className="clinical-header fixed top-0 left-0 right-0 z-[60] px-8 h-16 flex justify-between items-center bg-white/95 backdrop-blur-sm border-b border-gray-200 shadow-sm">
         {/* LEFT GROUP (Breadcrumbs) */}
         <div className="flex items-center">
           <Link
@@ -357,7 +357,7 @@ export default function ReportPage() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-[1280px] px-6 py-8">
+      <div className="mx-auto max-w-[1280px] px-6 py-8 pt-24">
         <div className="grid gap-8 lg:grid-cols-[1fr_minmax(0,1fr)_1fr] xl:grid-cols-[1fr_3fr_1fr]">
           
           {/* ════════════ MAIN CONTENT FEED ════════════ */}
