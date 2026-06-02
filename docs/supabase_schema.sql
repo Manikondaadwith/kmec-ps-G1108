@@ -85,11 +85,31 @@ CREATE INDEX IF NOT EXISTS chat_messages_report_id_idx ON public.chat_messages(r
 
 
 -- ============================================================
--- 4. ENABLE ROW LEVEL SECURITY (RLS)
+-- 4. EEG_ANALYSIS_RESULTS TABLE
 -- ============================================================
-ALTER TABLE public.users         ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.reports       ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.chat_messages ENABLE ROW LEVEL SECURITY;
+-- Stores raw inference results linked to a report.
+-- Separate from reports table to keep heavy JSON payloads isolated.
+CREATE TABLE IF NOT EXISTS public.eeg_analysis_results (
+    id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    report_id       UUID        NOT NULL REFERENCES public.reports(id) ON DELETE CASCADE,
+    user_id         UUID        NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    result_json     JSONB,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS eeg_results_report_id_idx ON public.eeg_analysis_results(report_id);
+CREATE INDEX IF NOT EXISTS eeg_results_user_id_idx   ON public.eeg_analysis_results(user_id);
+
+
+-- ============================================================
+-- 5. ENABLE ROW LEVEL SECURITY (RLS)
+-- ============================================================
+-- IMPORTANT: ALL tables must have RLS enabled before going to production.
+-- Having policies without enabling RLS means the policies are silently ignored.
+ALTER TABLE public.users                ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.reports              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.chat_messages        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.eeg_analysis_results ENABLE ROW LEVEL SECURITY;
 
 
 -- ============================================================
