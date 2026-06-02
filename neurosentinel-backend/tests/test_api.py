@@ -3,19 +3,21 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-os.environ.setdefault('SUPABASE_URL', 'https://example.supabase.co')
-os.environ.setdefault('SUPABASE_SERVICE_KEY', 'service-key')
-os.environ.setdefault('MODEL_PATH', 'C:/tmp/multirep_best_model_v4.pt')
+os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
+os.environ.setdefault("SUPABASE_SERVICE_KEY", "service-key")
+os.environ.setdefault("INTERNAL_API_SECRET", "test-secret")
 
 from app.config import Settings
 from app.main import create_app
 
 
 def _settings(tmp_path: Path) -> Settings:
+    """Build a minimal Settings instance pointing at a non-existent model file."""
     return Settings(
         SUPABASE_URL="https://example.supabase.co",
         SUPABASE_SERVICE_KEY="service-key",
-        MODEL_PATH=tmp_path / "missing.pt",
+        INTERNAL_API_SECRET="test-secret",
+        MODEL_PATH=tmp_path / "missing.pt",  # cross-platform via pytest tmp_path
     )
 
 

@@ -48,3 +48,6 @@ Thumbs.db
 
 # MNE cache
 ~/mne_data/
+
+# Duplicate of root assets/logo.jpeg — do not re-add
+logo.jpeg
