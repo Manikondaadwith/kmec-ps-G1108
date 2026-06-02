@@ -8,14 +8,14 @@
 
 AI-powered EEG signal analysis framework for automated seizure detection and clinical decision support — from raw `.edf` to a structured clinical report in minutes.
 
-[![Live App](https://img.shields.io/badge/Live%20App-Vercel-black?logo=vercel&logoColor=white)](https://neurosentinel.vercel.app)
-[![Backend](https://img.shields.io/badge/Backend-Hugging%20Face-FFD21E?logo=huggingface&logoColor=black)](https://huggingface.co/spaces/manikondaadwith/neurosentinel-backend)
+[![Live App](https://img.shields.io/badge/Live%20App-Vercel-black?logo=vercel&logoColor=white)](https://neuro-sentinel-ai-6vfv.vercel.app)
+[![Backend](https://img.shields.io/badge/Backend-Hugging%20Face-FFD21E?logo=huggingface&logoColor=black)](https://huggingface.co/spaces/Manikondaadwith/neurosentinel-backend)
 [![Accuracy](https://img.shields.io/badge/Accuracy-99.55%25-22c55e?style=flat)](docs/technical_guide.md)
 [![Macro F1](https://img.shields.io/badge/Macro%20F1-0.979-22c55e?style=flat)](docs/technical_guide.md)
 [![Params](https://img.shields.io/badge/Parameters-409K-6366f1?style=flat)](docs/technical_guide.md)
 [![License](https://img.shields.io/badge/License-MIT-3b82f6?style=flat)](LICENSE)
 
-**[🚀 Live Demo](https://neurosentinel.vercel.app) · [🤗 Backend API](https://huggingface.co/spaces/manikondaadwith/neurosentinel-backend) · [📖 Technical Docs](docs/technical_guide.md)**
+**[🚀 Live Demo](https://neuro-sentinel-ai-6vfv.vercel.app) · [🤗 Backend API](https://huggingface.co/spaces/Manikondaadwith/neurosentinel-backend) · [📖 Technical Docs](docs/technical_guide.md)**
 
 </div>
 
@@ -65,6 +65,14 @@ NeuroSentinel AI is a **clinical decision support system** that detects seizure 
 </td>
 </tr>
 </table>
+
+---
+
+## Dashboard
+
+![NeuroSentinel AI Dashboard](assets/screenshots/dashboard.png)
+
+*Live at [neuro-sentinel-ai-6vfv.vercel.app](https://neuro-sentinel-ai-6vfv.vercel.app) — upload any `.edf` file to get a full clinical report.*
 
 ---
 
@@ -198,7 +206,9 @@ kmec-ps-G1108/
 │   └── supabase_schema.sql         # Database schema
 │
 ├── assets/
-│   └── logo.jpeg                   # Project logo
+│   ├── logo.jpeg                   # Project logo
+│   └── screenshots/
+│       └── dashboard.png           # Live app screenshot
 │
 ├── NeuroSentinel_AI_production.ipynb  # Training & evaluation notebook
 ├── CHANGELOG.md
@@ -229,23 +239,11 @@ Training split: `chb01–chb16` (train) · `chb17–chb20` (val) · `chb21–chb
 | Service | Platform | Config |
 |---|---|---|
 | Frontend | [Vercel](https://vercel.com) | Root dir: `neurosentinel/` · env vars in dashboard |
-| Backend | [Hugging Face Spaces](https://huggingface.co/spaces) | Docker SDK · `neurosentinel-backend/Dockerfile` |
+| Backend | [Hugging Face Spaces](https://huggingface.co/spaces/Manikondaadwith/neurosentinel-backend) | Docker SDK · `neurosentinel-backend/Dockerfile` |
 | Database | [Supabase](https://supabase.com) | Apply `docs/supabase_schema.sql` |
 | Model Weights | Supabase Storage `ml-models` | Uploaded separately — not in git |
 
 > A GitHub Actions cron (`.github/workflows/hf-keep-awake.yml`) pings the HF Space every 24h to prevent cold-start sleep.
-
----
-
-## Roadmap
-
-- [ ] **Temporal chunking** for EDF files > 200 MB (current RAM ceiling)
-- [ ] **REST API SDK** — Python client for direct programmatic access
-- [ ] **Multi-file batch upload** — analyze a full patient session at once
-- [ ] **Adult EEG dataset** — expand training beyond pediatric CHB-MIT
-- [ ] **ONNX export** — for edge/mobile deployment
-- [ ] **Real-time streaming** — WebSocket-based live EEG feed support
-- [ ] **LTM monitoring dashboard** — long-term monitoring trend graphs
 
 ---
 
@@ -260,6 +258,18 @@ Training split: `chb01–chb16` (train) · `chb17–chb20` (val) · `chb21–chb
 | Patient-Specific DL (2024) | 99.1% | 97–100% | 0.96 | 0.99 | ~500K | ❌ per-patient |
 
 *Patient-level train/val/test splits — no patient appears in multiple sets.*
+
+---
+
+## Roadmap
+
+- [ ] **Temporal chunking** for EDF files > 200 MB (current RAM ceiling)
+- [ ] **REST API SDK** — Python client for direct programmatic access
+- [ ] **Multi-file batch upload** — analyze a full patient session at once
+- [ ] **Adult EEG dataset** — expand training beyond pediatric CHB-MIT
+- [ ] **ONNX export** — for edge/mobile deployment
+- [ ] **Real-time streaming** — WebSocket-based live EEG feed support
+- [ ] **LTM monitoring dashboard** — long-term monitoring trend graphs
 
 ---
 
