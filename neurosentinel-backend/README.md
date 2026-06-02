@@ -1,4 +1,4 @@
-<![CDATA[---
+---
 title: NeuroSentinel Backend
 emoji: 🧠
 colorFrom: blue
@@ -12,7 +12,7 @@ app_port: 7860
 
 FastAPI inference server for NeuroSentinel AI — production EEG seizure detection.
 
-**Deployed on:** [Hugging Face Spaces](https://huggingface.co/spaces/manikondaadwith/neurosentinel-backend)
+**Live Space:** [huggingface.co/spaces/Manikondaadwith/neurosentinel-backend](https://huggingface.co/spaces/Manikondaadwith/neurosentinel-backend)
 
 ---
 
@@ -52,7 +52,8 @@ Model weights are stored in Supabase Storage (`ml-models` bucket) and downloaded
 python -m venv .venv && source .venv/bin/activate
 
 # Install (with dev extras)
-pip install -e ".[dev]"
+pip install -r requirements.txt
+# or: pip install -e ".[dev]"
 
 # Run server
 uvicorn app.main:app --reload --port 7860
@@ -99,6 +100,7 @@ neurosentinel-backend/
 │   ├── config.py               # Settings (pydantic-settings)
 │   └── main.py                 # FastAPI app, routes, startup
 ├── tests/                      # Pytest test suite
+├── requirements.txt            # pip-installable deps
 ├── Dockerfile                  # HF Spaces container
 └── pyproject.toml              # Dependencies
 ```
@@ -116,4 +118,3 @@ pytest tests/ -v
 ## For More Details
 
 See the full technical documentation: **[docs/technical_guide.md](../docs/technical_guide.md)**
-]]>
