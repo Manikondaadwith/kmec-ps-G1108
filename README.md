@@ -1,161 +1,156 @@
-<![CDATA[<div align="center">
+<div align="center">
 
-<img src="logo.jpeg" alt="NeuroSentinel AI Logo" width="120" height="120" style="border-radius:16px"/>
+<img src="assets/logo.jpeg" alt="NeuroSentinel AI" width="110" style="border-radius:14px"/>
 
 # NeuroSentinel AI
 
-**Clinical-grade automated EEG seizure detection — from raw `.edf` to structured clinical report.**
+### NeuroSentinel V4 · Multi-Representation EEG Fusion Network
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel-black?logo=vercel)](https://neurosentinel.vercel.app)
-[![Backend](https://img.shields.io/badge/Backend-Hugging%20Face%20Spaces-yellow?logo=huggingface)](https://huggingface.co/spaces/manikondaadwith/neurosentinel-backend)
-[![Model](https://img.shields.io/badge/Model-MultiRepEEGModel%20V4-blue)](docs/technical_guide.md)
-[![Accuracy](https://img.shields.io/badge/Accuracy-99.55%25-brightgreen)]()
-[![Macro F1](https://img.shields.io/badge/Macro%20F1-0.979-brightgreen)]()
-[![Params](https://img.shields.io/badge/Params-409K-lightgrey)]()
-[![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
+AI-powered EEG signal analysis framework for automated seizure detection and clinical decision support — from raw `.edf` to a structured clinical report in minutes.
+
+[![Live App](https://img.shields.io/badge/Live%20App-Vercel-black?logo=vercel&logoColor=white)](https://neurosentinel.vercel.app)
+[![Backend](https://img.shields.io/badge/Backend-Hugging%20Face-FFD21E?logo=huggingface&logoColor=black)](https://huggingface.co/spaces/manikondaadwith/neurosentinel-backend)
+[![Accuracy](https://img.shields.io/badge/Accuracy-99.55%25-22c55e?style=flat)](docs/technical_guide.md)
+[![Macro F1](https://img.shields.io/badge/Macro%20F1-0.979-22c55e?style=flat)](docs/technical_guide.md)
+[![Params](https://img.shields.io/badge/Parameters-409K-6366f1?style=flat)](docs/technical_guide.md)
+[![License](https://img.shields.io/badge/License-MIT-3b82f6?style=flat)](LICENSE)
+
+**[🚀 Live Demo](https://neurosentinel.vercel.app) · [🤗 Backend API](https://huggingface.co/spaces/manikondaadwith/neurosentinel-backend) · [📖 Technical Docs](docs/technical_guide.md)**
 
 </div>
 
 ---
 
-## Overview
+<table>
+<tr>
+<td width="58%">
 
-NeuroSentinel AI is an end-to-end clinical decision support system for automated seizure detection from scalp EEG recordings. Upload an `.edf` file, get a structured report — complete with an AI-powered assistant (SCOUT), explainability heatmaps, a band-power chart, and a downloadable PDF — in minutes.
+## What is NeuroSentinel AI?
 
-> **Disclaimer:** NeuroSentinel AI is a decision support tool only. It does not diagnose, prescribe, or replace clinical judgment. The system is not FDA approved.
+NeuroSentinel AI is a **clinical decision support system** that detects seizure events in scalp EEG recordings. Upload an `.edf` file and receive a full structured clinical report in minutes:
+
+- 📍 Seizure event timeline with onset, offset & duration
+- ⚠️ Risk & severity scoring (Low / Medium / High / Critical)
+- 🧠 GradCAM + attention-map explainability per event
+- 📊 Band-power frequency analysis (δ θ α β γ)
+- 🤖 **SCOUT** AI assistant for patient-facing Q&A
+- 📄 Downloadable PDF report for neurologist review
+- 📧 Email delivery to clinician on completion
+
+**No per-patient fine-tuning. No GPU required. Cross-dataset generalization out-of-the-box.**
+
+> ⚕️ Decision support tool only. Not FDA approved. Does not replace clinical judgment.
+
+</td>
+<td width="42%">
+
+## Results
+
+| Metric | Value |
+|:---|---:|
+| Window Accuracy | **99.55%** |
+| Macro F1 *(primary)* | **0.979** |
+| ROC-AUC | **0.980** |
+| PR-AUC | **0.9474** |
+| Sensitivity (window) | **97.75%** |
+| Specificity (window) | **99.59%** |
+| Event Sensitivity | **73.3%** (22/30) |
+| Event FP / hour | **0.98** |
+| Detection Latency | **3.5 s** median |
+| Zero-shot Siena | **80.0%** sensitivity |
+| Model Parameters | **409,154** |
+
+*Evaluated on CHB-MIT (patient-level splits, no leakage). Zero-shot on Siena Scalp EEG.*
+
+</td>
+</tr>
+</table>
 
 ---
 
-## Key Metrics
+## Key Features
 
-| Metric | Value |
-|---|---|
-| Window-level Accuracy | **99.55%** |
-| Macro F1 (primary) | **0.979** |
-| ROC-AUC | **0.980** |
-| PR-AUC | **0.9474** |
-| Event Sensitivity (CHB-MIT test) | **73.3%** (22/30 seizures) |
-| Event FP/hour | **0.98** |
-| Detection Latency | **3.5 s** (median) |
-| Zero-shot Siena Sensitivity | **80.0%** |
-| Model Parameters | **409,154** |
+| | Feature | Detail |
+|---|---|---|
+| 🧠 | **3-Branch Fusion Model** | Simultaneously processes raw EEG, spectrograms, and band-power — capturing temporal, spectral, and frequency-domain patterns in one forward pass |
+| 🌍 | **Cross-Dataset Generalization** | Trained on CHB-MIT (pediatric), zero-shot tested on Siena Scalp EEG (adult, referential montage) with 80% event sensitivity |
+| 🎯 | **Domain-Adaptive Post-Processing** | Output-based domain shift detection drives 4-tier adaptive thresholds — no manual calibration needed for new hospitals |
+| 🩺 | **3-State Diagnostic Machine** | `DETECTED` / `SUSPICIOUS` / `CLEAR` — eliminates contradictory reporting between model output and post-processing filters |
+| 💡 | **Full Explainability** | GradCAM (temporal), attention maps (topographic), representative window ID for every event |
+| ⚡ | **Memory-Efficient Inference** | Chunked execution (50-window chunks, ≤4 MB) designed for Hugging Face Spaces free tier (2 GB RAM) |
+| 🤖 | **SCOUT AI Assistant** | Gemini-powered, state-aware Q&A — explains findings differently for patients vs. clinicians |
+| 🏗️ | **Production Stack** | Next.js 14 + FastAPI + Supabase + Docker — fully deployed, not a research notebook |
 
 ---
 
 ## Architecture
 
+![NeuroSentinel AI System Architecture](docs/system_architecture.png)
+
+### Model: MultiRepEEGModel V4
+
 ```
-┌──────────────────────────────────────────────────────┐
-│                  NeuroSentinel AI                    │
-├────────────────────┬─────────────────────────────────┤
-│   Frontend (Next.js│14)         Backend (FastAPI)     │
-│   Vercel           │            Hugging Face Spaces   │
-│                    │                                  │
-│  Landing Page      │  /api/v1/analyze                 │
-│  Auth (Supabase)   │  EEG Preprocessing               │
-│  Upload → Job poll │  MultiRepEEGModel V4             │
-│  Report Viewer     │  Post-processing (ADP)           │
-│  SCOUT Chat UI     │  Explainability (GradCAM)        │
-│  PDF download      │  SCOUT AI (Gemini)               │
-│  Email reports     │  PDF generation                  │
-└────────────────────┴─────────────────────────────────┘
-              ↕ Supabase (Auth + DB + Storage)
+Input: (B, 22, 1024)  — 22 channels × 4 seconds @ 256 Hz
+         │
+    ┌────┼────────────────────┐
+    ▼    ▼                    ▼
+Branch 1          Branch 2          Branch 3
+Raw EEG           Spectrogram       Band Power
+EEGNetCNN         STFT → CNN        δ θ α β γ → MLP
++ Transformer     (B, 128)          (B, 64)
+  CLS token
+(B, 64)
+    │                │                    │
+    └────────────────┴────────────────────┘
+                     ▼
+              Concatenate → (B, 256)
+              Linear(256→128) → ReLU → Dropout(0.3)
+              Linear(128→2)   → logits → Softmax
 ```
 
-See [docs/system_architecture.png](docs/system_architecture.png) for the full diagram.
+**409,154 parameters · Focal Loss · AdamW · AMP · Early stop @ epoch 5**
 
 ---
 
-## Repository Structure
-
-```
-kmec-ps-G1108/
-├── neurosentinel/          # Next.js 14 frontend → deployed on Vercel
-│   ├── app/                # App Router pages, API routes, components
-│   ├── lib/                # Supabase clients, types, utilities
-│   └── .env.example        # Required environment variables (template)
-│
-├── neurosentinel-backend/  # FastAPI backend → deployed on Hugging Face Spaces
-│   ├── app/
-│   │   ├── pipeline/       # Preprocessing, model, inference, reporting
-│   │   ├── services/       # Analysis, PDF, email, SCOUT AI
-│   │   └── api/            # Request/response schemas
-│   ├── tests/              # Pytest test suite
-│   ├── Dockerfile          # HF Spaces container
-│   └── pyproject.toml      # Python dependencies
-│
-├── docs/
-│   ├── technical_guide.md  # Deep-dive: ML pipeline, model, metrics, deployment
-│   ├── system_architecture.png
-│   └── supabase_schema.sql # Database schema
-│
-├── NeuroSentinel_AI_production.ipynb  # Training & evaluation notebook
-└── logo.jpeg
-```
-
----
-
-## Getting Started
+## Quick Start
 
 ### Prerequisites
+- Node.js ≥ 18 / npm ≥ 9 (frontend)
+- Python ≥ 3.11 (backend)
+- [Supabase](https://supabase.com) project
+- [Google Gemini](https://ai.google.dev) API key
 
-- Node.js ≥ 18, npm ≥ 9
-- Python ≥ 3.11
-- A [Supabase](https://supabase.com) project
-- A [Google Gemini](https://ai.google.dev) API key (for SCOUT)
-
----
-
-### Frontend — Next.js (Vercel)
+### 1 — Clone
 
 ```bash
-cd neurosentinel
-
-# 1. Install dependencies
-npm install
-
-# 2. Copy env template and fill in your values
-cp .env.example .env.local
-
-# 3. Run development server
-npm run dev
+git clone https://github.com/Manikondaadwith/kmec-ps-G1108.git
+cd kmec-ps-G1108
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
-
-**Environment variables** — see [neurosentinel/.env.example](neurosentinel/.env.example) for the full list:
-
-| Variable | Description |
-|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Your Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (server-only) |
-| `GOOGLE_GEMINI_API_KEY` | Gemini API key for SCOUT |
-| `GMAIL_USER` / `GMAIL_APP_PASSWORD` | Gmail credentials for email reports |
-| `NEUROSENTINEL_BACKEND_URL` | URL of the deployed FastAPI backend |
-| `OTP_SIGNING_SECRET` | 32-char secret for OTP signing |
-
----
-
-### Backend — FastAPI (Hugging Face Spaces / Docker)
+### 2 — Backend
 
 ```bash
 cd neurosentinel-backend
-
-# 1. Create a virtual environment
 python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+# or: pip install -e ".[dev]"
 
-# 2. Install dependencies
-pip install -e ".[dev]"
-
-# 3. Copy env and fill in values
-cp ../.env.example .env   # only backend-relevant vars are needed
-
-# 4. Run the server
+cp ../.env.example .env   # fill in SUPABASE_URL, SUPABASE_SERVICE_KEY, GEMINI_API_KEY
 uvicorn app.main:app --reload --port 7860
 ```
 
-**Docker (matches HF Spaces exactly):**
+### 3 — Frontend
+
+```bash
+cd neurosentinel
+npm install
+cp .env.example .env.local   # fill in all values
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) — upload any `.edf` file to test.
+
+### Docker (matches Hugging Face Spaces exactly)
 
 ```bash
 cd neurosentinel-backend
@@ -165,41 +160,106 @@ docker run -p 7860:7860 --env-file .env neurosentinel-backend
 
 ---
 
-### Database — Supabase
+## Repository Structure
 
-Apply the schema to your Supabase project:
-
-```bash
-# From the Supabase dashboard SQL editor, run:
-docs/supabase_schema.sql
 ```
+kmec-ps-G1108/
+│
+├── neurosentinel/                  # Next.js 14 frontend → Vercel
+│   ├── app/
+│   │   ├── api/                    # Auth, upload, job-poll, chat, PDF routes
+│   │   ├── components/             # SCOUT UI, notification toasts
+│   │   ├── dashboard/              # Upload zone, report list, settings
+│   │   └── report/[id]/            # Interactive report viewer
+│   ├── lib/                        # Supabase clients, types, UI config
+│   └── .env.example                # ← copy to .env.local
+│
+├── neurosentinel-backend/           # FastAPI backend → Hugging Face Spaces
+│   ├── app/
+│   │   ├── pipeline/
+│   │   │   ├── model.py            # MultiRepEEGModel V4 definition
+│   │   │   ├── preprocessing.py    # EDF → 22ch bipolar, bandpass, windowing
+│   │   │   ├── inference.py        # Chunked inference + domain-adaptive PP
+│   │   │   ├── reporting.py        # Diagnostic state machine
+│   │   │   └── explainability.py   # GradCAM + attention maps
+│   │   └── services/
+│   │       ├── analysis_service.py # Job orchestration
+│   │       ├── pdf.py              # PDF report generation (ReportLab)
+│   │       ├── email.py            # Email delivery
+│   │       └── scout/              # SCOUT AI (Gemini-powered)
+│   ├── tests/                      # Pytest suite (4 modules)
+│   ├── requirements.txt            # pip-installable deps
+│   ├── Dockerfile                  # HF Spaces container
+│   └── .env.example                # Backend env vars
+│
+├── docs/
+│   ├── technical_guide.md          # Deep-dive: ML pipeline, metrics, decisions
+│   ├── system_architecture.png     # Full system architecture diagram
+│   └── supabase_schema.sql         # Database schema
+│
+├── assets/
+│   └── logo.jpeg                   # Project logo
+│
+├── NeuroSentinel_AI_production.ipynb  # Training & evaluation notebook
+├── CHANGELOG.md
+├── CONTRIBUTING.md
+└── LICENSE                         # MIT
+```
+
+---
+
+## Dataset
+
+| | CHB-MIT *(Training)* | Siena Scalp EEG *(Zero-shot)* |
+|---|---|---|
+| Source | PhysioNet | PhysioNet (AWS S3) |
+| Patients | 23 pediatric | 14 adult |
+| Files | 686 EDF | 11 EDF |
+| Channels | 22-ch bipolar (10-20) | Referential → converted |
+| Sampling Rate | 256 Hz | Variable → resampled |
+| Seizure Files | 141 annotated | Verified GT for 5 |
+| **Split** | Patient-level (no leakage) | Zero-shot test only |
+
+Training split: `chb01–chb16` (train) · `chb17–chb20` (val) · `chb21–chb24` (test)
 
 ---
 
 ## Deployment
 
-| Service | Target | Config |
+| Service | Platform | Config |
 |---|---|---|
-| **Frontend** | [Vercel](https://vercel.com) | Root dir: `neurosentinel/`, set env vars in dashboard |
-| **Backend** | [Hugging Face Spaces](https://huggingface.co/spaces) | Docker SDK, `Dockerfile` in `neurosentinel-backend/` |
-| **Database** | [Supabase](https://supabase.com) | Apply `docs/supabase_schema.sql` |
-| **Model weights** | Supabase Storage (`ml-models` bucket) | Uploaded separately — not stored in git |
+| Frontend | [Vercel](https://vercel.com) | Root dir: `neurosentinel/` · env vars in dashboard |
+| Backend | [Hugging Face Spaces](https://huggingface.co/spaces) | Docker SDK · `neurosentinel-backend/Dockerfile` |
+| Database | [Supabase](https://supabase.com) | Apply `docs/supabase_schema.sql` |
+| Model Weights | Supabase Storage `ml-models` | Uploaded separately — not in git |
 
-A GitHub Actions workflow (`.github/workflows/hf-keep-awake.yml`) pings the HF Space every 24 hours to prevent cold-start sleep.
+> A GitHub Actions cron (`.github/workflows/hf-keep-awake.yml`) pings the HF Space every 24h to prevent cold-start sleep.
 
 ---
 
-## ML Model
+## Roadmap
 
-**MultiRepEEGModel V4** — a 3-branch fusion architecture with 409K parameters:
+- [ ] **Temporal chunking** for EDF files > 200 MB (current RAM ceiling)
+- [ ] **REST API SDK** — Python client for direct programmatic access
+- [ ] **Multi-file batch upload** — analyze a full patient session at once
+- [ ] **Adult EEG dataset** — expand training beyond pediatric CHB-MIT
+- [ ] **ONNX export** — for edge/mobile deployment
+- [ ] **Real-time streaming** — WebSocket-based live EEG feed support
+- [ ] **LTM monitoring dashboard** — long-term monitoring trend graphs
 
-- **Branch 1:** Raw EEG → EEGNet CNN + Transformer (CLS token)
-- **Branch 2:** Spectrogram → STFT CNN
-- **Branch 3:** Band Power → MLP (delta / theta / alpha / beta / gamma)
+---
 
-Trained on CHB-MIT Scalp EEG (patient-level splits, no leakage). Evaluated zero-shot on Siena Scalp EEG.
+## Comparison with Published Models
 
-> For full model documentation, training config, post-processing pipeline, and metric breakdowns → **[docs/technical_guide.md](docs/technical_guide.md)**
+| Model | Accuracy | Sensitivity | Macro F1 | AUC | Params | Cross-Dataset |
+|---|---|---|---|---|---|---|
+| **NeuroSentinel V4** | **99.55%** | **97.75%** | **0.979** | **0.980** | **409K** | ✅ Siena 80% |
+| EEGNet (Lawhern 2018) | ~93% | ~88% | ~0.85 | ~0.94 | ~2.6K | ❌ |
+| CNN-LSTM Hybrid (2023) | 97.2% | 96.1% | 0.92 | 0.97 | ~1.2M | ❌ |
+| CNN-Transformer (2024) | 98.1% | 97.0% | 0.95 | 0.98 | ~800K | ❌ |
+| Patient-Specific DL (2024) | 99.1% | 97–100% | 0.96 | 0.99 | ~500K | ❌ per-patient |
+
+*Patient-level train/val/test splits — no patient appears in multiple sets.*
 
 ---
 
@@ -210,25 +270,19 @@ cd neurosentinel-backend
 pytest tests/ -v
 ```
 
+```bash
+cd neurosentinel
+npm run lint
+```
+
 ---
 
 ## Contributing
 
-1. Fork the repo and create a feature branch: `git checkout -b feat/your-feature`
-2. Make your changes and run `pytest`
-3. Open a pull request against `main`
+See [CONTRIBUTING.md](CONTRIBUTING.md). Issues and pull requests are welcome.
 
 ---
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
-
----
-
-<div align="center">
-
-Built by **Team G1108** · KMEC Problem Statement · 2026
-
-</div>
-]]>
+[MIT](LICENSE) · Built by **Team G1108 · KMEC · 2026**
