@@ -1,36 +1,80 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+<![CDATA[# NeuroSentinel — Frontend
+
+Next.js 14 (App Router) web app for NeuroSentinel AI — the clinical EEG seizure detection platform.
+
+**Live:** [https://neurosentinel.vercel.app](https://neurosentinel.vercel.app)
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Framework | Next.js 14 (App Router) |
+| Language | TypeScript |
+| Styling | Tailwind CSS |
+| Auth & DB | Supabase |
+| AI (SCOUT) | Google Gemini via `@ai-sdk/google` |
+| Charts | Recharts |
+| Email | Nodemailer (via backend SMTP relay) |
+| PDF | pdf-lib |
+
+---
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+# Install dependencies
+npm install
+
+# Copy env template
+cp .env.example .env.local
+# Fill in all values in .env.local
+
+# Run development server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Environment Variables
 
-## Learn More
+Copy `.env.example` to `.env.local` and fill in your values. See the root [README](../README.md#frontend--nextjs-vercel) for a description of each variable.
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Project Structure
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```
+neurosentinel/
+├── app/
+│   ├── api/                # Next.js API routes
+│   │   ├── auth/           # OTP, signup, password reset
+│   │   ├── upload/         # EDF file upload → Supabase Storage
+│   │   ├── job-status/     # Backend job polling
+│   │   ├── chat/           # SCOUT AI streaming chat
+│   │   └── reports/        # PDF generation proxy
+│   ├── components/         # Shared UI components (SCOUT, toasts)
+│   ├── dashboard/          # Authenticated dashboard pages
+│   ├── report/[id]/        # Report viewer
+│   ├── login/              # Auth page
+│   ├── onboarding/         # New-user onboarding
+│   ├── privacy/            # Privacy policy
+│   └── terms/              # Terms of service
+├── lib/
+│   ├── supabase/           # Supabase client (browser, server, admin)
+│   ├── neurosentinel/      # Shared types and UI config
+│   └── scout-guide.ts      # SCOUT AI product guide
+└── middleware.ts            # Auth middleware
+```
 
-## Deploy on Vercel
+---
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Deployment (Vercel)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Import the repo to Vercel, set **Root Directory** to `neurosentinel/`.
+2. Add all environment variables from `.env.example` in the Vercel dashboard.
+3. Deploy — Vercel auto-builds on push to `main`.
+]]>

@@ -59,3 +59,17 @@ dist/
 migration_add_missing_columns.sql
 migration_fix_role_constraint.sql
 migration_fresh_start.sql
+
+# Dev / scratch scripts (not for repo)
+add_complete_metrics.py
+add_paper_eval.py
+build_docx.py
+dump_nb.py
+fix_onboarding.py
+patch_notebook.py
+nb_dump.txt
+NeuroSentinel_DeploymentGuide.html
+NeuroSentinel_AI_April_14_Complete_Guide.pdf
+system architecture_old.jpeg
+neurosentinel/scratch_onboard.py
+
