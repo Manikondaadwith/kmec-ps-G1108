@@ -97,26 +97,9 @@ NeuroSentinel AI is a **clinical decision support system** that detects seizure 
 
 ### Model: MultiRepEEGModel V4
 
-```
-Input: (B, 22, 1024)  — 22 channels × 4 seconds @ 256 Hz
-         │
-    ┌────┼────────────────────┐
-    ▼    ▼                    ▼
-Branch 1          Branch 2          Branch 3
-Raw EEG           Spectrogram       Band Power
-EEGNetCNN         STFT → CNN        δ θ α β γ → MLP
-+ Transformer     (B, 128)          (B, 64)
-  CLS token
-(B, 64)
-    │                │                    │
-    └────────────────┴────────────────────┘
-                     ▼
-              Concatenate → (B, 256)
-              Linear(256→128) → ReLU → Dropout(0.3)
-              Linear(128→2)   → logits → Softmax
-```
+![NeuroSentinel V4 Model Architecture](assets/model_architecture.png)
 
-**409,154 parameters · Focal Loss · AdamW · AMP · Early stop @ epoch 5**
+**409,154 parameters · 3-Branch Fusion · Focal Loss (α=1.0, γ=2.0) · AdamW lr=3e-4 · Early stop @ epoch 5**
 
 ---
 
