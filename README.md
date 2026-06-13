@@ -1,3 +1,13 @@
+---
+title: NeuroSentinel Backend
+emoji: 🧠
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+app_port: 7860
+---
+
 <div align="center">
 
 <img src="assets/logo.jpeg" alt="NeuroSentinel AI" width="110" style="border-radius:14px"/>
