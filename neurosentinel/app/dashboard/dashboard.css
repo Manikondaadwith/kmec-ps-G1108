@@ -226,7 +226,11 @@
    HEADER
    ══════════════════════════════════════ */
 
-.clinical-header {
+/* Scoped to .clinical-dashboard to prevent leaking into report pages
+   during client-side navigation. The report page's header uses Tailwind
+   `fixed` positioning which was being overridden by `position: relative`
+   here when dashboard.css stayed in memory after a SPA route change. */
+.clinical-dashboard .clinical-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
