@@ -474,7 +474,9 @@ export default function ReportPage() {
                   {events.length > 0 ? (
                     <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-50 ring-1 ring-red-100">
                       <div className="h-1.5 w-1.5 rounded-full bg-red-500" />
-                      <span className="text-[9px] font-black text-red-700 uppercase">Confirmed Event</span>
+                      <span className="text-[9px] font-black text-red-700 uppercase">
+                        {events.length} Confirmed Event{events.length !== 1 ? 's' : ''}
+                      </span>
                     </div>
                   ) : isSuspicious ? (
                     <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 ring-1 ring-amber-100">
@@ -484,7 +486,7 @@ export default function ReportPage() {
                   ) : (
                     <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 ring-1 ring-emerald-100">
                       <div className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                      <span className="text-[9px] font-black text-emerald-700 uppercase">No Events</span>
+                      <span className="text-[9px] font-black text-emerald-700 uppercase">0 Confirmed Events</span>
                     </div>
                   )}
                 </div>
