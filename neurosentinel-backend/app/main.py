@@ -416,6 +416,100 @@ def create_app(settings: Settings | None = None, load_model_on_startup: bool = F
             "memory_mb": round(_get_memory_mb(), 1),
         }
 
+    # ── OTP Email Relay ──────────────────────────────────────────────────────
+    # Called by Vercel's signup-otp-store.ts to send OTP emails.
+    # Vercel serverless functions block outbound SMTP (ports 465/587), so all
+    # transactional email is delegated to this HF Space which has unrestricted
+    # outbound network access.
+    @app.post("/api/v1/internal/send-otp-email")
+    async def send_otp_email(
+        request: Request,
+        state: BackendState = Depends(get_backend_state),
+    ) -> dict[str, Any]:
+        # Validate internal secret — no user auth token here (called server-side)
+        secret_header = request.headers.get("X-Internal-Secret", "")
+        if secret_header != state.settings.internal_api_secret:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid internal secret.")
+
+        body = await request.json()
+        to_email: str | None = body.get("to")
+        subject: str | None = body.get("subject")
+        html: str | None = body.get("html")
+        text: str | None = body.get("text", "")
+
+        if not to_email or not subject or not html:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing required fields: to, subject, html.")
+
+        import smtplib as _smtplib
+        import httpx as _httpx
+        from email.mime.multipart import MIMEMultipart as _MIMEMultipart
+        from email.mime.text import MIMEText as _MIMEText
+
+        sent = False
+        last_err: str | None = None
+
+        # 1. Try Resend API
+        if state.settings.resend_api_key:
+            try:
+                resp = _httpx.post(
+                    "https://api.resend.com/emails",
+                    headers={
+                        "Authorization": f"Bearer {state.settings.resend_api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "from": state.settings.resend_from_email,
+                        "to": [to_email],
+                        "subject": subject,
+                        "html": html,
+                    },
+                    timeout=20.0,
+                )
+                if resp.status_code in (200, 201):
+                    sent = True
+                    logger.info("OTP email sent to %s via Resend", to_email)
+                else:
+                    last_err = f"Resend {resp.status_code}: {resp.text[:200]}"
+                    logger.warning("Resend OTP email failed: %s", last_err)
+            except Exception as exc:
+                last_err = str(exc)
+                logger.warning("Resend OTP email exception: %s", exc)
+
+        # 2. Fallback: SMTP
+        if not sent and state.settings.smtp_host and state.settings.smtp_user and state.settings.smtp_password:
+            try:
+                msg = _MIMEMultipart("alternative")
+                msg["From"] = state.settings.smtp_from_email or state.settings.smtp_user
+                msg["To"] = to_email
+                msg["Subject"] = subject
+                if text:
+                    msg.attach(_MIMEText(text, "plain", "utf-8"))
+                msg.attach(_MIMEText(html, "html", "utf-8"))
+
+                clean_pw = state.settings.smtp_password.replace(" ", "")
+                if state.settings.smtp_port == 465:
+                    server = _smtplib.SMTP_SSL(state.settings.smtp_host, state.settings.smtp_port, timeout=20)
+                else:
+                    server = _smtplib.SMTP(state.settings.smtp_host, state.settings.smtp_port, timeout=20)
+                    server.ehlo()
+                    server.starttls()
+                    server.ehlo()
+
+                server.login(state.settings.smtp_user, clean_pw)
+                server.send_message(msg)
+                server.quit()
+                sent = True
+                logger.info("OTP email sent to %s via SMTP", to_email)
+            except Exception as exc:
+                last_err = str(exc)
+                logger.warning("SMTP OTP email exception: %s", exc)
+
+        if not sent:
+            detail = last_err or "No email provider configured (set RESEND_API_KEY or SMTP_* env vars)."
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=detail)
+
+        return {"status": "sent", "to": to_email}
+
     # ── Debug Email ──────────────────────────────────────────────────────────
     @app.get("/api/v1/debug/email")
     async def debug_email(
