@@ -47,16 +47,17 @@ function decodePayload(token: string) {
 /**
  * Send an OTP email. Priority order:
  *
- * 1. Resend API directly from Vercel (RESEND_API_KEY set on Vercel)
- *    → HTTPS to api.resend.com — works fine from Vercel serverless.
+ * 1. Brevo API (BREVO_API_KEY) — free, no domain needed, just verify your Gmail
+ *    → HTTPS to api.brevo.com — works from Vercel serverless.
  *
- * 2. HF backend relay (NEUROSENTINEL_BACKEND_URL + INTERNAL_API_SECRET)
- *    → Falls back to this only if Resend key is not set on Vercel.
- *    → Requires RESEND_API_KEY or SMTP_* set on the HF Space.
+ * 2. Resend API (RESEND_API_KEY) — free tier, requires verified domain.
+ *    → HTTPS to api.resend.com — works from Vercel serverless.
  *
- * Why not just use SMTP directly from Vercel?
- *    Vercel serverless blocks outbound ports 465/587 (SMTP).
- *    Resend uses HTTPS (port 443) which is always allowed.
+ * 3. HF backend relay (NEUROSENTINEL_BACKEND_URL + INTERNAL_API_SECRET)
+ *    → Legacy fallback. Requires RESEND_API_KEY or SMTP_* on HF Space.
+ *
+ * Why not SMTP directly from Vercel?
+ *    Vercel serverless blocks outbound ports 465/587.
  */
 async function sendEmailViaBackend({
   to,
@@ -70,8 +71,38 @@ async function sendEmailViaBackend({
   text: string
 }): Promise<void> {
 
-  // ── Tier 1: Direct Resend from Vercel (fastest, no HF dependency) ──────────
-  const resendKey = process.env.RESEND_API_KEY
+  // ── Tier 1: Brevo (free, no domain needed — just verify your Gmail) ─────────
+  const brevoKey = process.env.BREVO_API_KEY
+  if (brevoKey) {
+    const fromEmail = process.env.BREVO_FROM_EMAIL ?? 'noreply@neurosentinel.app'
+    const fromName  = process.env.BREVO_FROM_NAME  ?? 'NeuroSentinel AI'
+
+    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'api-key': brevoKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        sender:      { name: fromName, email: fromEmail },
+        to:          [{ email: to }],
+        subject,
+        htmlContent: html,
+        textContent: text,
+      }),
+      signal: AbortSignal.timeout(15000),
+    }).catch((err: unknown) => {
+      throw new Error(`Email send failed: ${err instanceof Error ? err.message : String(err)}`)
+    })
+
+    if (res.ok) return
+
+    const body = await res.json().catch(() => ({})) as any
+    throw new Error(`Email send failed (${res.status}): ${body?.message ?? 'Unknown Brevo error'}`)
+  }
+
+  // ── Tier 2: Resend (requires verified domain) ───────────────────────────────
+  const resendKey  = process.env.RESEND_API_KEY
   const resendFrom = process.env.RESEND_FROM_EMAIL ?? 'NeuroSentinel AI <onboarding@resend.dev>'
 
   if (resendKey) {
@@ -93,13 +124,13 @@ async function sendEmailViaBackend({
     throw new Error(`Email send failed (${res.status}): ${body?.message ?? body?.name ?? 'Unknown Resend error'}`)
   }
 
-  // ── Tier 2: HF backend relay (fallback if no Vercel RESEND_API_KEY) ────────
+  // ── Tier 3: HF backend relay (legacy fallback) ──────────────────────────────
   const backendUrl = process.env.NEUROSENTINEL_BACKEND_URL
-  const secret = process.env.INTERNAL_API_SECRET
+  const secret     = process.env.INTERNAL_API_SECRET
 
   if (!backendUrl || !secret) {
     throw new Error(
-      'Email service is not configured. Set RESEND_API_KEY in your Vercel environment variables to enable account registration.'
+      'Email service is not configured. Add BREVO_API_KEY to your Vercel environment variables to enable account registration.'
     )
   }
 
@@ -116,7 +147,7 @@ async function sendEmailViaBackend({
     const isTimeout = msg.toLowerCase().includes('timeout') || msg.toLowerCase().includes('abort')
     if (isTimeout) {
       throw new Error(
-        'The email service is starting up — this can take up to 20 seconds after a period of inactivity. Please wait a moment and try again.'
+        'The email service is starting up — please wait a moment and try again.'
       )
     }
     throw new Error(`Could not reach email service: ${msg}. Please try again in a moment.`)
