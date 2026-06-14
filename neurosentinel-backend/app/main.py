@@ -391,6 +391,29 @@ def create_app(settings: Settings | None = None, load_model_on_startup: bool = F
             "current_job": _current_job.get("report_id"),
         }
 
+    # ── Config Diagnostics (no auth, no secret values exposed) ───────────
+    @app.get("/api/v1/debug/config")
+    async def debug_config(state: BackendState = Depends(get_backend_state)) -> dict[str, Any]:
+        """Shows which env vars are set (True/False only). Safe to call publicly."""
+        s = state.settings
+        return {
+            "email": {
+                "resend_api_key":    bool(s.resend_api_key),
+                "resend_from_email": s.resend_from_email or None,
+                "smtp_host":         s.smtp_host or None,
+                "smtp_port":         s.smtp_port,
+                "smtp_user":         bool(s.smtp_user),
+                "smtp_password":     bool(s.smtp_password),
+                "smtp_from_email":   s.smtp_from_email or None,
+            },
+            "auth": {
+                "internal_api_secret": bool(s.internal_api_secret),
+            },
+            "inference": {
+                "model_path_set": bool(s.model_path),
+            },
+        }
+
     @app.get("/api/v1/model/info")
     async def model_info(state: BackendState = Depends(get_backend_state)) -> dict[str, Any]:
         return {
