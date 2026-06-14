@@ -45,33 +45,19 @@ function decodePayload(token: string) {
 }
 
 /**
- * Send an email via the HuggingFace backend SMTP relay.
+ * Send an OTP email. Priority order:
  *
- * Vercel's serverless functions block outbound SMTP (ports 465/587).
- * nodemailer.sendMail() hangs → function times out → browser gets
- * "TypeError: fetch failed" with no error message.
+ * 1. Resend API directly from Vercel (RESEND_API_KEY set on Vercel)
+ *    → HTTPS to api.resend.com — works fine from Vercel serverless.
  *
- * Fix: delegate email sending to the HuggingFace backend which has
- * unrestricted outbound network access and SMTP already configured.
+ * 2. HF backend relay (NEUROSENTINEL_BACKEND_URL + INTERNAL_API_SECRET)
+ *    → Falls back to this only if Resend key is not set on Vercel.
+ *    → Requires RESEND_API_KEY or SMTP_* set on the HF Space.
+ *
+ * Why not just use SMTP directly from Vercel?
+ *    Vercel serverless blocks outbound ports 465/587 (SMTP).
+ *    Resend uses HTTPS (port 443) which is always allowed.
  */
-/**
- * Fire-and-forget ping to wake a sleeping HF Space.
- * HF free-tier Spaces sleep after ~15min of inactivity.
- * Cold starts take 10-20s. We ping /health in parallel with
- * other work so the Space has maximum time to boot before the
- * actual OTP request arrives.
- */
-async function warmUpBackend(backendUrl: string): Promise<void> {
-  try {
-    await fetch(`${backendUrl}/health`, {
-      method: 'GET',
-      signal: AbortSignal.timeout(5000),
-    })
-  } catch {
-    // Ignore — this is best-effort. The OTP call will handle errors.
-  }
-}
-
 async function sendEmailViaBackend({
   to,
   subject,
@@ -83,15 +69,39 @@ async function sendEmailViaBackend({
   html: string
   text: string
 }): Promise<void> {
+
+  // ── Tier 1: Direct Resend from Vercel (fastest, no HF dependency) ──────────
+  const resendKey = process.env.RESEND_API_KEY
+  const resendFrom = process.env.RESEND_FROM_EMAIL ?? 'NeuroSentinel AI <onboarding@resend.dev>'
+
+  if (resendKey) {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${resendKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ from: resendFrom, to: [to], subject, html }),
+      signal: AbortSignal.timeout(15000),
+    }).catch((err: unknown) => {
+      throw new Error(`Email send failed: ${err instanceof Error ? err.message : String(err)}`)
+    })
+
+    if (res.ok) return
+
+    const body = await res.json().catch(() => ({})) as any
+    throw new Error(`Email send failed (${res.status}): ${body?.message ?? body?.name ?? 'Unknown Resend error'}`)
+  }
+
+  // ── Tier 2: HF backend relay (fallback if no Vercel RESEND_API_KEY) ────────
   const backendUrl = process.env.NEUROSENTINEL_BACKEND_URL
   const secret = process.env.INTERNAL_API_SECRET
 
-  if (!backendUrl) throw new Error('NEUROSENTINEL_BACKEND_URL env var is not set.')
-  if (!secret) throw new Error('INTERNAL_API_SECRET env var is not set.')
-
-  // Wake the HF Space if it's sleeping — fire-and-forget, runs in parallel.
-  // This gives the Space up to ~5s head start before the OTP request hits.
-  warmUpBackend(backendUrl)
+  if (!backendUrl || !secret) {
+    throw new Error(
+      'Email service is not configured. Set RESEND_API_KEY in your Vercel environment variables to enable account registration.'
+    )
+  }
 
   const response = await fetch(`${backendUrl}/api/v1/internal/send-otp-email`, {
     method: 'POST',
@@ -100,8 +110,6 @@ async function sendEmailViaBackend({
       'X-Internal-Secret': secret,
     },
     body: JSON.stringify({ to, subject, html, text }),
-    // 25s timeout — HF Space cold starts take 10-20s on the free tier.
-    // Vercel maxDuration on this route is 30s, so we have headroom.
     signal: AbortSignal.timeout(25000),
   }).catch((err: unknown) => {
     const msg = err instanceof Error ? err.message : String(err)
@@ -113,6 +121,8 @@ async function sendEmailViaBackend({
     }
     throw new Error(`Could not reach email service: ${msg}. Please try again in a moment.`)
   })
+
+
 
   if (!response.ok) {
     const detail = await response.json().catch(() => ({ detail: 'Unknown error' }))
