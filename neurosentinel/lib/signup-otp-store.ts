@@ -54,6 +54,24 @@ function decodePayload(token: string) {
  * Fix: delegate email sending to the HuggingFace backend which has
  * unrestricted outbound network access and SMTP already configured.
  */
+/**
+ * Fire-and-forget ping to wake a sleeping HF Space.
+ * HF free-tier Spaces sleep after ~15min of inactivity.
+ * Cold starts take 10-20s. We ping /health in parallel with
+ * other work so the Space has maximum time to boot before the
+ * actual OTP request arrives.
+ */
+async function warmUpBackend(backendUrl: string): Promise<void> {
+  try {
+    await fetch(`${backendUrl}/health`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(5000),
+    })
+  } catch {
+    // Ignore — this is best-effort. The OTP call will handle errors.
+  }
+}
+
 async function sendEmailViaBackend({
   to,
   subject,
@@ -71,6 +89,10 @@ async function sendEmailViaBackend({
   if (!backendUrl) throw new Error('NEUROSENTINEL_BACKEND_URL env var is not set.')
   if (!secret) throw new Error('INTERNAL_API_SECRET env var is not set.')
 
+  // Wake the HF Space if it's sleeping — fire-and-forget, runs in parallel.
+  // This gives the Space up to ~5s head start before the OTP request hits.
+  warmUpBackend(backendUrl)
+
   const response = await fetch(`${backendUrl}/api/v1/internal/send-otp-email`, {
     method: 'POST',
     headers: {
@@ -78,12 +100,17 @@ async function sendEmailViaBackend({
       'X-Internal-Secret': secret,
     },
     body: JSON.stringify({ to, subject, html, text }),
-    // Fail fast before Vercel kills the serverless function (10s free / 30s pro).
-    // Without this, a sleeping HF Space causes the Vercel fn to timeout with no
-    // HTTP response → browser sees "TypeError: fetch failed" instead of an error msg.
-    signal: AbortSignal.timeout(8000),
+    // 25s timeout — HF Space cold starts take 10-20s on the free tier.
+    // Vercel maxDuration on this route is 30s, so we have headroom.
+    signal: AbortSignal.timeout(25000),
   }).catch((err: unknown) => {
     const msg = err instanceof Error ? err.message : String(err)
+    const isTimeout = msg.toLowerCase().includes('timeout') || msg.toLowerCase().includes('abort')
+    if (isTimeout) {
+      throw new Error(
+        'The email service is starting up — this can take up to 20 seconds after a period of inactivity. Please wait a moment and try again.'
+      )
+    }
     throw new Error(`Could not reach email service: ${msg}. Please try again in a moment.`)
   })
 
