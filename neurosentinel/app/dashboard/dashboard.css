@@ -918,3 +918,29 @@
   max-width: 1380px;
   margin: 0 auto;
 }
+
+/* ── Skeleton Loaders ── */
+@keyframes skeleton-shimmer {
+  0%   { background-position: -600px 0; }
+  100% { background-position: 600px 0; }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--bg-secondary) 0px,
+    var(--bg-tertiary) 200px,
+    var(--bg-secondary) 400px
+  );
+  background-size: 1200px 100%;
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+}
+
+.skeleton-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+  position: relative;
+}

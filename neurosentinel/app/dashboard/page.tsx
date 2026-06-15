@@ -8,6 +8,7 @@ import { UploadZone } from './_components/upload-zone'
 import { getRoleLabel } from '@/lib/scout-guide'
 import { ensureUserProfile } from '@/lib/user-profile'
 import { StatusBadge } from './_components/status-badge'
+import { SkeletonDashboardCard } from './_components/skeleton'
 import { getAnalysisHeadline, useAnalysis } from '@/lib/context/analysis-context'
 import { getReportHeadline, normalizeReport, normalizeReportStatus, type ReportRecord, type ScoutRole } from '@/lib/neurosentinel/types'
 
@@ -232,12 +233,7 @@ export default function DashboardPage() {
 
           {/* ── Loading / Sign-in fallback ── */}
           {reportsLoading ? (
-            <div className="clinical-card px-7 py-6 flex items-center gap-3">
-              <div className="clinical-spinner-sm" />
-              <span className="text-[14px]" style={{ color: 'var(--text-secondary)' }}>
-                Loading your latest analysis...
-              </span>
-            </div>
+            <SkeletonDashboardCard />
           ) : userId ? null : (
             <div className="clinical-card px-7 py-6 text-[14px]" style={{ color: 'var(--text-secondary)' }}>
               <div className="flex items-center gap-3">

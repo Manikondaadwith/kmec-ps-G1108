@@ -411,7 +411,14 @@ export function ScoutFloating() {
       `}</style>
 
       {!open ? (
-        <div className="fixed bottom-8 right-8 z-[9999] flex flex-col items-end gap-3">
+        <div
+          className="fixed right-8 z-[9999] flex flex-col items-end gap-3 transition-all duration-300"
+          style={{
+            bottom: pathname.includes('eeg-reports') && currentAnalysis
+              ? 128  // raised above sticky processing panel (~96px)
+              : 32,
+          }}
+        >
           {showHint && !isResponseReady && (
             <div className="mr-2 animate-in fade-in slide-in-from-bottom-2 duration-500 rounded-xl bg-[#1E293B] px-4 py-2 text-xs font-medium text-white shadow-lg after:absolute after:bottom-[-6px] after:right-6 after:h-0 after:w-0 after:border-l-[6px] after:border-r-[6px] after:border-t-[6px] after:border-l-transparent after:border-r-transparent after:border-t-[#1E293B] relative">
               Need help understanding your EEG?

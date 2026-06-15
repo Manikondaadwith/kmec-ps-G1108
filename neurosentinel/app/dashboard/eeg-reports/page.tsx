@@ -167,6 +167,10 @@ const IconHistory = ({ size = 20, color = 'currentColor' }) => (
 ───────────────────────────────────────────────────────────── */
 function SkeletonCard({ density = 'comfortable' }: { density?: 'comfortable' | 'compact' }) {
   const isCompact = density === 'compact'
+  const Block = ({ w, h, r = 4 }: { w: number | string; h: number; r?: number }) => (
+    <div className="skeleton-shimmer" style={{ width: w, height: h, borderRadius: r }} aria-hidden="true" />
+  )
+
   return (
     <div
       style={{
@@ -174,37 +178,44 @@ function SkeletonCard({ density = 'comfortable' }: { density?: 'comfortable' | '
         border: '1px solid var(--border-default)',
         borderRadius: 'var(--radius-lg)',
         boxShadow: 'var(--shadow-card)',
-        padding: isCompact ? '16px 20px' : '28px 32px',
+        padding: isCompact ? '16px 20px 16px 24px' : '24px 28px 24px 32px',
+        display: 'grid',
+        gridTemplateColumns: isCompact ? '1.2fr 2fr 1fr' : 'minmax(200px,1.2fr) 2fr minmax(160px,1fr)',
+        gap: isCompact ? 20 : 32,
+        alignItems: 'center',
         animation: 'clinicalFadeIn 0.4s ease forwards',
+        overflow: 'hidden',
+        position: 'relative',
       }}
+      aria-busy="true"
+      aria-label="Loading report…"
     >
-      {/* top row */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: isCompact ? 12 : 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div style={{ width: 34, height: 34, borderRadius: 8, background: 'var(--bg-tertiary)' }} />
-          <div>
-            <div style={{ width: 180, height: 12, borderRadius: 4, background: 'var(--bg-tertiary)', marginBottom: 6 }} />
-            <div style={{ width: 120, height: 10, borderRadius: 4, background: 'var(--bg-tertiary)' }} />
-          </div>
+      {/* Left: icon + filename */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Block w={32} h={32} r={8} />
+          <Block w={120} h={13} />
         </div>
-        <div style={{ width: 70, height: 24, borderRadius: 12, background: 'var(--bg-tertiary)' }} />
+        <Block w={80} h={10} />
+        <Block w={60} h={10} />
       </div>
-      {!isCompact && (
-        <>
-          <div style={{ height: 1, background: 'var(--border-subtle)', marginBottom: 20 }} />
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-            {[0, 1, 2].map((i) => (
-              <div key={i} style={{ background: 'var(--bg-inset)', borderRadius: 'var(--radius-md)', padding: '12px 16px', border: '1px solid var(--border-subtle)' }}>
-                <div style={{ width: 40, height: 8, borderRadius: 3, background: 'var(--bg-tertiary)', marginBottom: 8 }} />
-                <div style={{ width: '60%', height: 12, borderRadius: 3, background: 'var(--bg-tertiary)' }} />
-              </div>
-            ))}
-          </div>
-        </>
-      )}
+
+      {/* Centre: result */}
+      <div style={{ paddingLeft: 24, borderLeft: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <Block w={56} h={9} />
+        <Block w="70%" h={15} />
+        <Block w="50%" h={11} />
+      </div>
+
+      {/* Right: badge */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <Block w={90} h={24} r={99} />
+        <Block w={58} h={10} />
+      </div>
     </div>
   )
 }
+
 
 /* ─────────────────────────────────────────────────────────────
    Individual analysis card
