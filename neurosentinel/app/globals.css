@@ -175,22 +175,38 @@ body {
   100% { transform: translateX(200%); }
 }
 
-.scrollbar-thin::-webkit-scrollbar { width: 4px; }
+.scrollbar-thin::-webkit-scrollbar { width: 3px; }
 .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
-.scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(0, 240, 255, 0.2); border-radius: 2px; }
-.scrollbar-thin::-webkit-scrollbar-thumb:hover { background: rgba(0, 240, 255, 0.4); }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(0, 240, 255, 0.15); border-radius: 99px; }
+.scrollbar-thin::-webkit-scrollbar-thumb:hover { background: rgba(0, 240, 255, 0.3); }
 
 /* ───────────────────────────────────────────────
-   Scrollbar
+   Scrollbar — subtle dark theme
 ─────────────────────────────────────────────── */
-::-webkit-scrollbar       { width: 6px; }
-::-webkit-scrollbar-track { background: var(--bg-secondary); }
-::-webkit-scrollbar-thumb {
-  background: var(--accent-primary);
-  border-radius: 3px;
-  opacity: 0.5;
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
 }
-::-webkit-scrollbar-thumb:hover { opacity: 1; }
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    180deg,
+    rgba(0, 240, 255, 0.25) 0%,
+    rgba(120, 80, 255, 0.2) 100%
+  );
+  border-radius: 99px;
+  transition: background 0.2s ease;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(
+    180deg,
+    rgba(0, 240, 255, 0.45) 0%,
+    rgba(120, 80, 255, 0.4) 100%
+  );
+}
+::-webkit-scrollbar-corner { background: var(--bg-primary); }
 
 /* ───────────────────────────────────────────────
    Input focus resets
