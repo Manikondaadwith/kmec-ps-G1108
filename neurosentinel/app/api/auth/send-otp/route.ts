@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
 import { sendSignupOtp, userExistsForSignup } from '@/lib/signup-otp-store'
 
-// Give Vercel up to 30s — the HF backend relay needs time to connect + send SMTP
-export const maxDuration = 30
+// Give Vercel up to 60s — HF backend needs time to connect + send SMTP
+export const maxDuration = 60
 
 export async function POST(req: Request) {
   try {

@@ -758,9 +758,9 @@ def _send_generic_notification(
             msg.attach(MIMEText(html, "html", "utf-8"))
 
             if smtp_port == 465:
-                server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=30)
+                server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15)
             else:
-                server = smtplib.SMTP(smtp_host, smtp_port, timeout=30)
+                server = smtplib.SMTP(smtp_host, smtp_port, timeout=15)
                 server.ehlo()
                 server.starttls()
                 server.ehlo()

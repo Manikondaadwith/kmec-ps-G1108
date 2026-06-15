@@ -141,7 +141,8 @@ async function sendEmailViaBackend({
       'X-Internal-Secret': secret,
     },
     body: JSON.stringify({ to, subject, html, text }),
-    signal: AbortSignal.timeout(25000),
+    // 55s — SMTP capped at 15s on HF, 60s Vercel maxDuration gives headroom
+    signal: AbortSignal.timeout(55000),
   }).catch((err: unknown) => {
     const msg = err instanceof Error ? err.message : String(err)
     const isTimeout = msg.toLowerCase().includes('timeout') || msg.toLowerCase().includes('abort')
