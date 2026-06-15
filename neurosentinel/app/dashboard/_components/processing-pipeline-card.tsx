@@ -121,7 +121,6 @@ export function ProcessingPipelineCard({ stage, startedAt, filename, analysisId 
         {PIPELINE.map((step, idx) => {
           const isDone    = idx < activeIndex
           const isActive  = idx === activeIndex
-          const isPending = idx > activeIndex
           const isLast    = idx === PIPELINE.length - 1
 
           return (

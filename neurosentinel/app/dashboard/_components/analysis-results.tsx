@@ -47,10 +47,11 @@ export function AnalysisResults({ data, uploadState = 'idle', uploadFilename }: 
   const activeAnalysis = currentAnalysis || (isActiveUpload ? {
     id: 'prop-active',
     filename: uploadFilename || 'Unknown recording',
-    status: uploadState as any,
-    progress: uploadState === 'uploading' ? 0 : 100,
+    stage: (uploadState === 'uploading' ? 'uploading' : 'processing') as import('@/lib/context/analysis-context').AnalysisStage,
+    uploadProgress: uploadState === 'uploading' ? 0 : 100,
     startedAt: new Date().toISOString()
   } : null)
+
 
   if (activeAnalysis) {
     const stage = activeAnalysis.stage
