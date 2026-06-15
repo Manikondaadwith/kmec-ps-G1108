@@ -174,10 +174,10 @@ export function AnalysisResults({ data, uploadState = 'idle', uploadFilename }: 
         </div>
       ) : (
         /* ── Completed Report: Findings + Context ── */
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+        <div className="flex gap-6 min-w-0 flex-col lg:flex-row">
 
           {/* ── Left: Structured Findings ── */}
-          <div className="space-y-5">
+          <div className="flex-1 min-w-0 space-y-5">
             <SectionLabel
               icon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>}
             >
@@ -226,8 +226,8 @@ export function AnalysisResults({ data, uploadState = 'idle', uploadFilename }: 
             </div>
           </div>
 
-          {/* ── Right: Context Panels — improved structure ── */}
-          <div className="space-y-5">
+          {/* ── Right: Context Panels ── */}
+          <div className="lg:w-[300px] lg:flex-shrink-0 space-y-5">
             <SectionLabel
               icon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" /></svg>}
             >

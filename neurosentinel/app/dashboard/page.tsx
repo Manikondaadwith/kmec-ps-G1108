@@ -179,59 +179,56 @@ export default function DashboardPage() {
             </div>
           </section>
 
-          {/* ── Two-Column: Upload + Analysis ── */}
-          <div className="grid gap-7 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-
             {/* ── Upload Card ── */}
-            <section id="tour-step-upload" className="clinical-card px-7 py-7">
-              <div className="mb-6">
+          <section id="tour-step-upload" className="clinical-card px-7 py-7">
+            <div className="mb-6">
+              <div className="flex items-center gap-2">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
+                <div className="clinical-section-label">Upload EEG</div>
+              </div>
+              <p className="clinical-section-desc mt-1">
+                Start a new analysis and let SCOUT track the result as it completes.
+              </p>
+            </div>
+
+            <UploadZone
+              onAnalysisComplete={(data) => {
+                setLatestAnalysis(data)
+              }}
+              onReset={() => setLatestAnalysis(null)}
+              shouldAutoRedirect
+            />
+          </section>
+
+          {/* ── Latest Analysis Card — full width primary ── */}
+          <section id="tour-step-latest" className="clinical-card px-7 py-7">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
                 <div className="flex items-center gap-2">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
-                  <div className="clinical-section-label">Upload EEG</div>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>
+                  <div className="clinical-section-label">Latest Analysis</div>
                 </div>
                 <p className="clinical-section-desc mt-1">
-                  Start a new analysis and let SCOUT track the result as it completes.
+                  {currentAnalysis ? 'Current upload in progress' : 'Your most recent EEG analysis'}
                 </p>
               </div>
+              {currentAnalysis ? (
+                <StatusBadge status={currentAnalysis.status} showBorder />
+              ) : latestAnalysis ? (
+                <StatusBadge report={latestAnalysis} showBorder />
+              ) : null}
+            </div>
 
-              <UploadZone
-                onAnalysisComplete={(data) => {
-                  setLatestAnalysis(data)
-                }}
-                onReset={() => setLatestAnalysis(null)}
-                shouldAutoRedirect
-              />
-            </section>
+            <AnalysisResults data={latestAnalysis} />
 
-            {/* ── Latest Analysis Card ── */}
-            <section id="tour-step-latest" className="clinical-card px-7 py-7">
-              <div className="mb-5 flex items-start justify-between gap-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>
-                    <div className="clinical-section-label">Latest Analysis</div>
-                  </div>
-                  <p className="clinical-section-desc mt-1">
-                    {currentAnalysis ? 'Current upload in progress' : 'Your most recent EEG analysis'}
-                  </p>
-                </div>
-                {currentAnalysis ? (
-                  <StatusBadge status={currentAnalysis.status} showBorder />
-                ) : latestAnalysis ? (
-                  <StatusBadge report={latestAnalysis} showBorder />
-                ) : null}
-              </div>
+            <div className="mt-6 pt-5" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+              <Link href="/dashboard/eeg-reports" className="clinical-link">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>
+                View Analysis History
+              </Link>
+            </div>
+          </section>
 
-              <AnalysisResults data={latestAnalysis} />
-
-              <div className="mt-6 pt-5" style={{ borderTop: '1px solid var(--border-subtle)' }}>
-                <Link href="/dashboard/eeg-reports" className="clinical-link">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>
-                  View Analysis History
-                </Link>
-              </div>
-            </section>
-          </div>
 
           {/* ── Loading / Sign-in fallback ── */}
           {reportsLoading ? (
