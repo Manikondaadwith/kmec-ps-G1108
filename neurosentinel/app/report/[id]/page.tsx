@@ -357,11 +357,11 @@ export default function ReportPage() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-[1280px] px-6 py-8 pt-24">
-        <div className="grid gap-8 lg:grid-cols-[1fr_minmax(0,1fr)_1fr] xl:grid-cols-[1fr_3fr_1fr]">
+      <div className="mx-auto max-w-[1280px] w-full min-w-0 px-6 py-8 pt-24 overflow-x-hidden">
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,1fr)_minmax(0,3fr)_minmax(0,1fr)]">
           
           {/* ════════════ MAIN CONTENT FEED ════════════ */}
-          <div className="lg:col-start-1 lg:col-end-3 xl:col-start-1 xl:col-end-3 space-y-8">
+          <div className="lg:col-start-1 lg:col-end-3 xl:col-start-1 xl:col-end-3 space-y-8 min-w-0">
             
             {/* ─── § 1  DOMINANT STATUS HERO ─── */}
             <section className="relative overflow-hidden rounded-[40px] border border-transparent bg-white shadow-2xl shadow-blue-100/20">

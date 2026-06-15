@@ -180,7 +180,7 @@ export default function DashboardPage() {
           </section>
 
           {/* ── Two-Column: Upload + Analysis ── */}
-          <div className="grid gap-7 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
+          <div className="grid gap-7 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
 
             {/* ── Upload Card ── */}
             <section id="tour-step-upload" className="clinical-card px-7 py-7">

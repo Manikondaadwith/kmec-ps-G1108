@@ -899,6 +899,8 @@
 .clinical-page-content {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
+  min-width: 0;
   padding: 32px;
   position: relative;
   z-index: 1;
@@ -911,6 +913,8 @@
 
 /* Max-width container for content */
 .clinical-page-container {
+  width: 100%;
+  min-width: 0;
   max-width: 1380px;
   margin: 0 auto;
 }
