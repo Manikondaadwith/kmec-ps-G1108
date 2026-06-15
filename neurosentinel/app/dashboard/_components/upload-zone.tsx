@@ -219,7 +219,7 @@ export function UploadZone({
     const s = stateRef.current.s
     const file = ('file' in stateRef.current && stateRef.current.file) ? stateRef.current.file : new File([], currentAnalysis.filename)
 
-    if (currentAnalysis.status === 'aborted') {
+    if (currentAnalysis.stage === 'aborted') {
       updateState({ s: 'idle' })
       setUploadProgress(null)
       stopPolling()
@@ -227,35 +227,36 @@ export function UploadZone({
     }
 
     if (s === 'idle' || s === 'drag' || s === 'ready') {
-      if (currentAnalysis.status === 'processing') {
+      if (currentAnalysis.stage === 'processing' || currentAnalysis.stage === 'queued' || currentAnalysis.stage === 'upload_complete') {
         updateState({
           s: 'processing',
           file,
           msg: 'Analysis is running in the background.',
-          reportId: currentAnalysis.id
+          reportId: currentAnalysis.reportId ?? currentAnalysis.id
         } as State)
-        currentJobIdRef.current = currentAnalysis.id
-        startCompletionPolling(currentAnalysis.id, file)
-      } else if (currentAnalysis.status === 'uploading') {
+        currentJobIdRef.current = currentAnalysis.reportId ?? currentAnalysis.id
+        startCompletionPolling(currentAnalysis.reportId ?? currentAnalysis.id, file)
+      } else if (currentAnalysis.stage === 'uploading') {
+
         updateState({
           s: 'uploading',
           file,
           msg: 'Uploading EDF to secure storage...',
         } as State)
         currentJobIdRef.current = currentAnalysis.id
-        setUploadProgress(currentAnalysis.progress || 0)
+        setUploadProgress(currentAnalysis.uploadProgress || 0)
       }
     } else if (s === 'uploading') {
-      if (currentAnalysis.status === 'processing') {
+      if (currentAnalysis.stage === 'processing' || currentAnalysis.stage === 'upload_complete' || currentAnalysis.stage === 'queued') {
         updateState({
           s: 'processing',
           file,
           msg: 'Analysis is running in the background.',
-          reportId: currentAnalysis.id
+          reportId: currentAnalysis.reportId ?? currentAnalysis.id
         } as State)
-        startCompletionPolling(currentAnalysis.id, file)
-      } else if (currentAnalysis.status === 'uploading') {
-        setUploadProgress(currentAnalysis.progress || 0)
+        startCompletionPolling(currentAnalysis.reportId ?? currentAnalysis.id, file)
+      } else if (currentAnalysis.stage === 'uploading') {
+        setUploadProgress(currentAnalysis.uploadProgress || 0)
       }
     }
   }, [currentAnalysis, startCompletionPolling, updateState, stopPolling])
@@ -291,8 +292,8 @@ export function UploadZone({
     setCurrentAnalysis({
       id: jobId,
       filename: file.name,
-      status: 'uploading',
-      progress: 0,
+      stage: 'uploading',
+      uploadProgress: 0,
       startedAt: new Date().toISOString()
     })
     registerAbortHandler(cancelUpload)
@@ -326,9 +327,10 @@ export function UploadZone({
           if (!event.lengthComputable) return
           const percent = Math.round((event.loaded / event.total) * 100)
           setUploadProgress(percent)
-          setCurrentAnalysis((prev: CurrentAnalysis) => prev ? { ...prev, progress: percent } : null)
+          setCurrentAnalysis((prev: CurrentAnalysis) => prev ? { ...prev, uploadProgress: percent } : null)
           if (percent === 100) {
             updateState({ s: 'uploading', file, msg: 'Upload complete. Starting analysis...' })
+            setCurrentAnalysis((prev: CurrentAnalysis) => prev ? { ...prev, stage: 'upload_complete', uploadProgress: 100 } : null)
           }
         }
 
@@ -423,9 +425,10 @@ export function UploadZone({
         setCurrentAnalysis({
           id: reportId,
           filename: file.name,
-          status: 'processing',
-          progress: 100,
-          startedAt: new Date().toISOString()
+          stage: 'processing',
+          uploadProgress: 100,
+          startedAt: new Date().toISOString(),
+          reportId,
         })
 
         // Show processing notification

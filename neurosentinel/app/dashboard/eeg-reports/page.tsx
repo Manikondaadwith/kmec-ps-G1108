@@ -978,18 +978,18 @@ export default function AnalysisHistoryPage() {
                     {currentAnalysis.filename}
                   </div>
                   <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                    {currentAnalysis.status === 'uploading'
+                    {currentAnalysis.stage === 'uploading'
                       ? `Uploading ${currentAnalysis.filename}…`
                       : `Processing ${currentAnalysis.filename}…`}
                   </div>
                 </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                {currentAnalysis.status === 'uploading' && (
+                {currentAnalysis.stage === 'uploading' && (
                   <div className="clinical-progress-track" style={{ width: 100 }}>
                     <div
                       className="clinical-progress-fill"
-                      style={{ width: `${currentAnalysis.progress || 0}%` }}
+                      style={{ width: `${currentAnalysis.uploadProgress || 0}%` }}
                     />
                   </div>
                 )}
@@ -998,7 +998,7 @@ export default function AnalysisHistoryPage() {
                   className="clinical-btn-danger-outline"
                   style={{ height: 36, padding: '0 16px', fontSize: 13 }}
                 >
-                  {currentAnalysis.status === 'uploading' ? 'Cancel Upload' : 'Abort Analysis'}
+                  {currentAnalysis.stage === 'uploading' ? 'Cancel Upload' : 'Abort Analysis'}
                 </button>
               </div>
             </section>

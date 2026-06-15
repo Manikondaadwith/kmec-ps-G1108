@@ -156,7 +156,7 @@ export default function DashboardPage() {
                 {[
                   { label: 'Current role', value: getRoleLabel(role) },
                   { label: 'Latest status', value:
-                    currentAnalysis ? `${getAnalysisHeadline(currentAnalysis.status)} — ${currentAnalysis.filename}...`
+                    currentAnalysis ? `${getAnalysisHeadline(currentAnalysis.stage)} — ${currentAnalysis.filename}...`
                     : latestAnalysis ? getReportHeadline(latestAnalysis)
                     : 'Awaiting upload'
                   },
@@ -213,7 +213,7 @@ export default function DashboardPage() {
                 </p>
               </div>
               {currentAnalysis ? (
-                <StatusBadge status={currentAnalysis.status} showBorder />
+                <StatusBadge status={currentAnalysis.stage === 'uploading' ? 'uploading' : 'processing'} showBorder />
               ) : latestAnalysis ? (
                 <StatusBadge report={latestAnalysis} showBorder />
               ) : null}

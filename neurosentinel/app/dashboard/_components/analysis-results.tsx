@@ -6,6 +6,7 @@ import { formatConfidence, formatDurationMinutes, getReportSummary, normalizeRep
 import { StatusBadge } from './status-badge'
 import { ReliabilityBadge } from './reliability-badge'
 import { useAnalysis } from '@/lib/context/analysis-context'
+import { ProcessingPipelineCard } from './processing-pipeline-card'
 
 import type { UploadState } from './upload-zone'
 
@@ -52,29 +53,44 @@ export function AnalysisResults({ data, uploadState = 'idle', uploadFilename }: 
   } : null)
 
   if (activeAnalysis) {
+    const stage = activeAnalysis.stage
+    const isUploading = stage === 'uploading'
+
     return (
       <section className="space-y-4">
-        <div className="clinical-card-inner">
-          <SectionLabel>Analysis status</SectionLabel>
-          <div className="mt-4 flex items-center gap-3 py-4">
-            <span
-              className="clinical-dot clinical-dot-primary clinical-dot-pulse"
-              style={{ width: 8, height: 8, flexShrink: 0 }}
-            />
-            <div>
-              <div className="text-[14px] font-semibold" style={{ color: 'var(--text-heading)' }}>
-                {activeAnalysis.status === 'uploading'
-                  ? `Uploading ${activeAnalysis.filename}…`
-                  : `Processing ${activeAnalysis.filename}…`}
+        {/* Upload progress — only shown during actual file transfer */}
+        {isUploading && (
+          <div className="clinical-card-inner">
+            <SectionLabel>Uploading</SectionLabel>
+            <div className="mt-4">
+              <div className="mb-2 flex items-center justify-between text-[12px]" style={{ color: 'var(--text-muted)' }}>
+                <span>Streaming {activeAnalysis.filename} to AI server…</span>
+                <span className="font-semibold tabular-nums" style={{ color: 'var(--accent-primary)' }}>
+                  {activeAnalysis.uploadProgress ?? 0}%
+                </span>
               </div>
-              <div className="text-[12px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                {activeAnalysis.status === 'uploading'
-                  ? 'File is being streamed to the analysis server.'
-                  : 'NeuroSentinel AI is running inference. You can safely navigate away.'}
+              <div className="clinical-progress-track">
+                <div
+                  className="clinical-progress-fill transition-all duration-300"
+                  style={{ width: `${activeAnalysis.uploadProgress ?? 0}%` }}
+                />
               </div>
+              <p className="mt-2 text-[12px]" style={{ color: 'var(--text-faint)' }}>
+                Only file transfer progress is shown here. Analysis stages begin after upload completes.
+              </p>
             </div>
           </div>
-        </div>
+        )}
+
+        {/* Analysis pipeline — shown after upload completes */}
+        {!isUploading && (
+          <ProcessingPipelineCard
+            stage={stage}
+            startedAt={activeAnalysis.startedAt}
+            filename={activeAnalysis.filename}
+            analysisId={activeAnalysis.reportId ?? activeAnalysis.id}
+          />
+        )}
       </section>
     )
   }
@@ -150,11 +166,24 @@ export function AnalysisResults({ data, uploadState = 'idle', uploadFilename }: 
         ) : null}
       </div>
 
-      {/* ── No Report ── */}
+      {/* ── No Report Empty State ── */}
       {!hasReport ? (
-        <p className="text-[14px] px-1" style={{ color: 'var(--text-muted)' }}>
-          Create a report to see its queue state, risk summary, event cards, and recommendations.
-        </p>
+        <div className="flex flex-col items-center justify-center py-8 text-center gap-4">
+          <div
+            className="flex h-14 w-14 items-center justify-center rounded-full"
+            style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-default)' }}
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+          </div>
+          <div>
+            <p className="text-[15px] font-semibold" style={{ color: 'var(--text-heading)' }}>No analysis yet</p>
+            <p className="mt-1 text-[13px]" style={{ color: 'var(--text-muted)' }}>Upload an EDF file above to start your first report.</p>
+          </div>
+        </div>
       ) : status !== 'completed' ? (
         /* ── In-Progress / Failed Detail ── */
         <div className="clinical-card-inner">

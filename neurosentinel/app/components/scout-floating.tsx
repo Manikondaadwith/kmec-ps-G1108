@@ -225,7 +225,7 @@ export function ScoutFloating() {
         }
 
         const activeJobSummary = currentAnalysis
-          ? ` An EEG file "${currentAnalysis.filename}" is currently ${currentAnalysis.status === 'uploading' ? `uploading (${currentAnalysis.progress || 0}% complete)` : 'being processed by the AI backend'}.`
+          ? ` An EEG file "${currentAnalysis.filename}" is currently ${currentAnalysis.stage === 'uploading' ? `uploading (${currentAnalysis.uploadProgress || 0}% complete)` : 'being processed by the AI backend'}.`
           : ''
 
         const summary =
@@ -246,8 +246,8 @@ export function ScoutFloating() {
           summary,
           activeAnalysis: currentAnalysis ? {
             filename: currentAnalysis.filename,
-            status: currentAnalysis.status,
-            progress: currentAnalysis.progress,
+            status: currentAnalysis.stage,
+            progress: currentAnalysis.uploadProgress,
             startedAt: currentAnalysis.startedAt,
           } : null,
         })

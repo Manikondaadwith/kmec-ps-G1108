@@ -1,17 +1,137 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
+
+// ─── Password strength helpers ──────────────────────────────────────────────
+
+interface PasswordRequirement {
+  label: string
+  test: (pw: string) => boolean
+}
+
+const PASSWORD_REQUIREMENTS: PasswordRequirement[] = [
+  { label: '8+ characters',   test: (pw) => pw.length >= 8 },
+  { label: 'Uppercase letter', test: (pw) => /[A-Z]/.test(pw) },
+  { label: 'Number',           test: (pw) => /[0-9]/.test(pw) },
+  { label: 'Symbol (!@#…)',    test: (pw) => /[^A-Za-z0-9]/.test(pw) },
+]
+
+function getStrengthScore(pw: string): number {
+  return PASSWORD_REQUIREMENTS.filter(r => r.test(pw)).length
+}
+
+const STRENGTH_CONFIG = [
+  { label: 'Weak',      color: 'var(--accent-danger)' },
+  { label: 'Fair',      color: '#f59e0b' },
+  { label: 'Good',      color: '#3b82f6' },
+  { label: 'Strong',    color: 'var(--accent-primary)' },
+  { label: 'Very Strong', color: '#10b981' },
+]
+
+// ─── Eye toggle icon ─────────────────────────────────────────────────────────
+
+function EyeIcon({ open }: { open: boolean }) {
+  return open ? (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  ) : (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+      <line x1="1" y1="1" x2="23" y2="23" />
+    </svg>
+  )
+}
+
+// ─── Shared input wrapper with eye toggle ────────────────────────────────────
+
+function PasswordInput({
+  id,
+  label,
+  value,
+  placeholder,
+  show,
+  onToggleShow,
+  onChange,
+}: {
+  id: string
+  label: string
+  value: string
+  placeholder: string
+  show: boolean
+  onToggleShow: () => void
+  onChange: (v: string) => void
+}) {
+  return (
+    <div className="space-y-2">
+      <label htmlFor={id} className="text-[13px] font-bold" style={{ color: 'var(--text-primary)' }}>
+        {label}
+      </label>
+      <div className="relative">
+        <input
+          id={id}
+          type={show ? 'text' : 'password'}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          autoComplete="new-password"
+          className="w-full rounded-xl border px-4 py-3 pr-11 text-sm outline-none transition-all placeholder:text-slate-400"
+          style={{
+            borderColor: 'var(--border-default)',
+            background: 'var(--bg-card)',
+            color: 'var(--text-primary)',
+          }}
+          onFocus={(e) => {
+            e.target.style.borderColor = 'var(--accent-primary)'
+            e.target.style.boxShadow = '0 0 0 3px rgba(14, 116, 144, 0.1)'
+          }}
+          onBlur={(e) => {
+            e.target.style.borderColor = 'var(--border-default)'
+            e.target.style.boxShadow = 'none'
+          }}
+        />
+        <button
+          type="button"
+          onClick={onToggleShow}
+          className="absolute right-3 top-1/2 -translate-y-1/2 transition-opacity hover:opacity-70"
+          style={{ color: 'var(--text-muted)' }}
+          tabIndex={-1}
+          aria-label={show ? 'Hide password' : 'Show password'}
+        >
+          <EyeIcon open={show} />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
 
 export function SettingsClient({ email, roleLabel }: { email: string; roleLabel: string }) {
   const supabase = createClient()
-  const [newPassword, setNewPassword] = useState('')
+
+  // Password state
+  const [newPassword, setNewPassword]         = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [showNew, setShowNew]                 = useState(false)
+  const [showConfirm, setShowConfirm]         = useState(false)
   const [passwordLoading, setPasswordLoading] = useState(false)
   const [passwordMessage, setPasswordMessage] = useState<string | null>(null)
-  const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [passwordError, setPasswordError]     = useState<string | null>(null)
+
+  // Delete state
   const [deleteLoading, setDeleteLoading] = useState(false)
-  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [deleteError, setDeleteError]     = useState<string | null>(null)
+
+  // Live derived values
+  const strengthScore  = useMemo(() => getStrengthScore(newPassword), [newPassword])
+  const requirements   = useMemo(() => PASSWORD_REQUIREMENTS.map(r => ({ ...r, met: r.test(newPassword) })), [newPassword])
+  const passwordsMatch = confirmPassword.length > 0 && newPassword === confirmPassword
+  const mismatch       = confirmPassword.length > 0 && newPassword !== confirmPassword
+  const strengthCfg    = newPassword.length > 0 ? STRENGTH_CONFIG[strengthScore] : null
 
   const handlePasswordChange = async () => {
     setPasswordError(null)
@@ -21,26 +141,20 @@ export function SettingsClient({ email, roleLabel }: { email: string; roleLabel:
       setPasswordError('Password must be at least 8 characters long.')
       return
     }
-
     if (newPassword !== confirmPassword) {
-      setPasswordError('Password confirmation does not match.')
+      setPasswordError('Passwords do not match.')
       return
     }
 
     setPasswordLoading(true)
-
     try {
       const response = await fetch('/api/account/change-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: newPassword }),
       })
-
       const payload = await response.json()
-      if (!response.ok) {
-        throw new Error(payload.error || 'Unable to change password.')
-      }
-
+      if (!response.ok) throw new Error(payload.error || 'Unable to change password.')
       setPasswordMessage('Password updated successfully.')
       setNewPassword('')
       setConfirmPassword('')
@@ -57,17 +171,10 @@ export function SettingsClient({ email, roleLabel }: { email: string; roleLabel:
 
     setDeleteLoading(true)
     setDeleteError(null)
-
     try {
-      const response = await fetch('/api/account/delete', {
-        method: 'DELETE',
-      })
-
+      const response = await fetch('/api/account/delete', { method: 'DELETE' })
       const payload = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        throw new Error(payload.error || 'Unable to delete your account.')
-      }
-
+      if (!response.ok) throw new Error(payload.error || 'Unable to delete your account.')
       await supabase.auth.signOut()
       window.location.href = '/'
     } catch (error: any) {
@@ -77,42 +184,31 @@ export function SettingsClient({ email, roleLabel }: { email: string; roleLabel:
   }
 
   // Icons
-  const IconUser = () => (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
-  )
-  const IconLock = () => (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
-  )
-  const IconTrash = () => (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
-  )
+  const IconUser  = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+  const IconLock  = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+  const IconTrash = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
 
   return (
     <div
-      className="max-w-4xl flex-1 space-y-10 overflow-y-auto p-12"
+      className="w-full max-w-[1400px] flex-1 space-y-10 overflow-y-auto p-10 xl:p-12"
       style={{ background: 'var(--bg-primary)', minHeight: '100%', animation: 'clinicalFadeIn 0.4s ease forwards' }}
     >
-      {/* Header Area */}
+      {/* Page header */}
       <div>
-        <div
-          className="text-[10px] font-bold uppercase tracking-[0.2em]"
-          style={{ color: 'var(--text-faint)' }}
-        >
+        <div className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: 'var(--text-faint)' }}>
           General Settings
         </div>
-        <h1
-          className="mt-2 text-3xl font-extrabold tracking-tight"
-          style={{ color: 'var(--text-heading)', fontFamily: "'Inter', sans-serif" }}
-        >
-          Account & Security Settings
+        <h1 className="mt-2 text-3xl font-extrabold tracking-tight" style={{ color: 'var(--text-heading)', fontFamily: "'Inter', sans-serif" }}>
+          Account &amp; Security Settings
         </h1>
-        <p className="mt-2 text-[15px] leading-relaxed" style={{ color: 'var(--text-secondary)', maxWidth: '600px' }}>
+        <p className="mt-2 text-[15px] leading-relaxed" style={{ color: 'var(--text-secondary)', maxWidth: '640px' }}>
           Configure your clinical authentication details and manage your account status with professional-grade security controls.
         </p>
       </div>
 
       <div className="space-y-10">
-        {/* 1. USER PROFILE SECTION */}
+
+        {/* ── 1. USER PROFILE ── */}
         <section
           className="clinical-card p-1 transition-all duration-300"
           onMouseEnter={(e) => (e.currentTarget.style.transform = 'translateY(-2px)')}
@@ -120,43 +216,28 @@ export function SettingsClient({ email, roleLabel }: { email: string; roleLabel:
         >
           <div className="border-b px-8 py-5" style={{ borderColor: 'var(--border-subtle)' }}>
             <div className="flex items-center gap-3">
-              <div style={{ color: 'var(--text-muted)' }}>
-                <IconUser />
-              </div>
+              <div style={{ color: 'var(--text-muted)' }}><IconUser /></div>
               <div>
-                <h2 className="text-[15px] font-bold" style={{ color: 'var(--text-heading)' }}>
-                  User Profile
-                </h2>
-                <p className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
-                  Your registered authentication details
-                </p>
+                <h2 className="text-[15px] font-bold" style={{ color: 'var(--text-heading)' }}>User Profile</h2>
+                <p className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>Your registered authentication details</p>
               </div>
             </div>
           </div>
-
-          <div className="p-8 space-y-8">
-            <div className="grid gap-8 md:grid-cols-2">
+          <div className="p-8">
+            <div className="grid gap-8 md:grid-cols-2 xl:grid-cols-4">
               <div className="space-y-1.5">
-                <div className="text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: 'var(--text-muted)' }}>
-                  Registered Email Address
-                </div>
-                <div className="text-[15px] font-semibold" style={{ color: 'var(--text-primary)' }}>
-                  {email}
-                </div>
+                <div className="text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: 'var(--text-muted)' }}>Registered Email</div>
+                <div className="text-[15px] font-semibold" style={{ color: 'var(--text-primary)' }}>{email}</div>
               </div>
               <div className="space-y-1.5">
-                <div className="text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: 'var(--text-muted)' }}>
-                  Assigned User Role
-                </div>
-                <div className="text-[15px] font-semibold" style={{ color: 'var(--text-primary)' }}>
-                  {roleLabel}
-                </div>
+                <div className="text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: 'var(--text-muted)' }}>Assigned Role</div>
+                <div className="text-[15px] font-semibold" style={{ color: 'var(--text-primary)' }}>{roleLabel}</div>
               </div>
             </div>
           </div>
         </section>
 
-        {/* 1.5 ASSISTANT SETTINGS */}
+        {/* ── 1.5 SCOUT ASSISTANT ── */}
         <section
           className="clinical-card p-1 transition-all duration-300"
           onMouseEnter={(e) => (e.currentTarget.style.transform = 'translateY(-2px)')}
@@ -168,16 +249,11 @@ export function SettingsClient({ email, roleLabel }: { email: string; roleLabel:
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
               </div>
               <div>
-                <h2 className="text-[15px] font-bold" style={{ color: 'var(--text-heading)' }}>
-                  SCOUT Assistant
-                </h2>
-                <p className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
-                  Manage assistant tutorials and preferences
-                </p>
+                <h2 className="text-[15px] font-bold" style={{ color: 'var(--text-heading)' }}>SCOUT Assistant</h2>
+                <p className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>Manage assistant tutorials and preferences</p>
               </div>
             </div>
           </div>
-
           <div className="p-8">
             <div className="flex items-center justify-between">
               <div>
@@ -186,9 +262,7 @@ export function SettingsClient({ email, roleLabel }: { email: string; roleLabel:
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  window.dispatchEvent(new Event('ns-restart-tour'))
-                }}
+                onClick={() => window.dispatchEvent(new Event('ns-restart-tour'))}
                 className="rounded-xl px-5 py-2.5 text-[13px] font-bold shadow-sm transition-all hover:-translate-y-0.5 active:scale-95"
                 style={{ background: 'var(--bg-card)', border: '1px solid var(--border-default)', color: 'var(--text-primary)' }}
               >
@@ -198,7 +272,7 @@ export function SettingsClient({ email, roleLabel }: { email: string; roleLabel:
           </div>
         </section>
 
-        {/* 2. SECURITY SECTION */}
+        {/* ── 2. SECURITY ── */}
         <section
           className="clinical-card p-1 transition-all duration-300"
           style={{ boxShadow: 'var(--shadow-md)', border: '1px solid var(--border-strong)' }}
@@ -207,131 +281,145 @@ export function SettingsClient({ email, roleLabel }: { email: string; roleLabel:
         >
           <div className="border-b px-8 py-6" style={{ borderColor: 'var(--border-subtle)' }}>
             <div className="flex items-center gap-4">
-              <div
-                className="flex h-10 w-10 items-center justify-center rounded-lg"
-                style={{ background: 'var(--accent-primary-light)', color: 'var(--accent-primary)' }}
-              >
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg" style={{ background: 'var(--accent-primary-light)', color: 'var(--accent-primary)' }}>
                 <IconLock />
               </div>
               <div>
-                <h2 className="text-[16px] font-bold" style={{ color: 'var(--text-heading)' }}>
-                  Security & Authentication
-                </h2>
-                <p className="text-[13px]" style={{ color: 'var(--text-muted)' }}>
-                  Secure your account access credentials
-                </p>
+                <h2 className="text-[16px] font-bold" style={{ color: 'var(--text-heading)' }}>Security &amp; Authentication</h2>
+                <p className="text-[13px]" style={{ color: 'var(--text-muted)' }}>Secure your account access credentials</p>
               </div>
             </div>
           </div>
 
           <div className="p-8">
-            <div className="max-w-2xl space-y-8">
-              <div className="grid gap-8 md:grid-cols-2">
-                <div className="space-y-2.5">
-                  <label className="text-[13px] font-bold" style={{ color: 'var(--text-primary)' }}>
-                    New Security Password
-                  </label>
-                  <input
-                    type="password"
-                    value={newPassword}
-                    onChange={(event) => setNewPassword(event.target.value)}
-                    placeholder="Enter new password"
-                    className="w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all placeholder:text-slate-400"
-                    style={{
-                      borderColor: 'var(--border-default)',
-                      background: 'var(--bg-card)',
-                      color: 'var(--text-primary)',
-                    }}
-                    onFocus={(e) => {
-                      e.target.style.borderColor = 'var(--accent-primary)'
-                      e.target.style.boxShadow = '0 0 0 3px rgba(14, 116, 144, 0.1)'
-                    }}
-                    onBlur={(e) => {
-                      e.target.style.borderColor = 'var(--border-default)'
-                      e.target.style.boxShadow = 'none'
-                    }}
-                  />
+            <div className="grid gap-10 xl:grid-cols-[1fr_320px]">
+
+              {/* Left: password fields */}
+              <div className="space-y-6">
+                <div className="grid gap-6 md:grid-cols-2">
+                  {/* New password */}
+                  <div className="space-y-3">
+                    <PasswordInput
+                      id="new-password"
+                      label="New Security Password"
+                      value={newPassword}
+                      placeholder="Enter new password"
+                      show={showNew}
+                      onToggleShow={() => setShowNew(v => !v)}
+                      onChange={setNewPassword}
+                    />
+
+                    {/* Strength bar */}
+                    {newPassword.length > 0 && (
+                      <div className="space-y-1.5">
+                        <div className="flex gap-1">
+                          {[0, 1, 2, 3].map(i => (
+                            <div
+                              key={i}
+                              className="h-1.5 flex-1 rounded-full transition-all duration-300"
+                              style={{
+                                background: i < strengthScore
+                                  ? (strengthCfg?.color ?? 'var(--accent-primary)')
+                                  : 'var(--border-default)',
+                              }}
+                            />
+                          ))}
+                        </div>
+                        <div className="text-[11px] font-semibold" style={{ color: strengthCfg?.color }}>
+                          {strengthCfg?.label}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Confirm password */}
+                  <div className="space-y-3">
+                    <PasswordInput
+                      id="confirm-password"
+                      label="Confirm New Password"
+                      value={confirmPassword}
+                      placeholder="Re-enter password"
+                      show={showConfirm}
+                      onToggleShow={() => setShowConfirm(v => !v)}
+                      onChange={setConfirmPassword}
+                    />
+
+                    {/* Live match indicator */}
+                    {confirmPassword.length > 0 && (
+                      <div className="flex items-center gap-1.5 text-[12px] font-medium" style={{ color: passwordsMatch ? 'var(--accent-success)' : 'var(--accent-danger)' }}>
+                        {passwordsMatch ? (
+                          <>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                            Passwords match
+                          </>
+                        ) : (
+                          <>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                            Passwords do not match
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div className="space-y-2.5">
-                  <label className="text-[13px] font-bold" style={{ color: 'var(--text-primary)' }}>
-                    Confirm New Password
-                  </label>
-                  <input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(event) => setConfirmPassword(event.target.value)}
-                    placeholder="Re-enter password"
-                    className="w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all placeholder:text-slate-400"
-                    style={{
-                      borderColor: 'var(--border-default)',
-                      background: 'var(--bg-card)',
-                      color: 'var(--text-primary)',
-                    }}
-                    onFocus={(e) => {
-                      e.target.style.borderColor = 'var(--accent-primary)'
-                      e.target.style.boxShadow = '0 0 0 3px rgba(14, 116, 144, 0.1)'
-                    }}
-                    onBlur={(e) => {
-                      e.target.style.borderColor = 'var(--border-default)'
-                      e.target.style.boxShadow = 'none'
-                    }}
-                  />
-                </div>
+
+                {/* Feedback messages */}
+                {passwordError && (
+                  <div className="rounded-xl border px-4 py-3 text-[13px] font-medium" style={{ borderColor: 'rgba(220,38,38,0.15)', background: 'var(--accent-danger-light)', color: 'var(--accent-danger)' }}>
+                    {passwordError}
+                  </div>
+                )}
+                {passwordMessage && (
+                  <div className="rounded-xl border px-4 py-3 text-[13px] font-medium" style={{ borderColor: 'rgba(22,163,74,0.15)', background: 'var(--accent-success-light)', color: 'var(--accent-success)' }}>
+                    {passwordMessage}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => void handlePasswordChange()}
+                  disabled={passwordLoading || mismatch}
+                  className="clinical-btn-primary"
+                  style={{ height: 46, padding: '0 32px', borderRadius: '12px', fontSize: '14px', boxShadow: '0 4px 12px rgba(14, 116, 144, 0.2)' }}
+                >
+                  {passwordLoading ? 'Updating...' : 'Change Security Password'}
+                </button>
               </div>
 
-              <div className="flex items-start gap-2.5 text-[12.5px]" style={{ color: 'var(--text-secondary)' }}>
-                <div className="mt-0.5" style={{ color: 'var(--accent-primary)' }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" /></svg>
-                </div>
-                <p>Use a robust password configuration with at least 8 characters including alphanumeric symbols for optimal clinical security.</p>
-              </div>
-
-              {passwordError && (
-                <div
-                  className="rounded-xl border px-4 py-3 text-[13px] font-medium"
-                  style={{
-                    borderColor: 'rgba(220, 38, 38, 0.15)',
-                    background: 'var(--accent-danger-light)',
-                    color: 'var(--accent-danger)',
-                  }}
-                >
-                  {passwordError}
-                </div>
-              )}
-
-              {passwordMessage && (
-                <div
-                  className="rounded-xl border px-4 py-3 text-[13px] font-medium"
-                  style={{
-                    borderColor: 'rgba(22, 163, 74, 0.15)',
-                    background: 'var(--accent-success-light)',
-                    color: 'var(--accent-success)',
-                  }}
-                >
-                  {passwordMessage}
-                </div>
-              )}
-
-              <button
-                type="button"
-                onClick={() => void handlePasswordChange()}
-                disabled={passwordLoading}
-                className="clinical-btn-primary"
-                style={{
-                  height: 46,
-                  padding: '0 32px',
-                  borderRadius: '12px',
-                  fontSize: '14px',
-                  boxShadow: '0 4px 12px rgba(14, 116, 144, 0.2)',
-                }}
+              {/* Right: requirements checklist */}
+              <div
+                className="rounded-xl p-5 space-y-3 self-start"
+                style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)' }}
               >
-                {passwordLoading ? 'Processing Updates...' : 'Change Security Password'}
-              </button>
+                <div className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-faint)' }}>
+                  Requirements
+                </div>
+                {requirements.map(req => (
+                  <div key={req.label} className="flex items-center gap-2.5 text-[13px]">
+                    <div
+                      className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full transition-all duration-200"
+                      style={{
+                        background: req.met ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
+                        border: req.met ? 'none' : '1.5px solid var(--border-strong)',
+                      }}
+                    >
+                      {req.met && (
+                        <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      )}
+                    </div>
+                    <span style={{ color: req.met ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                      {req.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </section>
 
-        {/* 3. ACCOUNT SECTION (DANGER ZONE) */}
+        {/* ── 3. DANGER ZONE ── */}
         <section
           className="clinical-card p-1 transition-all duration-300"
           style={{ background: '#fffafa', borderColor: 'rgba(220, 38, 38, 0.1)' }}
@@ -340,54 +428,31 @@ export function SettingsClient({ email, roleLabel }: { email: string; roleLabel:
         >
           <div className="border-b px-8 py-6" style={{ borderColor: 'rgba(220, 38, 38, 0.06)' }}>
             <div className="flex items-center gap-4">
-              <div
-                className="flex h-10 w-10 items-center justify-center rounded-lg"
-                style={{ background: 'var(--accent-danger-light)', color: 'var(--accent-danger)' }}
-              >
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg" style={{ background: 'var(--accent-danger-light)', color: 'var(--accent-danger)' }}>
                 <IconTrash />
               </div>
               <div>
-                <h2 className="text-[16px] font-bold" style={{ color: 'var(--accent-danger)' }}>
-                  Permanent Account Removal
-                </h2>
-                <p className="text-[13px]" style={{ color: 'var(--accent-danger)', opacity: 0.7 }}>
-                  Critical action area — exercise caution
-                </p>
+                <h2 className="text-[16px] font-bold" style={{ color: 'var(--accent-danger)' }}>Permanent Account Removal</h2>
+                <p className="text-[13px]" style={{ color: 'var(--accent-danger)', opacity: 0.7 }}>Critical action area — exercise caution</p>
               </div>
             </div>
           </div>
-
           <div className="p-8">
-            <p className="max-w-xl text-[14.5px] font-medium leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+            <p className="text-[14.5px] font-medium leading-relaxed" style={{ color: 'var(--text-secondary)', maxWidth: '640px' }}>
               Executing an account deletion will permanently purge your clinical profile, historical reports, scout sessions, and authentication metadata.
               <span className="mt-2 block font-bold text-red-600">This action is medically irreversible.</span>
             </p>
-
             {deleteError && (
-              <div
-                className="mt-6 rounded-xl border px-4 py-3 text-[13px] font-medium"
-                style={{
-                  borderColor: 'rgba(220, 38, 38, 0.25)',
-                  background: 'white',
-                  color: 'var(--accent-danger)',
-                }}
-              >
+              <div className="mt-6 rounded-xl border px-4 py-3 text-[13px] font-medium" style={{ borderColor: 'rgba(220,38,38,0.25)', background: 'white', color: 'var(--accent-danger)' }}>
                 {deleteError}
               </div>
             )}
-
             <button
               type="button"
               onClick={() => void handleDeleteAccount()}
               disabled={deleteLoading}
               className="mt-8 clinical-btn-danger-outline"
-              style={{
-                height: 44,
-                padding: '0 28px',
-                borderRadius: '12px',
-                fontWeight: 700,
-                transition: 'all 0.2s ease',
-              }}
+              style={{ height: 44, padding: '0 28px', borderRadius: '12px', fontWeight: 700, transition: 'all 0.2s ease' }}
               onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--accent-danger-light)')}
               onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
             >
@@ -395,6 +460,7 @@ export function SettingsClient({ email, roleLabel }: { email: string; roleLabel:
             </button>
           </div>
         </section>
+
       </div>
     </div>
   )
