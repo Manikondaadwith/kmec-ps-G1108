@@ -47,17 +47,15 @@ function decodePayload(token: string) {
 /**
  * Send an OTP email. Priority order:
  *
- * 1. Brevo API (BREVO_API_KEY) — free, no domain needed, just verify your Gmail
- *    → HTTPS to api.brevo.com — works from Vercel serverless.
+ * 1. Gmail SMTP via nodemailer (SMTP_USER + SMTP_PASSWORD set on Vercel)
+ *    → Direct Gmail send from Vercel — works on port 587, no relay needed.
  *
- * 2. Resend API (RESEND_API_KEY) — free tier, requires verified domain.
- *    → HTTPS to api.resend.com — works from Vercel serverless.
+ * 2. Brevo API (BREVO_API_KEY) — free, no domain, just verify Gmail sender.
  *
- * 3. HF backend relay (NEUROSENTINEL_BACKEND_URL + INTERNAL_API_SECRET)
- *    → Legacy fallback. Requires RESEND_API_KEY or SMTP_* on HF Space.
+ * 3. Resend API (RESEND_API_KEY) — requires verified domain.
  *
- * Why not SMTP directly from Vercel?
- *    Vercel serverless blocks outbound ports 465/587.
+ * 4. HF backend relay (NEUROSENTINEL_BACKEND_URL + INTERNAL_API_SECRET)
+ *    → Last resort fallback.
  */
 async function sendEmailViaBackend({
   to,
@@ -71,7 +69,30 @@ async function sendEmailViaBackend({
   text: string
 }): Promise<void> {
 
-  // ── Tier 1: Brevo (free, no domain needed — just verify your Gmail) ─────────
+  // ── Tier 1: Gmail SMTP directly from Vercel via nodemailer ──────────────────
+  const smtpUser = process.env.SMTP_USER
+  const smtpPass = process.env.SMTP_PASSWORD
+  const smtpFrom = process.env.SMTP_FROM_EMAIL ?? smtpUser
+
+  if (smtpUser && smtpPass) {
+    const nodemailer = await import('nodemailer')
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST ?? 'smtp.gmail.com',
+      port: Number(process.env.SMTP_PORT ?? 587),
+      secure: Number(process.env.SMTP_PORT ?? 587) === 465,
+      auth: { user: smtpUser, pass: smtpPass.replace(/\s/g, '') },
+    })
+    await transporter.sendMail({
+      from: `NeuroSentinel AI <${smtpFrom}>`,
+      to,
+      subject,
+      html,
+      text: text || undefined,
+    })
+    return
+  }
+
+  // ── Tier 2: Brevo (free, no domain needed — just verify your Gmail) ──────────
   const brevoKey = process.env.BREVO_API_KEY
   if (brevoKey) {
     const fromEmail = process.env.BREVO_FROM_EMAIL ?? 'noreply@neurosentinel.app'
@@ -79,10 +100,7 @@ async function sendEmailViaBackend({
 
     const res = await fetch('https://api.brevo.com/v3/smtp/email', {
       method: 'POST',
-      headers: {
-        'api-key': brevoKey,
-        'Content-Type': 'application/json',
-      },
+      headers: { 'api-key': brevoKey, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         sender:      { name: fromName, email: fromEmail },
         to:          [{ email: to }],
@@ -94,63 +112,48 @@ async function sendEmailViaBackend({
     }).catch((err: unknown) => {
       throw new Error(`Email send failed: ${err instanceof Error ? err.message : String(err)}`)
     })
-
     if (res.ok) return
-
     const body = await res.json().catch(() => ({})) as any
     throw new Error(`Email send failed (${res.status}): ${body?.message ?? 'Unknown Brevo error'}`)
   }
 
-  // ── Tier 2: Resend (requires verified domain) ───────────────────────────────
+  // ── Tier 3: Resend (requires verified domain) ────────────────────────────────
   const resendKey  = process.env.RESEND_API_KEY
   const resendFrom = process.env.RESEND_FROM_EMAIL ?? 'NeuroSentinel AI <onboarding@resend.dev>'
 
   if (resendKey) {
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${resendKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ from: resendFrom, to: [to], subject, html }),
       signal: AbortSignal.timeout(15000),
     }).catch((err: unknown) => {
       throw new Error(`Email send failed: ${err instanceof Error ? err.message : String(err)}`)
     })
-
     if (res.ok) return
-
     const body = await res.json().catch(() => ({})) as any
     throw new Error(`Email send failed (${res.status}): ${body?.message ?? body?.name ?? 'Unknown Resend error'}`)
   }
 
-  // ── Tier 3: HF backend relay (legacy fallback) ──────────────────────────────
+  // ── Tier 4: HF backend relay (last resort) ───────────────────────────────────
   const backendUrl = process.env.NEUROSENTINEL_BACKEND_URL
   const secret     = process.env.INTERNAL_API_SECRET
 
   if (!backendUrl || !secret) {
     throw new Error(
-      'Email service is not configured. Add BREVO_API_KEY to your Vercel environment variables to enable account registration.'
+      'Email service is not configured. Add SMTP_USER and SMTP_PASSWORD to your Vercel environment variables.'
     )
   }
 
   const response = await fetch(`${backendUrl}/api/v1/internal/send-otp-email`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Internal-Secret': secret,
-    },
+    headers: { 'Content-Type': 'application/json', 'X-Internal-Secret': secret },
     body: JSON.stringify({ to, subject, html, text }),
-    // 55s — SMTP capped at 15s on HF, 60s Vercel maxDuration gives headroom
     signal: AbortSignal.timeout(55000),
   }).catch((err: unknown) => {
     const msg = err instanceof Error ? err.message : String(err)
     const isTimeout = msg.toLowerCase().includes('timeout') || msg.toLowerCase().includes('abort')
-    if (isTimeout) {
-      throw new Error(
-        'The email service is starting up — please wait a moment and try again.'
-      )
-    }
+    if (isTimeout) throw new Error('The email service is starting up — please wait a moment and try again.')
     throw new Error(`Could not reach email service: ${msg}. Please try again in a moment.`)
   })
 
