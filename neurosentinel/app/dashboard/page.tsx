@@ -154,28 +154,43 @@ export default function DashboardPage() {
 
               {/* ── Status Indicators ── */}
               <div className="grid gap-3">
-                {[
-                  { label: 'Current role', value: getRoleLabel(role) },
-                  { label: 'Latest status', value:
-                    currentAnalysis ? `${getAnalysisHeadline(currentAnalysis.stage)} — ${currentAnalysis.filename}...`
-                    : latestAnalysis ? getReportHeadline(latestAnalysis)
-                    : 'Awaiting upload'
-                  },
-                ].map((item) => {
-                  const isActive = item.label === 'Latest status' && !!currentAnalysis
-                  return (
-                    <div
-                      key={item.label}
-                      className={`clinical-status-pill ${isActive ? 'active' : ''}`}
-                    >
-                      <div className="clinical-metric-label">{item.label}</div>
-                      <div className="mt-2 flex items-center gap-2 text-[14px] font-semibold" style={{ color: isActive ? 'var(--accent-primary)' : 'var(--text-heading)' }}>
-                        {isActive ? <span className="clinical-dot clinical-dot-primary clinical-dot-pulse" /> : null}
-                        <span className="truncate">{item.value}</span>
+                {/* Current Role */}
+                <div className="clinical-status-pill">
+                  <div className="clinical-metric-label">Current role</div>
+                  <div className="mt-2 text-[14px] font-semibold" style={{ color: 'var(--text-heading)' }}>
+                    {getRoleLabel(role)}
+                  </div>
+                </div>
+
+                {/* Latest Status — filename wrapped separately to avoid overflow */}
+                <div className={`clinical-status-pill ${currentAnalysis ? 'active' : ''}`}>
+                  <div className="clinical-metric-label">Latest status</div>
+                  <div className="mt-2 flex items-start gap-2 min-w-0">
+                    {currentAnalysis && (
+                      <span className="clinical-dot clinical-dot-primary clinical-dot-pulse flex-shrink-0 mt-[5px]" />
+                    )}
+                    <div className="min-w-0">
+                      <div
+                        className="text-[14px] font-semibold leading-snug"
+                        style={{ color: currentAnalysis ? 'var(--accent-primary)' : 'var(--text-heading)', overflowWrap: 'break-word', wordBreak: 'break-word' }}
+                      >
+                        {currentAnalysis
+                          ? getAnalysisHeadline(currentAnalysis.stage)
+                          : latestAnalysis
+                          ? getReportHeadline(latestAnalysis)
+                          : 'Awaiting upload'}
                       </div>
+                      {currentAnalysis && (
+                        <div
+                          className="mt-0.5 text-[12px] font-medium leading-snug"
+                          style={{ color: 'var(--text-muted)', overflowWrap: 'break-word', wordBreak: 'break-all' }}
+                        >
+                          {currentAnalysis.filename}
+                        </div>
+                      )}
                     </div>
-                  )
-                })}
+                  </div>
+                </div>
               </div>
             </div>
           </section>

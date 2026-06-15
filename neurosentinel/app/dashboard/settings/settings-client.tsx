@@ -224,17 +224,23 @@ export function SettingsClient({ email, roleLabel }: { email: string; roleLabel:
             </div>
           </div>
           <div className="p-8">
-            <div className="grid gap-8 md:grid-cols-2 xl:grid-cols-4">
-              <div className="space-y-1.5">
+            <div className="grid gap-0 sm:grid-cols-2">
+              {/* Email block */}
+              <div className="space-y-1.5 py-2 pr-8">
                 <div className="text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: 'var(--text-muted)' }}>Registered Email</div>
-                <div className="text-[15px] font-semibold" style={{ color: 'var(--text-primary)' }}>{email}</div>
+                <div className="text-[15px] font-semibold break-all" style={{ color: 'var(--text-primary)' }}>{email}</div>
               </div>
-              <div className="space-y-1.5">
+              {/* Role block — left border on sm+ to clearly separate the two info blocks */}
+              <div
+                className="space-y-1.5 py-2 sm:pl-8"
+                style={{ borderLeft: '1px solid var(--border-subtle)' }}
+              >
                 <div className="text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: 'var(--text-muted)' }}>Assigned Role</div>
                 <div className="text-[15px] font-semibold" style={{ color: 'var(--text-primary)' }}>{roleLabel}</div>
               </div>
             </div>
           </div>
+
         </section>
 
         {/* ── 1.5 SCOUT ASSISTANT ── */}

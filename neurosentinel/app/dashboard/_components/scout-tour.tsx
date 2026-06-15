@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 
 const TOUR_STEPS = [
@@ -37,6 +37,17 @@ const TOUR_STEPS = [
   }
 ]
 
+// Compute highlight rect from a DOM element with padding
+function computeHighlight(el: HTMLElement) {
+  const rect = el.getBoundingClientRect()
+  return {
+    top: rect.top - 10,
+    left: rect.left - 10,
+    width: rect.width + 20,
+    height: rect.height + 20,
+  }
+}
+
 export function ScoutTour() {
   const router = useRouter()
   const pathname = usePathname()
@@ -45,9 +56,12 @@ export function ScoutTour() {
     isActive: false,
     currentStep: 0
   })
-  
-  const [highlightStyle, setHighlightStyle] = useState({});
-  const [isNavigating, setIsNavigating] = useState(false);
+
+  const [highlightStyle, setHighlightStyle] = useState<Record<string, number>>({})
+  const [isNavigating, setIsNavigating] = useState(false)
+
+  // Ref to the currently highlighted DOM element — persists across renders
+  const activeTargetRef = useRef<HTMLElement | null>(null)
 
   // Initialization & Manual trigger
   useEffect(() => {
@@ -70,7 +84,29 @@ export function ScoutTour() {
     return () => window.removeEventListener('ns-restart-tour', handleRestart)
   }, [])
 
-  // The Main State Machine for Navigation & Highlighting
+  // ── Resize & Scroll: recalculate highlight position dynamically ──────────────
+  // Runs whenever step changes or tour becomes active.
+  // Attaches to resize (viewport changes) and scroll (capture: catches any
+  // nested scrollable container, not just window).
+  useEffect(() => {
+    if (!tourState.isActive) return
+
+    const recalc = () => {
+      const el = activeTargetRef.current
+      if (!el) return
+      setHighlightStyle(computeHighlight(el))
+    }
+
+    window.addEventListener('resize', recalc)
+    window.addEventListener('scroll', recalc, true) // capture phase
+
+    return () => {
+      window.removeEventListener('resize', recalc)
+      window.removeEventListener('scroll', recalc, true)
+    }
+  }, [tourState.isActive, tourState.currentStep])
+
+  // ── Main State Machine: Navigation & Element Targeting ───────────────────────
   useEffect(() => {
     if (!tourState.isActive) {
       document.body.style.overflow = ''
@@ -80,6 +116,7 @@ export function ScoutTour() {
         ;(el as HTMLElement).style.position = ''
         ;(el as HTMLElement).style.pointerEvents = ''
       })
+      activeTargetRef.current = null
       return
     }
 
@@ -89,19 +126,18 @@ export function ScoutTour() {
     // 1. Handle cross-page navigation
     const normalizedPath = pathname === '/' ? '/' : pathname.replace(/\/$/, '')
     const targetRoute = step.route === '/' ? '/' : step.route.replace(/\/$/, '')
-    
+
     if (normalizedPath !== targetRoute) {
       setIsNavigating(true)
       router.push(targetRoute)
-      return // Exit and wait for pathname to change and trigger effect again
+      return
     }
 
-    // Path matches, begin highlighting logic
     setIsNavigating(false)
     document.body.style.overflow = 'hidden'
 
-    let checkTimer: any;
-    let attempts = 0;
+    let checkTimer: ReturnType<typeof setTimeout>
+    let attempts = 0
 
     const cleanupTarget = () => {
       document.querySelectorAll('.tour-highlight').forEach(el => {
@@ -110,6 +146,7 @@ export function ScoutTour() {
         ;(el as HTMLElement).style.position = ''
         ;(el as HTMLElement).style.pointerEvents = ''
       })
+      activeTargetRef.current = null
     }
 
     const findTarget = () => {
@@ -123,8 +160,8 @@ export function ScoutTour() {
       const target = document.getElementById(step.targetId)
       if (target) {
         target.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        
-        // Wait another 50ms for scroll to settle before measuring bounds
+
+        // Wait for scroll to settle, then measure and store element
         setTimeout(() => {
           target.classList.add('tour-highlight')
           target.style.zIndex = '51'
@@ -132,20 +169,16 @@ export function ScoutTour() {
           if (currentPos === 'static') target.style.position = 'relative'
           target.style.pointerEvents = 'none'
 
-          const rect = target.getBoundingClientRect()
-          setHighlightStyle({
-            top: rect.top - 10,
-            left: rect.left - 10,
-            width: rect.width + 20,
-            height: rect.height + 20,
-          })
+          // Store ref for dynamic recalculation on resize/scroll
+          activeTargetRef.current = target
+          setHighlightStyle(computeHighlight(target))
         }, 50)
       } else {
         attempts++
         if (attempts < 50) {
-          checkTimer = setTimeout(findTarget, 100) // Loop for 5 seconds waiting for DOM to render
+          checkTimer = setTimeout(findTarget, 100)
         } else {
-          setHighlightStyle({}) // Fallback safely if element doesn't exist
+          setHighlightStyle({}) // Safe fallback if element never renders
         }
       }
     }
@@ -162,7 +195,6 @@ export function ScoutTour() {
   const handleFinish = () => {
     setTourState({ ...tourState, isActive: false })
     window.localStorage.setItem('hasCompletedTour', 'true')
-    
     document.body.style.overflow = ''
     document.querySelectorAll('.tour-highlight').forEach(el => {
       el.classList.remove('tour-highlight')
@@ -170,14 +202,15 @@ export function ScoutTour() {
       ;(el as HTMLElement).style.position = ''
       ;(el as HTMLElement).style.pointerEvents = ''
     })
+    activeTargetRef.current = null
   }
 
   const step = TOUR_STEPS[tourState.currentStep]
-  const highlightHasBounds = Object.keys(highlightStyle).length > 0;
+  const highlightHasBounds = Object.keys(highlightStyle).length > 0
 
   return (
     <>
-      {/* Conditionally hide the global scout floating widget unless we are showing it off */}
+      {/* Hide scout widget unless we are showing it off */}
       {step?.targetId !== 'scout-floating-trigger' && (
         <style dangerouslySetInnerHTML={{ __html: `
           #scout-floating-trigger {
@@ -192,28 +225,36 @@ export function ScoutTour() {
       {/* Dim Overlay */}
       <div className="fixed inset-0 z-50 pointer-events-auto" />
 
-      {/* Target Edge Highlighting Box */}
+      {/* Dynamic highlight box — position recalculates on resize/scroll */}
       {highlightHasBounds ? (
-        <div 
-          className="fixed z-[52] rounded-2xl border-[3px] border-[#10B981] shadow-[0_0_0_9999px_rgba(0,0,0,0.6),0_0_20px_rgba(16,185,129,0.5)] transition-all duration-300 pointer-events-none"
-          style={highlightStyle}
+        <div
+          className="fixed z-[52] rounded-2xl border-[3px] border-[#10B981] shadow-[0_0_0_9999px_rgba(0,0,0,0.6),0_0_20px_rgba(16,185,129,0.5)] pointer-events-none"
+          style={{
+            ...highlightStyle,
+            transition: 'top 0.15s ease, left 0.15s ease, width 0.15s ease, height 0.15s ease',
+          }}
         />
       ) : (
         <div className="fixed inset-0 z-[52] bg-[rgba(0,0,0,0.6)] pointer-events-none transition-all duration-300" />
       )}
 
-      {/* Primary Scout Driver Panel */}
-      <ScoutGuide 
-        tourState={tourState} 
-        setTourState={setTourState} 
-        handleFinish={handleFinish} 
+      {/* Scout Guide Panel */}
+      <ScoutGuide
+        tourState={tourState}
+        setTourState={setTourState}
+        handleFinish={handleFinish}
         isNavigating={isNavigating}
       />
     </>
   )
 }
 
-function ScoutGuide({ tourState, setTourState, handleFinish, isNavigating }: any) {
+function ScoutGuide({ tourState, setTourState, handleFinish, isNavigating }: {
+  tourState: { isActive: boolean; currentStep: number }
+  setTourState: (s: { isActive: boolean; currentStep: number }) => void
+  handleFinish: () => void
+  isNavigating: boolean
+}) {
   const step = TOUR_STEPS[tourState.currentStep]
 
   if (!step) {
@@ -224,47 +265,46 @@ function ScoutGuide({ tourState, setTourState, handleFinish, isNavigating }: any
   const messageText = isNavigating ? "Moving across workspace..." : step.message
 
   return (
-    <div 
+    <div
       className="fixed z-[60]"
-      style={{ 
-        bottom: '80px', 
-        right: '40px', 
-        display: 'flex', 
-        flexDirection: 'column', 
-        alignItems: 'flex-end', 
-        gap: '20px' 
+      style={{
+        bottom: '80px',
+        right: '40px',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-end',
+        gap: '20px'
       }}
     >
-      {/* ── Narrative Message Bubble ── */}
-      <div 
+      <div
         className="w-[340px] rounded-2xl bg-white shadow-[0_15px_40px_rgba(0,0,0,0.25)] border border-gray-100 px-7 py-6 flex flex-col gap-4 animate-in fade-in zoom-in duration-300"
         style={{ transformOrigin: 'bottom right' }}
       >
         <div className="flex items-center gap-2.5 mb-1">
-           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a10 10 0 1 0 10 10" /><path d="M12 12 21 3" /><path d="M16 3h5v5" /></svg>
-           <span className="text-[12px] font-bold tracking-[0.15em] text-[#10B981] uppercase">SCOUT Assistant</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a10 10 0 1 0 10 10" /><path d="M12 12 21 3" /><path d="M16 3h5v5" /></svg>
+          <span className="text-[12px] font-bold tracking-[0.15em] text-[#10B981] uppercase">SCOUT Assistant</span>
         </div>
 
         <div className="text-[15px] text-[#334155] leading-relaxed font-medium">
           {messageText}
         </div>
 
-        <div className="mt-2 flex items-center justify-end">
+        {/* Step counter */}
+        <div className="text-[11px] text-gray-400 font-medium">
+          Step {tourState.currentStep + 1} of {TOUR_STEPS.length}
+        </div>
+
+        <div className="mt-1 flex items-center justify-end">
           {!step.isFinal ? (
-            <button 
-              onClick={() => {
-                setTourState({
-                  ...tourState,
-                  currentStep: tourState.currentStep + 1
-                })
-              }}
+            <button
+              onClick={() => setTourState({ ...tourState, currentStep: tourState.currentStep + 1 })}
               disabled={isNavigating}
               className="px-6 py-2.5 rounded-xl bg-[#0F172A] text-white text-[13.5px] font-bold shadow-sm hover:-translate-y-0.5 active:scale-95 disabled:opacity-50 transition-all"
             >
               Next &rarr;
             </button>
           ) : (
-             <button 
+            <button
               onClick={handleFinish}
               className="w-full py-3 rounded-xl bg-[linear-gradient(180deg,#10B981,#059669)] text-white text-[14.5px] font-bold shadow-md hover:-translate-y-0.5 active:scale-95 text-center flex items-center justify-center gap-2 group transition-all"
             >
@@ -277,4 +317,3 @@ function ScoutGuide({ tourState, setTourState, handleFinish, isNavigating }: any
     </div>
   )
 }
-
