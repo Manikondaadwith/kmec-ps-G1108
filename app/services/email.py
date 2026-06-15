@@ -33,6 +33,231 @@ def _normalize_app_url(app_url: str | None) -> str:
     return DEFAULT_APP_URL
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Email design system — clinical, clean, email-safe (table-based layout)
+# Tested against Gmail, Outlook, Apple Mail, Yahoo Mail
+# ─────────────────────────────────────────────────────────────────────────────
+
+_EC_BG         = "#F0F4F8"   # email outer background
+_EC_CARD       = "#FFFFFF"   # card surface
+_EC_HEADER     = "#0F172A"   # dark navy header / footer
+_EC_ACCENT     = "#10B981"   # NeuroSentinel teal
+_EC_TEXT       = "#1E293B"   # primary text
+_EC_TEXT_SEC   = "#475569"   # secondary text
+_EC_TEXT_MUTED = "#94A3B8"   # muted / caption text
+_EC_BORDER     = "#E2E8F0"   # divider / border
+
+
+def _status_badge(status_key: str) -> str:
+    configs: dict[str, tuple[str, str, str, str]] = {
+        "seizure":    ("#EF4444", "#FEF2F2", "#FECACA", "&#9888;&#xFE0E;&nbsp; Seizure Activity Detected"),
+        "suspicious": ("#F59E0B", "#FFFBEB", "#FDE68A", "&#9888;&#xFE0E;&nbsp; Suspicious Patterns Found"),
+        "clear":      ("#10B981", "#ECFDF5", "#6EE7B7", "&#10003;&nbsp; Analysis Complete"),
+        "failed":     ("#EF4444", "#FEF2F2", "#FECACA", "&#10007;&nbsp; Analysis Failed"),
+        "timeout":    ("#F59E0B", "#FFFBEB", "#FDE68A", "&#8987;&nbsp; Analysis Timed Out"),
+        "aborted":    ("#64748B", "#F8FAFC", "#CBD5E1", "&mdash;&nbsp; Analysis Aborted"),
+        "size":       ("#F59E0B", "#FFFBEB", "#FDE68A", "&#8679;&nbsp; File Size Limit Exceeded"),
+    }
+    color, bg, border, label = configs.get(status_key, configs["clear"])
+    return (
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"'
+        f' style="margin-bottom:28px;"><tr><td align="center">'
+        f'<span style="display:inline-block;padding:10px 28px;border-radius:100px;'
+        f'background-color:{bg};border:1.5px solid {border};color:{color};font-size:13px;'
+        f'font-weight:700;font-family:\'Segoe UI\',Arial,Helvetica,sans-serif;'
+        f'letter-spacing:0.03em;">{label}</span></td></tr></table>'
+    )
+
+
+def _email_open(subtitle: str, status_key: str) -> str:
+    """Returns the full HTML open: DOCTYPE → hero header → content area open → status badge."""
+    badge = _status_badge(status_key)
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<title>NeuroSentinel AI</title>
+</head>
+<body style="margin:0;padding:0;background-color:{_EC_BG};-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:{_EC_BG};">
+  <tr>
+    <td align="center" style="padding:40px 16px;">
+      <!--[if (gte mso 9)|(IE)]><table width="700" align="center" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0"
+             style="max-width:700px;width:100%;background-color:{_EC_CARD};border-radius:16px;overflow:hidden;">
+
+        <!-- ═══ HERO HEADER ═══ -->
+        <tr>
+          <td style="background-color:{_EC_HEADER};padding:44px 48px 36px;text-align:center;">
+            <img src="{LOGO_URL}" alt="NeuroSentinel AI" width="72" height="72"
+                 style="border-radius:14px;display:block;margin:0 auto 20px;border:0;" />
+            <h1 style="margin:0 0 6px;font-size:22px;font-weight:800;color:#FFFFFF;
+                        letter-spacing:0.08em;text-transform:uppercase;
+                        font-family:'Segoe UI',Arial,Helvetica,sans-serif;">NeuroSentinel AI</h1>
+            <p style="margin:0 0 16px;font-size:10px;color:{_EC_TEXT_MUTED};
+                       letter-spacing:0.16em;text-transform:uppercase;
+                       font-family:'Segoe UI',Arial,Helvetica,sans-serif;">Clinical EEG Intelligence Platform</p>
+            <p style="margin:0;font-size:14px;color:#CBD5E1;line-height:1.6;
+                       font-family:'Segoe UI',Arial,Helvetica,sans-serif;">{subtitle}</p>
+          </td>
+        </tr>
+
+        <!-- Teal accent bar -->
+        <tr>
+          <td style="background-color:{_EC_ACCENT};height:4px;font-size:0;line-height:0;mso-line-height-rule:exactly;">&nbsp;</td>
+        </tr>
+
+        <!-- ═══ CONTENT AREA ═══ -->
+        <tr>
+          <td style="padding:36px 48px 28px;">
+            {badge}"""
+
+
+def _email_close(
+    app_url: str,
+    cta_label: str,
+    cta_color: str,
+    has_pdf: bool,
+    disclaimer: str,
+) -> str:
+    """Returns PDF callout (optional) → CTA button → disclaimer card → footer → HTML close."""
+    pdf_section = ""
+    if has_pdf:
+        pdf_section = f"""
+            <!-- PDF attachment callout -->
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:28px;">
+              <tr>
+                <td style="background-color:#F8FAFC;border:1px solid {_EC_BORDER};border-radius:10px;padding:16px 20px;">
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td width="28" style="vertical-align:middle;font-size:22px;color:{_EC_ACCENT};">&#128196;</td>
+                      <td style="padding-left:14px;vertical-align:middle;">
+                        <p style="margin:0 0 3px;font-size:11px;font-weight:700;color:{_EC_TEXT};
+                                   text-transform:uppercase;letter-spacing:0.07em;
+                                   font-family:'Segoe UI',Arial,Helvetica,sans-serif;">Attached Documents</p>
+                        <p style="margin:0;font-size:13px;color:{_EC_TEXT_SEC};
+                                   font-family:'Segoe UI',Arial,Helvetica,sans-serif;">
+                          <span style="color:{_EC_ACCENT};font-weight:700;">&#10003;</span>&nbsp;
+                          Clinical EEG Report (PDF) &mdash; available for download directly from this email
+                        </p>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>"""
+
+    return f"""
+            {pdf_section}
+
+            <!-- CTA button -->
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 8px;">
+              <tr>
+                <td align="center" style="border-radius:10px;background-color:{cta_color};">
+                  <!--[if mso]>
+                  <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word"
+                    href="{app_url}" style="height:52px;v-text-anchor:middle;width:280px;" arcsize="19%" stroke="f" fillcolor="{cta_color}">
+                    <w:anchorlock/>
+                    <center style="color:#ffffff;font-family:'Segoe UI',Arial,sans-serif;font-size:15px;font-weight:700;">{cta_label}</center>
+                  </v:roundrect>
+                  <![endif]-->
+                  <!--[if !mso]><!-->
+                  <a href="{app_url}" target="_blank"
+                     style="display:inline-block;background-color:{cta_color};color:#FFFFFF;
+                            font-family:'Segoe UI',Arial,Helvetica,sans-serif;font-size:15px;
+                            font-weight:700;text-decoration:none;padding:16px 40px;
+                            border-radius:10px;letter-spacing:0.02em;min-width:200px;text-align:center;">
+                    {cta_label}
+                  </a>
+                  <!--<![endif]-->
+                </td>
+              </tr>
+            </table>
+
+          </td>
+        </tr>
+
+        <!-- ═══ MEDICAL DISCLAIMER ═══ -->
+        <tr>
+          <td style="background-color:#F8FAFC;border-top:1px solid {_EC_BORDER};padding:20px 48px;">
+            <p style="margin:0;font-size:11px;color:{_EC_TEXT_MUTED};text-align:center;
+                       line-height:1.8;font-family:'Segoe UI',Arial,Helvetica,sans-serif;">{disclaimer}</p>
+          </td>
+        </tr>
+
+        <!-- ═══ FOOTER ═══ -->
+        <tr>
+          <td style="background-color:{_EC_HEADER};padding:24px 48px;text-align:center;">
+            <p style="margin:0 0 4px;font-size:13px;font-weight:700;color:#FFFFFF;
+                       font-family:'Segoe UI',Arial,Helvetica,sans-serif;">NeuroSentinel AI</p>
+            <p style="margin:0 0 14px;font-size:10px;color:{_EC_TEXT_MUTED};
+                       letter-spacing:0.12em;text-transform:uppercase;
+                       font-family:'Segoe UI',Arial,Helvetica,sans-serif;">Clinical EEG Intelligence Platform</p>
+            <p style="margin:0;font-size:11px;color:#475569;
+                       font-family:'Segoe UI',Arial,Helvetica,sans-serif;">
+              Generated automatically by NeuroSentinel AI &nbsp;&middot;&nbsp;
+              <a href="{app_url}" style="color:{_EC_ACCENT};text-decoration:none;">Open Application</a>
+            </p>
+          </td>
+        </tr>
+
+      </table>
+      <!--[if (gte mso 9)|(IE)]></td></tr></table><![endif]-->
+    </td>
+  </tr>
+</table>
+</body>
+</html>"""
+
+
+def _metrics_row(items: list[tuple[str, str, str]]) -> str:
+    """Render a row of metric cells: [(label, value, value_color), ...]."""
+    total = len(items)
+    cells = ""
+    for i, (label, value, val_color) in enumerate(items):
+        border_right = f"border-right:1px solid {_EC_BORDER};" if i < total - 1 else ""
+        cells += (
+            f'<td style="text-align:center;padding:18px 12px;{border_right}">'
+            f'<p style="margin:0 0 4px;font-size:10px;font-weight:700;color:{_EC_TEXT_MUTED};'
+            f'letter-spacing:0.1em;text-transform:uppercase;font-family:\'Segoe UI\',Arial,Helvetica,sans-serif;">{label}</p>'
+            f'<p style="margin:0;font-size:18px;font-weight:800;color:{val_color};'
+            f'font-family:\'Segoe UI\',Arial,Helvetica,sans-serif;">{value}</p>'
+            f'</td>'
+        )
+    return (
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"'
+        f' style="margin-bottom:28px;border:1px solid {_EC_BORDER};border-radius:10px;overflow:hidden;">'
+        f'<tr>{cells}</tr></table>'
+    )
+
+
+def _summary_table(rows: list[tuple[str, str, str]]) -> str:
+    """Render a labelled summary table: [(label, value, value_color), ...]."""
+    html = (
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"'
+        f' style="margin-bottom:28px;border:1px solid {_EC_BORDER};border-radius:10px;overflow:hidden;border-collapse:separate;">'
+    )
+    for i, (label, value, val_color) in enumerate(rows):
+        bg = "#F8FAFC" if i % 2 == 0 else _EC_CARD
+        html += (
+            f'<tr style="background-color:{bg};">'
+            f'<td style="padding:12px 20px;font-size:11px;font-weight:700;color:{_EC_TEXT_MUTED};'
+            f'text-transform:uppercase;letter-spacing:0.07em;width:38%;'
+            f'font-family:\'Segoe UI\',Arial,Helvetica,sans-serif;">{label}</td>'
+            f'<td style="padding:12px 20px;font-size:14px;font-weight:600;color:{val_color};'
+            f'font-family:\'Segoe UI\',Arial,Helvetica,sans-serif;">{value}</td>'
+            f'</tr>'
+        )
+    html += '</table>'
+    return html
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Email builders — HTML logic only. Delivery logic is unchanged below.
+# ─────────────────────────────────────────────────────────────────────────────
+
 def _build_patient_email(report: dict[str, Any], filename: str, app_url: str) -> str:
     result = report.get("result_label", "Unknown")
     risk = report.get("risk_level", "Unknown")
@@ -44,66 +269,75 @@ def _build_patient_email(report: dict[str, Any], filename: str, app_url: str) ->
     is_suspicious = diagnostic_state == "SUSPICIOUS"
 
     if seizure_detected:
+        status_key = "seizure"
+        subtitle = "Your EEG analysis report is ready for review"
         opening = (
-            f'Your EEG recording "{filename}" has been analysed by NeuroSentinel AI. '
-            f"The analysis has detected seizure-like activity — {event_count} segment(s) were flagged "
-            f"with an overall risk level of {risk} and model confidence of {confidence_text}."
+            f'Your EEG recording <strong style="color:{_EC_TEXT};">{filename}</strong> has been analysed by NeuroSentinel AI. '
+            f"The analysis has detected seizure-like activity &mdash; {event_count} segment(s) were flagged "
+            f"with an overall risk level of <strong>{risk}</strong> and model confidence of <strong>{confidence_text}</strong>."
         )
         action = (
             "We recommend sharing this report with your healthcare provider or neurologist as soon as possible. "
             "Please do not make any changes to your medication or treatment without consulting your doctor first."
         )
+        cta_color = "#EF4444"
     elif is_suspicious:
+        status_key = "suspicious"
+        subtitle = "Your EEG analysis report is ready for review"
         opening = (
-            f'Your EEG recording "{filename}" has been analysed by NeuroSentinel AI. '
-            f"The analysis found suspicious patterns that warrant attention — the model flagged candidate "
-            f"seizure-like activity, but these patterns did not meet the strict criteria for confirmed seizure events. "
-            f"The overall risk level is {risk} with model confidence of {confidence_text}."
+            f'Your EEG recording <strong style="color:{_EC_TEXT};">{filename}</strong> has been analysed by NeuroSentinel AI. '
+            f"The analysis found suspicious patterns that warrant attention &mdash; the model flagged candidate "
+            f"seizure-like activity, but these did not meet the criteria for confirmed seizure events. "
+            f"The overall risk level is <strong>{risk}</strong> with model confidence of <strong>{confidence_text}</strong>."
         )
         action = (
             "We recommend sharing this report with your neurologist so they can evaluate whether further "
             "testing, such as a repeat or extended EEG, is appropriate. There is no need for emergency action."
         )
+        cta_color = "#F59E0B"
     else:
+        status_key = "clear"
+        subtitle = "Your EEG analysis report is ready for review"
         opening = (
-            f'Your EEG recording "{filename}" has been analysed by NeuroSentinel AI. '
+            f'Your EEG recording <strong style="color:{_EC_TEXT};">{filename}</strong> has been analysed by NeuroSentinel AI. '
             f"No seizure activity was detected in this recording. "
-            f"The overall risk level is {risk} with model confidence of {confidence_text}."
+            f"The overall risk level is <strong>{risk}</strong> with model confidence of <strong>{confidence_text}</strong>."
         )
         action = (
             "This is a reassuring result. We still recommend sharing this report with your doctor "
             "at your next scheduled visit for their review."
         )
+        cta_color = _EC_ACCENT
 
-    return f"""
-<div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0A0A0F; color: #E8E8F0; padding: 32px; border-radius: 16px;">
-    <div style="text-align: center; margin-bottom: 24px;">
-        <img src="{LOGO_URL}" alt="NeuroSentinel AI" style="width: 48px; height: 48px; margin-bottom: 12px; border-radius: 8px;" />
-        <h1 style="font-size: 20px; color: #00F0FF; margin: 0;">NeuroSentinel AI</h1>
-        <p style="font-size: 11px; color: #565670; letter-spacing: 2px; text-transform: uppercase; margin-top: 4px;">EEG Analysis Report Ready</p>
-    </div>
+    content = (
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"'
+        f' style="margin-bottom:24px;">'
+        f'<tr><td style="background-color:#F8FAFC;border:1px solid {_EC_BORDER};border-radius:10px;padding:24px 28px;">'
+        f'<p style="margin:0 0 14px;font-size:15px;line-height:1.75;color:{_EC_TEXT};'
+        f'font-family:\'Segoe UI\',Arial,Helvetica,sans-serif;">{opening}</p>'
+        f'<p style="margin:0;font-size:15px;line-height:1.75;color:{_EC_TEXT_SEC};'
+        f'font-family:\'Segoe UI\',Arial,Helvetica,sans-serif;">{action}</p>'
+        f'</td></tr></table>'
+        + _metrics_row([
+            ("Risk Level", risk, _EC_TEXT),
+            ("Confidence", confidence_text, _EC_ACCENT),
+            ("Events Detected", str(event_count), _EC_TEXT),
+        ])
+        + f'<p style="margin:0 0 28px;font-size:13px;line-height:1.7;color:{_EC_TEXT_SEC};'
+        f'font-family:\'Segoe UI\',Arial,Helvetica,sans-serif;">'
+        f'For a detailed AI-powered summary with health tips, dietary recommendations, and personalised guidance, '
+        f'open your report in NeuroSentinel AI.</p>'
+    )
 
-    <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 20px; margin-bottom: 20px;">
-        <p style="font-size: 14px; line-height: 1.7; color: #C8C8D4; margin: 0 0 16px 0;">{opening}</p>
-        <p style="font-size: 14px; line-height: 1.7; color: #C8C8D4; margin: 0;">{action}</p>
-    </div>
-
-    <div style="background: rgba(0,240,255,0.06); border: 1px solid rgba(0,240,255,0.12); border-radius: 12px; padding: 16px; margin-bottom: 20px;">
-        <p style="font-size: 13px; color: #00F0FF; margin: 0 0 8px 0; font-weight: 600;">Your clinical PDF report is attached to this email.</p>
-        <p style="font-size: 13px; color: #C8C8D4; margin: 0;">For a more detailed AI-powered summary with health tips, dietary recommendations, and personalised guidance based on your results, open your report in the NeuroSentinel AI application.</p>
-    </div>
-
-    <div style="text-align: center; margin: 24px 0;">
-        <a href="{app_url}" style="display: inline-block; background: linear-gradient(135deg, #00F0FF, #818CF8); color: #0A0A0F; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 12px; text-decoration: none; letter-spacing: 0.5px;">View Full Report in App</a>
-    </div>
-
-    <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 24px 0;" />
-
-    <p style="font-size: 11px; color: #565670; text-align: center; line-height: 1.6; margin: 0;">
-        This report is generated by an AI model and is intended for clinical decision support only. It does not constitute a medical diagnosis. Always consult your healthcare provider before making any medical decisions.
-    </p>
-</div>
-"""
+    disclaimer = (
+        "This report is generated by an AI model and is intended for clinical decision support only. "
+        "It does not constitute a medical diagnosis. Always consult your healthcare provider before making any medical decisions."
+    )
+    return (
+        _email_open(subtitle, status_key)
+        + content
+        + _email_close(app_url, "View Report in NeuroSentinel AI", cta_color, True, disclaimer)
+    )
 
 
 def _build_clinician_email(report: dict[str, Any], filename: str, app_url: str) -> str:
@@ -113,37 +347,34 @@ def _build_clinician_email(report: dict[str, Any], filename: str, app_url: str) 
     confidence = report.get("confidence_score")
     confidence_text = f"{confidence:.1f}%" if isinstance(confidence, (int, float)) else "N/A"
     quality = report.get("quality_grade", "Unknown")
-    result_color = "#FF3366" if "seizure" in result.lower() else "#00FF9D"
+    seizure_in_result = "seizure" in result.lower()
+    result_color = "#EF4444" if seizure_in_result else _EC_ACCENT
 
-    return f"""
-<div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0A0A0F; color: #E8E8F0; padding: 32px; border-radius: 16px;">
-    <div style="text-align: center; margin-bottom: 24px;">
-        <img src="{LOGO_URL}" alt="NeuroSentinel AI" style="width: 48px; height: 48px; margin-bottom: 12px; border-radius: 8px;" />
-        <h1 style="font-size: 20px; color: #00F0FF; margin: 0;">NeuroSentinel AI</h1>
-        <p style="font-size: 11px; color: #565670; letter-spacing: 2px; text-transform: uppercase; margin-top: 4px;">Clinical Report Notification</p>
-    </div>
+    content = (
+        _summary_table([
+            ("File", filename, _EC_TEXT),
+            ("Result", result, result_color),
+            ("Risk Level", risk, _EC_TEXT),
+            ("Events Flagged", str(event_count), _EC_TEXT),
+            ("Confidence", confidence_text, _EC_ACCENT),
+            ("Signal Quality", quality, _EC_TEXT),
+        ])
+        + f'<p style="margin:0 0 28px;font-size:13px;line-height:1.7;color:{_EC_TEXT_SEC};'
+        f'font-family:\'Segoe UI\',Arial,Helvetica,sans-serif;">'
+        f'Clinical PDF is attached. For full structured analysis with explainability outputs, '
+        f'probability timelines, and SCOUT AI summary, access the report in the application.</p>'
+    )
 
-    <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 20px; margin-bottom: 20px;">
-        <table style="width: 100%; font-size: 13px; color: #C8C8D4; border-collapse: collapse;">
-            <tr><td style="padding: 4px 0; color: #8888A0;">File</td><td style="padding: 4px 0; text-align: right;">{filename}</td></tr>
-            <tr><td style="padding: 4px 0; color: #8888A0;">Result</td><td style="padding: 4px 0; text-align: right; font-weight: 600; color: {result_color};">{result}</td></tr>
-            <tr><td style="padding: 4px 0; color: #8888A0;">Risk</td><td style="padding: 4px 0; text-align: right;">{risk}</td></tr>
-            <tr><td style="padding: 4px 0; color: #8888A0;">Events</td><td style="padding: 4px 0; text-align: right;">{event_count}</td></tr>
-            <tr><td style="padding: 4px 0; color: #8888A0;">Confidence</td><td style="padding: 4px 0; text-align: right;">{confidence_text}</td></tr>
-            <tr><td style="padding: 4px 0; color: #8888A0;">Quality</td><td style="padding: 4px 0; text-align: right;">{quality}</td></tr>
-        </table>
-    </div>
-
-    <p style="font-size: 13px; color: #C8C8D4; margin: 0 0 16px 0;">Clinical PDF is attached. For full structured analysis with explainability outputs, probability timelines, and SCOUT AI summary, access the report in the application.</p>
-
-    <div style="text-align: center; margin: 24px 0;">
-        <a href="{app_url}" style="display: inline-block; background: linear-gradient(135deg, #00F0FF, #818CF8); color: #0A0A0F; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 12px; text-decoration: none; letter-spacing: 0.5px;">Open in NeuroSentinel AI</a>
-    </div>
-
-    <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 24px 0;" />
-    <p style="font-size: 11px; color: #565670; text-align: center; line-height: 1.6; margin: 0;">AI-generated report for clinical decision support. Not a standalone diagnosis. All [HEURISTIC] labels are rule-based estimates.</p>
-</div>
-"""
+    disclaimer = (
+        "AI-generated report for clinical decision support. Not a standalone diagnosis. "
+        "All [HEURISTIC] labels are rule-based estimates."
+    )
+    status_key = "seizure" if seizure_in_result else "clear"
+    return (
+        _email_open("Clinical EEG Analysis Complete", status_key)
+        + content
+        + _email_close(app_url, "Open in NeuroSentinel AI", _EC_ACCENT, True, disclaimer)
+    )
 
 
 def _build_researcher_email(report: dict[str, Any], filename: str, app_url: str) -> str:
@@ -153,147 +384,133 @@ def _build_researcher_email(report: dict[str, Any], filename: str, app_url: str)
     confidence = report.get("confidence_score")
     confidence_text = f"{confidence:.1f}%" if isinstance(confidence, (int, float)) else "N/A"
 
-    return f"""
-<div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0A0A0F; color: #E8E8F0; padding: 32px; border-radius: 16px;">
-    <div style="text-align: center; margin-bottom: 24px;">
-        <img src="{LOGO_URL}" alt="NeuroSentinel AI" style="width: 48px; height: 48px; margin-bottom: 12px; border-radius: 8px;" />
-        <h1 style="font-size: 20px; color: #00F0FF; margin: 0;">NeuroSentinel AI</h1>
-        <p style="font-size: 11px; color: #565670; letter-spacing: 2px; text-transform: uppercase; margin-top: 4px;">Analysis Complete</p>
-    </div>
+    content = (
+        _metrics_row([
+            ("Result", result, _EC_TEXT),
+            ("Risk", risk, _EC_TEXT),
+            ("Confidence", confidence_text, _EC_ACCENT),
+            ("Events", str(event_count), _EC_TEXT),
+        ])
+        + f'<p style="margin:0 0 28px;font-size:13px;line-height:1.7;color:{_EC_TEXT_SEC};'
+        f'font-family:\'Segoe UI\',Arial,Helvetica,sans-serif;">'
+        f'For the full technical breakdown &mdash; including probability timelines, channel importance '
+        f'rankings, attention heatmaps, band power analysis, and SCOUT AI methodology notes &mdash; '
+        f'open the report in the application.</p>'
+    )
 
-    <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 20px; margin-bottom: 20px;">
-        <p style="font-size: 14px; line-height: 1.7; color: #C8C8D4; margin: 0;">
-            Analysis of <strong>{filename}</strong> is complete.
-            Result: {result}, risk {risk}, confidence {confidence_text}, events {event_count}.
-            The clinical PDF with structured findings is attached.
-        </p>
-    </div>
-
-    <p style="font-size: 13px; color: #C8C8D4; margin: 0 0 16px 0;">For the full technical breakdown - including probability timelines, channel importance rankings, attention heatmaps, band power analysis, and SCOUT AI methodology notes - open the report in the application.</p>
-
-    <div style="text-align: center; margin: 24px 0;">
-        <a href="{app_url}" style="display: inline-block; background: linear-gradient(135deg, #00F0FF, #818CF8); color: #0A0A0F; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 12px; text-decoration: none; letter-spacing: 0.5px;">Open in NeuroSentinel AI</a>
-    </div>
-
-    <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 24px 0;" />
-    <p style="font-size: 11px; color: #565670; text-align: center; line-height: 1.6; margin: 0;">Model outputs are decision-support evidence. Cross-validate flagged segments against raw traces before drawing conclusions.</p>
-</div>
-"""
+    disclaimer = (
+        "Model outputs are decision-support evidence. "
+        "Cross-validate flagged segments against raw traces before drawing conclusions."
+    )
+    return (
+        _email_open(f"Analysis of {filename} is complete", "clear")
+        + content
+        + _email_close(app_url, "Open in NeuroSentinel AI", _EC_ACCENT, True, disclaimer)
+    )
 
 
 def _build_timeout_email(filename: str, app_url: str) -> str:
-    return f"""
-<div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0A0A0F; color: #E8E8F0; padding: 32px; border-radius: 16px;">
-    <div style="text-align: center; margin-bottom: 24px;">
-        <img src="{LOGO_URL}" alt="NeuroSentinel AI" style="width: 48px; height: 48px; margin-bottom: 12px; border-radius: 8px;" />
-        <h1 style="font-size: 20px; color: #00F0FF; margin: 0;">NeuroSentinel AI</h1>
-        <p style="font-size: 11px; color: #565670; letter-spacing: 2px; text-transform: uppercase; margin-top: 4px;">Analysis Halted</p>
-    </div>
-
-    <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 20px; margin-bottom: 20px;">
-        <p style="font-size: 14px; line-height: 1.7; color: #C8C8D4; margin: 0 0 16px 0;">
-            The analysis of your EEG recording <strong>{filename}</strong> has timed out after 1 hour of processing.
-        </p>
-        <p style="font-size: 14px; line-height: 1.7; color: #C8C8D4; margin: 0;">
-            This typically happens with exceptionally long or complex recordings that exceed our current automated processing limits.
-            We recommend splitting the recording into smaller segments and re-uploading them, or contacting our technical support team for assistance.
-        </p>
-    </div>
-
-    <div style="text-align: center; margin: 24px 0;">
-        <a href="{app_url}" style="display: inline-block; background: rgba(255,255,255,0.08); color: #00F0FF; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 12px; text-decoration: none; border: 1px solid rgba(0,240,255,0.2);">Return to App</a>
-    </div>
-
-    <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 24px 0;" />
-    <p style="font-size: 11px; color: #565670; text-align: center; line-height: 1.6; margin: 0;">Automated notification from NeuroSentinel AI Clinical Intelligence System.</p>
-</div>
-"""
+    content = (
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"'
+        f' style="margin-bottom:28px;">'
+        f'<tr><td style="background-color:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:24px 28px;">'
+        f'<p style="margin:0 0 14px;font-size:15px;line-height:1.75;color:{_EC_TEXT};'
+        f'font-family:\'Segoe UI\',Arial,Helvetica,sans-serif;">'
+        f'The analysis of your EEG recording <strong>{filename}</strong> has timed out after 1 hour of processing.'
+        f'</p>'
+        f'<p style="margin:0;font-size:15px;line-height:1.75;color:{_EC_TEXT_SEC};'
+        f'font-family:\'Segoe UI\',Arial,Helvetica,sans-serif;">'
+        f'This typically happens with exceptionally long or complex recordings that exceed our current automated '
+        f'processing limits. We recommend splitting the recording into smaller segments and re-uploading them, '
+        f'or contacting our technical support team for assistance.'
+        f'</p>'
+        f'</td></tr></table>'
+    )
+    disclaimer = "Automated notification from NeuroSentinel AI Clinical Intelligence System."
+    return (
+        _email_open("EEG Analysis — Processing Halted", "timeout")
+        + content
+        + _email_close(app_url, "Return to App", "#F59E0B", False, disclaimer)
+    )
 
 
 def _build_failure_email(filename: str, app_url: str, error_msg: str | None = None) -> str:
-    error_detail = f"<p style='color: #FF3366; font-family: monospace; font-size: 12px;'>Error: {error_msg}</p>" if error_msg else ""
-    return f"""
-<div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0A0A0F; color: #E8E8F0; padding: 32px; border-radius: 16px;">
-    <div style="text-align: center; margin-bottom: 24px;">
-        <img src="{LOGO_URL}" alt="NeuroSentinel AI" style="width: 48px; height: 48px; margin-bottom: 12px; border-radius: 8px;" />
-        <h1 style="font-size: 20px; color: #FF3366; margin: 0;">NeuroSentinel AI</h1>
-        <p style="font-size: 11px; color: #565670; letter-spacing: 2px; text-transform: uppercase; margin-top: 4px;">Analysis Failed</p>
-    </div>
-
-    <div style="background: rgba(255,51,102,0.04); border: 1px solid rgba(255,51,102,0.12); border-radius: 12px; padding: 20px; margin-bottom: 20px;">
-        <p style="font-size: 14px; line-height: 1.7; color: #C8C8D4; margin: 0 0 16px 0;">
-            We encountered an unexpected error while processing your EEG recording <strong>{filename}</strong>.
-        </p>
-        <p style="font-size: 14px; line-height: 1.7; color: #C8C8D4; margin: 0 0 16px 0;">
-            This could be due to a corrupt file format, signal interference, or a temporary server issue. Please try re-uploading the file.
-        </p>
-        {error_detail}
-    </div>
-
-    <div style="text-align: center; margin: 24px 0;">
-        <a href="{app_url}" style="display: inline-block; background: rgba(255,255,255,0.08); color: #FF3366; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 12px; text-decoration: none; border: 1px solid rgba(255,51,102,0.2);">Return to App</a>
-    </div>
-
-    <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 24px 0;" />
-    <p style="font-size: 11px; color: #565670; text-align: center; line-height: 1.6; margin: 0;">Automated notification from NeuroSentinel AI Clinical Intelligence System.</p>
-</div>
-"""
+    error_detail = (
+        f'<p style="margin:12px 0 0;font-size:12px;color:#EF4444;'
+        f'font-family:monospace;background-color:#FEF2F2;padding:10px 14px;border-radius:6px;">'
+        f'Error: {error_msg}</p>'
+        if error_msg else ""
+    )
+    content = (
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"'
+        f' style="margin-bottom:28px;">'
+        f'<tr><td style="background-color:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:24px 28px;">'
+        f'<p style="margin:0 0 14px;font-size:15px;line-height:1.75;color:{_EC_TEXT};'
+        f'font-family:\'Segoe UI\',Arial,Helvetica,sans-serif;">'
+        f'We encountered an unexpected error while processing your EEG recording <strong>{filename}</strong>.'
+        f'</p>'
+        f'<p style="margin:0;font-size:15px;line-height:1.75;color:{_EC_TEXT_SEC};'
+        f'font-family:\'Segoe UI\',Arial,Helvetica,sans-serif;">'
+        f'This could be due to a corrupt file format, signal interference, or a temporary server issue. '
+        f'Please try re-uploading the file.'
+        f'</p>'
+        f'{error_detail}'
+        f'</td></tr></table>'
+    )
+    disclaimer = "Automated notification from NeuroSentinel AI Clinical Intelligence System."
+    return (
+        _email_open("EEG Analysis — Processing Error", "failed")
+        + content
+        + _email_close(app_url, "Return to App", "#EF4444", False, disclaimer)
+    )
 
 
 def _build_aborted_email(filename: str, app_url: str) -> str:
-    return f"""
-<div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0A0A0F; color: #E8E8F0; padding: 32px; border-radius: 16px;">
-    <div style="text-align: center; margin-bottom: 24px;">
-        <img src="{LOGO_URL}" alt="NeuroSentinel AI" style="width: 48px; height: 48px; margin-bottom: 12px; border-radius: 8px;" />
-        <h1 style="font-size: 20px; color: #00F0FF; margin: 0;">NeuroSentinel AI</h1>
-        <p style="font-size: 11px; color: #565670; letter-spacing: 2px; text-transform: uppercase; margin-top: 4px;">Analysis Aborted</p>
-    </div>
-
-    <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 20px; margin-bottom: 20px;">
-        <p style="font-size: 14px; line-height: 1.7; color: #C8C8D4; margin: 0 0 16px 0;">
-            The analysis for <strong>{filename}</strong> was manually aborted by a user.
-        </p>
-        <p style="font-size: 14px; line-height: 1.7; color: #C8C8D4; margin: 0;">
-            No report was generated for this file. You can start a new analysis at any time by uploading a new EDF file to the dashboard.
-        </p>
-    </div>
-
-    <div style="text-align: center; margin: 24px 0;">
-        <a href="{app_url}" style="display: inline-block; background: rgba(0,240,255,0.08); color: #00F0FF; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 12px; text-decoration: none; border: 1px solid rgba(0,240,255,0.2);">Back to App</a>
-    </div>
-
-    <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 24px 0;" />
-    <p style="font-size: 11px; color: #565670; text-align: center; line-height: 1.6; margin: 0;">Automated notification from NeuroSentinel AI Clinical Intelligence System.</p>
-</div>
-"""
+    content = (
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"'
+        f' style="margin-bottom:28px;">'
+        f'<tr><td style="background-color:#F8FAFC;border:1px solid {_EC_BORDER};border-radius:10px;padding:24px 28px;">'
+        f'<p style="margin:0 0 14px;font-size:15px;line-height:1.75;color:{_EC_TEXT};'
+        f'font-family:\'Segoe UI\',Arial,Helvetica,sans-serif;">'
+        f'The analysis for <strong>{filename}</strong> was manually aborted by a user.'
+        f'</p>'
+        f'<p style="margin:0;font-size:15px;line-height:1.75;color:{_EC_TEXT_SEC};'
+        f'font-family:\'Segoe UI\',Arial,Helvetica,sans-serif;">'
+        f'No report was generated for this file. You can start a new analysis at any time by uploading '
+        f'a new EDF file to the dashboard.'
+        f'</p>'
+        f'</td></tr></table>'
+    )
+    disclaimer = "Automated notification from NeuroSentinel AI Clinical Intelligence System."
+    return (
+        _email_open("EEG Analysis — Aborted", "aborted")
+        + content
+        + _email_close(app_url, "Back to Dashboard", _EC_ACCENT, False, disclaimer)
+    )
 
 
 def _build_size_email(filename: str, app_url: str, limit_mb: int) -> str:
-    return f"""
-<div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0A0A0F; color: #E8E8F0; padding: 32px; border-radius: 16px;">
-    <div style="text-align: center; margin-bottom: 24px;">
-        <img src="{LOGO_URL}" alt="NeuroSentinel AI" style="width: 48px; height: 48px; margin-bottom: 12px; border-radius: 8px;" />
-        <h1 style="font-size: 20px; color: #FFD700; margin: 0;">NeuroSentinel AI</h1>
-        <p style="font-size: 11px; color: #565670; letter-spacing: 2px; text-transform: uppercase; margin-top: 4px;">Upload Size Exceeded</p>
-    </div>
-
-    <div style="background: rgba(255,215,0,0.04); border: 1px solid rgba(255,215,0,0.12); border-radius: 12px; padding: 20px; margin-bottom: 20px;">
-        <p style="font-size: 14px; line-height: 1.7; color: #C8C8D4; margin: 0 0 16px 0;">
-            Your EEG recording <strong>{filename}</strong> exceeded our maximum upload size limit of {limit_mb}MB.
-        </p>
-        <p style="font-size: 14px; line-height: 1.7; color: #C8C8D4; margin: 0;">
-            To process this recording, please split the EDF file into smaller segments or use a lower sampling rate, then re-upload.
-        </p>
-    </div>
-
-    <div style="text-align: center; margin: 24px 0;">
-        <a href="{app_url}" style="display: inline-block; background: rgba(255,255,255,0.08); color: #FFD700; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 12px; text-decoration: none; border: 1px solid rgba(255,215,0,0.2);">Return to App</a>
-    </div>
-
-    <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 24px 0;" />
-    <p style="font-size: 11px; color: #565670; text-align: center; line-height: 1.6; margin: 0;">Automated notification from NeuroSentinel AI Clinical Intelligence System.</p>
-</div>
-"""
+    content = (
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"'
+        f' style="margin-bottom:28px;">'
+        f'<tr><td style="background-color:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:24px 28px;">'
+        f'<p style="margin:0 0 14px;font-size:15px;line-height:1.75;color:{_EC_TEXT};'
+        f'font-family:\'Segoe UI\',Arial,Helvetica,sans-serif;">'
+        f'Your EEG recording <strong>{filename}</strong> exceeded our maximum upload size limit of <strong>{limit_mb} MB</strong>.'
+        f'</p>'
+        f'<p style="margin:0;font-size:15px;line-height:1.75;color:{_EC_TEXT_SEC};'
+        f'font-family:\'Segoe UI\',Arial,Helvetica,sans-serif;">'
+        f'To process this recording, please split the EDF file into smaller segments or use a lower sampling rate, '
+        f'then re-upload.'
+        f'</p>'
+        f'</td></tr></table>'
+    )
+    disclaimer = "Automated notification from NeuroSentinel AI Clinical Intelligence System."
+    return (
+        _email_open("File Size Limit Exceeded", "size")
+        + content
+        + _email_close(app_url, "Return to App", "#F59E0B", False, disclaimer)
+    )
 
 
 def _build_email_html(report: dict[str, Any], filename: str, role: str | None, app_url: str) -> str:
