@@ -441,9 +441,8 @@ def create_app(settings: Settings | None = None, load_model_on_startup: bool = F
 
     # ── OTP Email Relay ──────────────────────────────────────────────────────
     # Called by Vercel's signup-otp-store.ts to send OTP emails.
-    # Vercel serverless functions block outbound SMTP (ports 465/587), so all
-    # transactional email is delegated to this HF Space which has unrestricted
-    # outbound network access.
+    # Uses the EXACT same email sending code as report notifications,
+    # so if reports work, OTP works too.
     @app.post("/api/v1/internal/send-otp-email")
     async def send_otp_email(
         request: Request,
@@ -463,73 +462,29 @@ def create_app(settings: Settings | None = None, load_model_on_startup: bool = F
         if not to_email or not subject or not html:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing required fields: to, subject, html.")
 
-        import smtplib as _smtplib
-        import httpx as _httpx
-        from email.mime.multipart import MIMEMultipart as _MIMEMultipart
-        from email.mime.text import MIMEText as _MIMEText
+        # Use the SAME email function that successfully sends report emails.
+        from app.services.email import _send_generic_notification
 
-        sent = False
-        last_err: str | None = None
-
-        # 1. Try Resend API
-        if state.settings.resend_api_key:
-            try:
-                resp = _httpx.post(
-                    "https://api.resend.com/emails",
-                    headers={
-                        "Authorization": f"Bearer {state.settings.resend_api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "from": state.settings.resend_from_email,
-                        "to": [to_email],
-                        "subject": subject,
-                        "html": html,
-                    },
-                    timeout=20.0,
-                )
-                if resp.status_code in (200, 201):
-                    sent = True
-                    logger.info("OTP email sent to %s via Resend", to_email)
-                else:
-                    last_err = f"Resend {resp.status_code}: {resp.text[:200]}"
-                    logger.warning("Resend OTP email failed: %s", last_err)
-            except Exception as exc:
-                last_err = str(exc)
-                logger.warning("Resend OTP email exception: %s", exc)
-
-        # 2. Fallback: SMTP
-        if not sent and state.settings.smtp_host and state.settings.smtp_user and state.settings.smtp_password:
-            try:
-                msg = _MIMEMultipart("alternative")
-                msg["From"] = state.settings.smtp_from_email or state.settings.smtp_user
-                msg["To"] = to_email
-                msg["Subject"] = subject
-                if text:
-                    msg.attach(_MIMEText(text, "plain", "utf-8"))
-                msg.attach(_MIMEText(html, "html", "utf-8"))
-
-                clean_pw = state.settings.smtp_password.replace(" ", "")
-                if state.settings.smtp_port == 465:
-                    server = _smtplib.SMTP_SSL(state.settings.smtp_host, state.settings.smtp_port, timeout=20)
-                else:
-                    server = _smtplib.SMTP(state.settings.smtp_host, state.settings.smtp_port, timeout=20)
-                    server.ehlo()
-                    server.starttls()
-                    server.ehlo()
-
-                server.login(state.settings.smtp_user, clean_pw)
-                server.send_message(msg)
-                server.quit()
-                sent = True
-                logger.info("OTP email sent to %s via SMTP", to_email)
-            except Exception as exc:
-                last_err = str(exc)
-                logger.warning("SMTP OTP email exception: %s", exc)
+        sent = _send_generic_notification(
+            to_email=to_email,
+            subject=subject,
+            html=html,
+            resend_api_key=state.settings.resend_api_key,
+            resend_from_email=state.settings.resend_from_email,
+            smtp_host=state.settings.smtp_host,
+            smtp_port=state.settings.smtp_port,
+            smtp_user=state.settings.smtp_user,
+            smtp_password=state.settings.smtp_password,
+            smtp_from_email=state.settings.smtp_from_email,
+            relay_api_url=None,  # Don't relay to ourselves
+            internal_api_secret=state.settings.internal_api_secret,
+        )
 
         if not sent:
-            detail = last_err or "No email provider configured (set RESEND_API_KEY or SMTP_* env vars)."
-            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=detail)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Email sending failed. Check SMTP_* or RESEND_API_KEY configuration.",
+            )
 
         return {"status": "sent", "to": to_email}
 

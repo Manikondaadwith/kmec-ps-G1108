@@ -770,7 +770,7 @@ def _send_generic_notification(
             server.send_message(msg)
             server.quit()
             return True
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("SMTP send to %s failed: %s", to_email, exc)
 
     return False
