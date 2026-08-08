@@ -20,7 +20,7 @@ const NAV = [
   },
 ]
 
-export function Sidebar({ userEmail, userRole }: { userEmail: string; userRole: string }) {
+export function Sidebar({ userEmail, userRole, userName }: { userEmail: string; userRole: string; userName?: string | null }) {
   const pathname = usePathname()
   const router = useRouter()
   const [signingOut, setSigningOut] = useState(false)
@@ -71,10 +71,10 @@ export function Sidebar({ userEmail, userRole }: { userEmail: string; userRole: 
       <div className="space-y-2 border-t px-0 py-3" style={{ borderColor: 'var(--border-default)' }}>
         <div className="clinical-user-card">
           <div className="clinical-user-avatar">
-            {userEmail.charAt(0).toUpperCase()}
+            {(userName || userEmail).charAt(0).toUpperCase()}
           </div>
           <div className="min-w-0">
-            <div className="truncate text-[13px] font-medium" style={{ color: 'var(--text-primary)' }}>{userEmail}</div>
+            <div className="truncate text-[13px] font-medium" style={{ color: 'var(--text-primary)' }}>{userName || userEmail}</div>
             <div className="text-[11px] capitalize" style={{ color: 'var(--text-muted)' }}>{userRole}</div>
           </div>
         </div>
