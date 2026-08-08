@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { HelpSupportButton } from '@/components/help-support-button'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { ensureUserProfile } from '@/lib/user-profile'
@@ -302,6 +303,7 @@ export default function LoginPage() {
       style={{ fontFamily: "'Outfit', sans-serif" }}
     >
       <PageBackground />
+      <HelpSupportButton />
 
       {/* ── CARD ── */}
       <div
