@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 // ─── Password strength helpers ──────────────────────────────────────────────
@@ -104,6 +104,128 @@ function PasswordInput({
           <EyeIcon open={show} />
         </button>
       </div>
+    </div>
+  )
+}
+
+// ─── Editable Name Field ──────────────────────────────────────────────────────
+
+function NameField({ initialName }: { initialName: string | null }) {
+  const supabase = createClient()
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(initialName ?? '')
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (editing && inputRef.current) inputRef.current.focus()
+  }, [editing])
+
+  const handleSave = async () => {
+    const trimmed = value.trim()
+    if (!trimmed) return
+
+    setSaving(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        await supabase.from('users').update({ full_name: trimmed }).eq('id', user.id)
+        await supabase.auth.updateUser({ data: { full_name: trimmed } })
+      }
+      setSaved(true)
+      setEditing(false)
+      setTimeout(() => window.location.reload(), 800)
+    } catch {
+      setSaving(false)
+    }
+  }
+
+  const handleCancel = () => {
+    setValue(initialName ?? '')
+    setEditing(false)
+  }
+
+  return (
+    <div className="mb-5 pb-5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+      <div className="text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: 'var(--text-muted)' }}>
+        Full Name
+      </div>
+
+      {!editing ? (
+        <div className="mt-1 flex items-center gap-3">
+          {initialName ? (
+            <div className="text-[15px] font-semibold" style={{ color: 'var(--text-primary)' }}>{saved ? value : initialName}</div>
+          ) : (
+            <div className="text-[14px] italic" style={{ color: 'var(--text-muted)' }}>Not set yet</div>
+          )}
+          {saved ? (
+            <span className="flex items-center gap-1 text-[12px] font-medium" style={{ color: 'var(--accent-success)' }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+              Saved
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="rounded-lg p-1.5 transition-colors hover:bg-[var(--bg-secondary)]"
+              style={{ color: 'var(--text-muted)' }}
+              aria-label="Edit name"
+              title={initialName ? 'Edit name' : 'Add your name'}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                <path d="m15 5 4 4" />
+              </svg>
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="mt-2 flex items-center gap-2">
+          <input
+            ref={inputRef}
+            type="text"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="Enter your name…"
+            className="flex-1 max-w-[280px] rounded-xl border px-4 py-2.5 text-[14px] outline-none transition-all placeholder:text-slate-400"
+            style={{
+              borderColor: 'var(--border-default)',
+              background: 'var(--bg-card)',
+              color: 'var(--text-primary)',
+            }}
+            onFocus={(e) => {
+              e.target.style.borderColor = 'var(--accent-primary)'
+              e.target.style.boxShadow = '0 0 0 3px rgba(14, 116, 144, 0.1)'
+            }}
+            onBlur={(e) => {
+              e.target.style.borderColor = 'var(--border-default)'
+              e.target.style.boxShadow = 'none'
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void handleSave()
+              if (e.key === 'Escape') handleCancel()
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => void handleSave()}
+            disabled={!value.trim() || saving}
+            className="rounded-xl px-4 py-2.5 text-[13px] font-bold text-white shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{ background: 'var(--accent-primary)' }}
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+          <button
+            type="button"
+            onClick={handleCancel}
+            className="rounded-xl px-3 py-2.5 text-[13px] font-medium transition-colors hover:bg-[var(--bg-secondary)]"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -224,13 +346,8 @@ export function SettingsClient({ email, roleLabel, fullName }: { email: string; 
             </div>
           </div>
           <div className="p-8">
-            {/* Full name row */}
-            {fullName && (
-              <div className="mb-5 pb-5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                <div className="text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: 'var(--text-muted)' }}>Full Name</div>
-                <div className="mt-1 text-[15px] font-semibold" style={{ color: 'var(--text-primary)' }}>{fullName}</div>
-              </div>
-            )}
+            {/* Editable Full Name */}
+            <NameField initialName={fullName} />
             <div className="grid gap-0 sm:grid-cols-2">
               {/* Email block */}
               <div className="space-y-1.5 py-2 pr-8">
