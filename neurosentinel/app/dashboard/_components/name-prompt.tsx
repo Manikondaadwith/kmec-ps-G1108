@@ -122,7 +122,7 @@ export function NamePrompt() {
         {/* Body */}
         <div className="px-6 py-6">
           <p className="text-[14px] leading-relaxed text-[#475569]" style={{ fontFamily: "'Inter', sans-serif" }}>
-            Hey there! We've added name personalization to NeuroSentinel AI. Could you let us know your name so we can make your experience more personal?
+            Hey there! We&apos;ve added name personalization to NeuroSentinel AI. Could you let us know your name so we can make your experience more personal?
           </p>
 
           <form
