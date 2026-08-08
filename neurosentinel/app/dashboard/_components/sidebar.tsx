@@ -44,23 +44,23 @@ export function Sidebar({ userEmail, userRole, userName }: { userEmail: string; 
           onClick={() => setMobileOpen(true)}
           aria-label="Open navigation menu"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="3" y1="6" x2="21" y2="6" />
             <line x1="3" y1="12" x2="21" y2="12" />
             <line x1="3" y1="18" x2="21" y2="18" />
           </svg>
         </button>
-        <Link href="/dashboard" className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white shadow-sm border border-slate-200">
-            <img src="/logo.jpeg" alt="" className="h-full w-full object-contain" />
+        <Link href="/dashboard" className="flex items-center gap-3 min-w-0">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white shadow-sm border border-slate-200">
+            <img src="/logo.jpeg" alt="NeuroSentinel AI" className="h-full w-full object-contain" />
           </div>
-          <span className="text-[15px] font-bold tracking-tight" style={{ color: '#0F172A', fontFamily: "'Outfit', sans-serif" }}>
+          <span className="text-[16px] font-bold tracking-tight truncate" style={{ color: '#0F172A', fontFamily: "'Outfit', sans-serif" }}>
             NeuroSentinel AI
           </span>
         </Link>
-        <div className="ml-auto flex items-center gap-2 rounded-full px-2.5 py-1" style={{ background: 'var(--accent-primary-light)', border: '1px solid rgba(14, 116, 144, 0.08)' }}>
-          <span className="clinical-dot clinical-dot-primary" style={{ width: 5, height: 5 }} />
-          <span className="text-[11px] font-semibold" style={{ color: 'var(--accent-primary)' }}>
+        <div className="ml-auto shrink-0 flex items-center gap-1.5 rounded-full px-3 py-1.5" style={{ background: 'var(--accent-primary-light)', border: '1px solid rgba(14, 116, 144, 0.10)' }}>
+          <span className="clinical-dot clinical-dot-primary" style={{ width: 5, height: 5, flexShrink: 0 }} />
+          <span className="text-[11px] font-semibold whitespace-nowrap" style={{ color: 'var(--accent-primary)' }}>
             {userRole}
           </span>
         </div>
@@ -72,8 +72,8 @@ export function Sidebar({ userEmail, userRole, userName }: { userEmail: string; 
         onClick={() => setMobileOpen(false)}
       />
       <aside className={`clinical-sidebar flex h-full w-60 shrink-0 flex-col ${mobileOpen ? 'mobile-open' : ''}`}>
-        {/* ── Logo ── */}
-        <Link href="/dashboard" className="flex items-center gap-3 px-6 py-6 transition-opacity hover:opacity-80">
+        {/* ── Logo / Branding Block ── */}
+        <Link href="/dashboard" className="flex items-center gap-3 px-6 py-5 transition-opacity hover:opacity-80">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white shadow-sm border border-slate-200">
             <img src="/logo.jpeg" alt="" className="h-full w-full object-contain" />
           </div>
@@ -81,6 +81,9 @@ export function Sidebar({ userEmail, userRole, userName }: { userEmail: string; 
             NeuroSentinel AI
           </div>
         </Link>
+
+        {/* Branding / Nav Divider */}
+        <div style={{ height: '1px', background: 'var(--border-default)', margin: '0 16px 4px' }} />
 
         {/* ── Navigation Label ── */}
         <div className="clinical-sidebar-nav-label">Navigation</div>
