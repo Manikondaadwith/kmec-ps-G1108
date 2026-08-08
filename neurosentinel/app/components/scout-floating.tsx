@@ -404,9 +404,9 @@ export function ScoutFloating() {
           50% { transform: scale(1.08); }
         }
         @keyframes scout-glow-ready {
-          0% { box-shadow: 0 0 0 0 rgba(14, 116, 144, 0.45), 0 6px 18px rgba(14, 116, 144, 0.22); }
-          70% { box-shadow: 0 0 0 12px rgba(14, 116, 144, 0), 0 6px 18px rgba(14, 116, 144, 0.22); }
-          100% { box-shadow: 0 0 0 0 rgba(14, 116, 144, 0), 0 6px 18px rgba(14, 116, 144, 0.22); }
+          0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5), 0 8px 20px rgba(59, 130, 246, 0.25); }
+          70% { box-shadow: 0 0 0 12px rgba(59, 130, 246, 0), 0 8px 20px rgba(59, 130, 246, 0.25); }
+          100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0), 0 8px 20px rgba(59, 130, 246, 0.25); }
         }
       `}</style>
 
@@ -449,9 +449,9 @@ export function ScoutFloating() {
               }}
               className="relative z-10 flex h-[56px] w-[56px] md:h-[70px] md:w-[70px] items-center justify-center rounded-full transition-all hover:scale-105 active:scale-90 ring-2 ring-white/60 ring-inset"
               style={{
-                background: 'linear-gradient(145deg, #0C6B82, #0D9488)',
+                background: 'linear-gradient(135deg, #3B82F6, #06B6D4)',
                 animation: isResponseReady ? 'scout-pulse-ready 2.2s ease-in-out infinite, scout-glow-ready 2.2s ease-in-out infinite' : undefined,
-                boxShadow: isResponseReady ? undefined : '0 6px 18px rgba(14, 116, 144, 0.22), 0 2px 6px rgba(0,0,0,0.06)',
+                boxShadow: isResponseReady ? undefined : '0 8px 20px rgba(59, 130, 246, 0.25)',
               }}
               aria-label={`Open ${SCOUT_FULL_NAME}`}
             >
