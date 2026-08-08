@@ -944,3 +944,261 @@
   overflow: hidden;
   position: relative;
 }
+
+/* ══════════════════════════════════════
+   RESPONSIVE — Mobile ≤ 768px
+   ══════════════════════════════════════ */
+
+@media (max-width: 768px) {
+  /* Sidebar: hidden by default on mobile, shown via JS toggle */
+  .clinical-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 200;
+    transform: translateX(-100%);
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    width: 260px;
+    box-shadow: none;
+  }
+
+  .clinical-sidebar.mobile-open {
+    transform: translateX(0);
+    box-shadow: 8px 0 30px rgba(0, 0, 0, 0.12);
+  }
+
+  .mobile-sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 199;
+    background: rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.28s ease;
+  }
+
+  .mobile-sidebar-backdrop.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* Mobile header bar */
+  .mobile-header-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--bg-header);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border-default);
+    position: sticky;
+    top: 0;
+    z-index: 50;
+  }
+
+  .mobile-hamburger {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    border: 1px solid var(--border-default);
+    background: var(--bg-card);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.15s ease;
+    color: var(--text-secondary);
+  }
+
+  .mobile-hamburger:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-strong);
+  }
+
+  .mobile-hamburger:active {
+    transform: scale(0.95);
+  }
+
+  /* Hide desktop header on mobile */
+  .clinical-dashboard .clinical-header {
+    display: none;
+  }
+
+  /* Page content: tighter padding */
+  .clinical-page-content {
+    padding: 16px;
+  }
+
+  /* Hero: compact mobile layout */
+  .clinical-hero {
+    padding: 24px 20px;
+    border-radius: var(--radius-lg);
+  }
+
+  .clinical-hero-text-block {
+    padding-left: 16px;
+  }
+
+  .clinical-hero-title {
+    font-size: 22px;
+    line-height: 1.35;
+    margin-top: 12px;
+    max-width: 100%;
+  }
+
+  .clinical-hero-desc {
+    font-size: 13.5px;
+    line-height: 1.65;
+    margin-top: 14px;
+    max-width: 100%;
+  }
+
+  .clinical-hero-tagline {
+    font-size: 10px;
+  }
+
+  /* Status pills: full-width on mobile */
+  .clinical-status-pill {
+    padding: 14px 16px;
+  }
+
+  /* Cards: tighter padding on mobile */
+  .clinical-card {
+    border-radius: var(--radius-md);
+  }
+
+  /* Upload zone: compact */
+  .clinical-upload-zone {
+    padding: 24px 16px;
+    min-height: 200px;
+    border-radius: var(--radius-md);
+  }
+
+  .clinical-upload-icon {
+    width: 52px;
+    height: 52px;
+  }
+
+  /* Metric boxes: snugger */
+  .clinical-metric-box {
+    padding: 14px 16px;
+  }
+
+  .clinical-metric-value {
+    font-size: 16px;
+  }
+
+  /* Event cards: compact */
+  .clinical-event-card {
+    padding: 14px 16px;
+  }
+
+  .clinical-event-title {
+    font-size: 13px;
+  }
+
+  .clinical-event-risk {
+    font-size: 10px;
+    padding: 2px 8px;
+  }
+
+  .clinical-event-meta {
+    font-size: 12px;
+  }
+
+  /* Context blocks: compact */
+  .clinical-context-block {
+    padding: 16px;
+  }
+
+  /* Section labels */
+  .clinical-section-label {
+    font-size: 10px;
+  }
+
+  .clinical-section-desc {
+    font-size: 13px;
+  }
+
+  /* Buttons: ensure touch-friendly sizing */
+  .clinical-btn-primary,
+  .clinical-btn-secondary,
+  .clinical-btn-outline {
+    padding: 12px 20px;
+    font-size: 13px;
+    min-height: 44px;
+  }
+
+  .clinical-link {
+    padding: 10px 16px;
+    font-size: 13px;
+    min-height: 44px;
+  }
+
+  .clinical-signout-btn {
+    min-height: 44px;
+  }
+
+  /* Card inner */
+  .clinical-card-inner {
+    padding: 14px 16px;
+  }
+
+  /* Region rows */
+  .clinical-region-row {
+    font-size: 13px;
+  }
+
+  /* Badge */
+  .clinical-badge {
+    font-size: 11px;
+    padding: 4px 12px;
+  }
+
+  /* Page container */
+  .clinical-page-container {
+    max-width: 100%;
+  }
+}
+
+/* ══════════════════════════════════════
+   RESPONSIVE — Tablet 769px–1023px
+   ══════════════════════════════════════ */
+
+@media (min-width: 769px) and (max-width: 1023px) {
+  .clinical-hero {
+    padding: 32px 28px;
+  }
+
+  .clinical-hero-title {
+    font-size: 26px;
+  }
+
+  .clinical-page-content {
+    padding: 24px;
+  }
+}
+
+/* ══════════════════════════════════════
+   RESPONSIVE — Desktop hide mobile elements
+   ══════════════════════════════════════ */
+
+@media (min-width: 769px) {
+  .mobile-header-bar {
+    display: none;
+  }
+
+  .mobile-sidebar-backdrop {
+    display: none;
+  }
+
+  .mobile-hamburger {
+    display: none;
+  }
+}
+

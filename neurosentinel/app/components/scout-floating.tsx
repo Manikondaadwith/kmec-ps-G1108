@@ -416,7 +416,8 @@ export function ScoutFloating() {
           style={{
             bottom: pathname.includes('eeg-reports') && currentAnalysis
               ? 128  // raised above sticky processing panel (~96px)
-              : 32,
+              : typeof window !== 'undefined' && window.innerWidth <= 768 ? 20 : 32,
+          right: typeof window !== 'undefined' && window.innerWidth <= 768 ? 16 : undefined,
           }}
         >
           {showHint && !isResponseReady && (
@@ -446,7 +447,7 @@ export function ScoutFloating() {
                 setIsClosing(false)
                 setShowHint(false)
               }}
-              className="relative z-10 flex h-[70px] w-[70px] items-center justify-center rounded-full transition-all hover:scale-105 active:scale-90 ring-2 ring-white/60 ring-inset"
+              className="relative z-10 flex h-[56px] w-[56px] md:h-[70px] md:w-[70px] items-center justify-center rounded-full transition-all hover:scale-105 active:scale-90 ring-2 ring-white/60 ring-inset"
               style={{
                 background: 'linear-gradient(135deg, #3B82F6, #06B6D4)',
                 animation: isResponseReady ? 'scout-pulse-ready 2.2s ease-in-out infinite, scout-glow-ready 2.2s ease-in-out infinite' : undefined,
@@ -454,7 +455,7 @@ export function ScoutFloating() {
               }}
               aria-label={`Open ${SCOUT_FULL_NAME}`}
             >
-              <ScoutAvatar size={42} variant="primary" showStatus={!isResponseReady} />
+              <ScoutAvatar size={typeof window !== 'undefined' && window.innerWidth <= 768 ? 32 : 42} variant="primary" showStatus={!isResponseReady} />
               
               {isResponseReady && (
                 <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-[#10B981] border-2 border-white shadow-md animate-bounce" />
@@ -468,10 +469,10 @@ export function ScoutFloating() {
         <div
           className={`fixed z-[9998] flex flex-col overflow-hidden rounded-[14px] border transition-all duration-300 ease-out origin-bottom-right ${isClosing ? 'opacity-0 scale-95 translate-y-4' : 'opacity-100 scale-100 animate-in fade-in zoom-in-95 slide-in-from-bottom-4'} group/panel`}
           style={{
-            left: layout.left,
-            top: layout.top,
-            width: layout.width,
-            height: layout.height,
+            ...(typeof window !== 'undefined' && window.innerWidth <= 768
+              ? { left: 0, top: 0, width: '100vw', height: '100dvh', borderRadius: 0 }
+              : { left: layout.left, top: layout.top, width: layout.width, height: layout.height }
+            ),
             background: 'linear-gradient(to bottom, #FFFFFF, #F8FAFC)',
             borderColor: '#E5E7EB',
             boxShadow: isDragging ? '0 20px 50px rgba(0,0,0,0.12)' : '0 10px 30px rgba(0,0,0,0.08)',
@@ -521,7 +522,7 @@ export function ScoutFloating() {
           <button
             type="button"
             aria-label="Resize SCOUT window"
-            className="absolute bottom-0 right-0 z-30 h-6 w-6 cursor-se-resize flex items-center justify-center transition-opacity opacity-40 hover:opacity-100"
+            className="absolute bottom-0 right-0 z-30 h-6 w-6 cursor-se-resize items-center justify-center transition-opacity opacity-40 hover:opacity-100 hidden md:flex"
             onPointerDown={(event) => {
               event.stopPropagation()
               resizeRef.current = {

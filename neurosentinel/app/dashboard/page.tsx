@@ -108,10 +108,10 @@ export default function DashboardPage() {
     <>
       {/* ── Top Header Bar ── */}
       <header className="clinical-header">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <Link
             href="/dashboard"
-            className="text-[12px] font-medium transition-colors hover:text-[var(--accent-primary)]"
+            className="text-[12px] font-medium transition-colors hover:text-[var(--accent-primary)] shrink-0"
             style={{ color: 'var(--text-muted)' }}
           >
             NeuroSentinel AI
@@ -121,7 +121,7 @@ export default function DashboardPage() {
             Dashboard
           </span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 shrink-0">
           <div className="flex items-center gap-2 rounded-full px-3 py-1.5" style={{ background: 'var(--accent-primary-light)', border: '1px solid rgba(14, 116, 144, 0.08)' }}>
             <span className="clinical-dot clinical-dot-primary" style={{ width: 6, height: 6 }} />
             <span className="text-[12px] font-semibold" style={{ color: 'var(--accent-primary)' }}>
@@ -137,7 +137,7 @@ export default function DashboardPage() {
 
           {/* ── Hero Section — elevated with depth ── */}
           <section className="clinical-hero">
-            <div className="relative z-10 grid gap-12 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-end">
+            <div className="relative z-10 grid gap-6 lg:gap-12 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-end">
               <div className="clinical-hero-text-block">
                 <div className="clinical-hero-tagline">Clinical EEG Intelligence</div>
                 <h1 className="clinical-hero-title">
@@ -196,7 +196,7 @@ export default function DashboardPage() {
           </section>
 
             {/* ── Upload Card ── */}
-          <section id="tour-step-upload" className="clinical-card px-7 py-7">
+          <section id="tour-step-upload" className="clinical-card px-4 py-5 md:px-7 md:py-7">
             <div className="mb-6">
               <div className="flex items-center gap-2">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
@@ -217,7 +217,7 @@ export default function DashboardPage() {
           </section>
 
           {/* ── Latest Analysis Card — full width primary ── */}
-          <section id="tour-step-latest" className="clinical-card px-7 py-7">
+          <section id="tour-step-latest" className="clinical-card px-4 py-5 md:px-7 md:py-7">
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2">

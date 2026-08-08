@@ -25,6 +25,7 @@ export function Sidebar({ userEmail, userRole, userName }: { userEmail: string; 
   const router = useRouter()
   const [signingOut, setSigningOut] = useState(false)
   const [showSupport, setShowSupport] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
 
   const handleSignOut = async () => {
     setSigningOut(true)
@@ -35,7 +36,42 @@ export function Sidebar({ userEmail, userRole, userName }: { userEmail: string; 
 
   return (
     <>
-      <aside className="clinical-sidebar flex h-full w-60 shrink-0 flex-col">
+      {/* ── Mobile Header Bar — visible only on ≤768px ── */}
+      <div className="mobile-header-bar">
+        <button
+          type="button"
+          className="mobile-hamburger"
+          onClick={() => setMobileOpen(true)}
+          aria-label="Open navigation menu"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        </button>
+        <Link href="/dashboard" className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white shadow-sm border border-slate-200">
+            <img src="/logo.jpeg" alt="" className="h-full w-full object-contain" />
+          </div>
+          <span className="text-[15px] font-bold tracking-tight" style={{ color: '#0F172A', fontFamily: "'Outfit', sans-serif" }}>
+            NeuroSentinel AI
+          </span>
+        </Link>
+        <div className="ml-auto flex items-center gap-2 rounded-full px-2.5 py-1" style={{ background: 'var(--accent-primary-light)', border: '1px solid rgba(14, 116, 144, 0.08)' }}>
+          <span className="clinical-dot clinical-dot-primary" style={{ width: 5, height: 5 }} />
+          <span className="text-[11px] font-semibold" style={{ color: 'var(--accent-primary)' }}>
+            {userRole}
+          </span>
+        </div>
+      </div>
+
+      {/* ── Mobile Backdrop ── */}
+      <div
+        className={`mobile-sidebar-backdrop ${mobileOpen ? 'visible' : ''}`}
+        onClick={() => setMobileOpen(false)}
+      />
+      <aside className={`clinical-sidebar flex h-full w-60 shrink-0 flex-col ${mobileOpen ? 'mobile-open' : ''}`}>
         {/* ── Logo ── */}
         <Link href="/dashboard" className="flex items-center gap-3 px-6 py-6 transition-opacity hover:opacity-80">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white shadow-sm border border-slate-200">
@@ -60,6 +96,7 @@ export function Sidebar({ userEmail, userRole, userName }: { userEmail: string; 
                 href={item.href}
                 id={`nav-${item.id}`}
                 className={`clinical-nav-item ${active ? 'active' : ''}`}
+                onClick={() => setMobileOpen(false)}
               >
                 <span className="nav-icon" style={{ flexShrink: 0 }}>{item.icon}</span>
                 <span>{item.label}</span>

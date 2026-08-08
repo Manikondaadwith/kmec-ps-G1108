@@ -29,7 +29,7 @@ export default async function DashboardLayout({
 
   return (
     <AnalysisProvider>
-      <div className="clinical-dashboard flex h-screen overflow-hidden">
+      <div className="clinical-dashboard flex flex-col md:flex-row h-screen overflow-hidden">
         {/* ── Left: Sidebar ── */}
         <Sidebar userEmail={user.email ?? ''} userRole={userRole} userName={userName} />
 
