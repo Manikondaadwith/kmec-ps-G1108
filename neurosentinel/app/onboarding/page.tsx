@@ -20,18 +20,29 @@ export default function OnboardingPage() {
   
   const [messages, setMessages] = useState<Message[]>([])
   const [isTyping, setIsTyping] = useState(false)
+  const [showNameInput, setShowNameInput] = useState(false)
   const [showRoleOptions, setShowRoleOptions] = useState(false)
   const [showTourOptions, setShowTourOptions] = useState(false)
   const [hasStarted, setHasStarted] = useState(false)
+  const [nameValue, setNameValue] = useState('')
+  const [userName, setUserName] = useState<string | null>(null)
   
   const scrollRef = useRef<HTMLDivElement>(null)
+  const nameInputRef = useRef<HTMLInputElement>(null)
 
   // Scroll to bottom when messages change
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [messages, isTyping, showRoleOptions, showTourOptions])
+  }, [messages, isTyping, showRoleOptions, showTourOptions, showNameInput])
+
+  // Focus name input when shown
+  useEffect(() => {
+    if (showNameInput && nameInputRef.current) {
+      nameInputRef.current.focus()
+    }
+  }, [showNameInput])
 
   // Authentication check & kick off flow
   useEffect(() => {
@@ -47,6 +58,11 @@ export default function OnboardingPage() {
         return
       }
       
+      // If user already has a name saved, remember it
+      if (profile.full_name) {
+        setUserName(profile.full_name)
+      }
+
       // Kick off the conversation
       setHasStarted(true)
     }
@@ -72,21 +88,39 @@ export default function OnboardingPage() {
       await new Promise(r => setTimeout(r, 400))
       if (!mounted) return
       
-      await pushMessage('scout', "Hi, I’m SCOUT — Seizure Clinical Operations & Understanding Tool. I’m your clinical assistant inside NeuroSentinel AI.", 800)
+      await pushMessage('scout', "Hi, I'm SCOUT — Seizure Clinical Operations & Understanding Tool. I'm your clinical assistant inside NeuroSentinel AI.", 800)
       if (!mounted) return
 
-      await pushMessage('scout', "Before we begin, I need your role so I can tailor how I present insights.", 1200)
+      await pushMessage('scout', "Before we begin, may I know your name?", 1000)
       if (!mounted) return
 
-      await pushMessage('scout', "What’s your role?", 800)
-      if (!mounted) return
-
-      setShowRoleOptions(true)
+      setShowNameInput(true)
     }
 
     void runFlow()
     return () => { mounted = false }
   }, [hasStarted])
+
+  const handleNameSubmit = async () => {
+    const trimmed = nameValue.trim()
+    if (!trimmed) return
+
+    setShowNameInput(false)
+    setUserName(trimmed)
+    setMessages(prev => [...prev, { id: Math.random().toString(), role: 'user', content: trimmed }])
+
+    // Save name to DB in the background
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      supabase.from('users').update({ full_name: trimmed }).eq('id', user.id).then()
+      supabase.auth.updateUser({ data: { full_name: trimmed } }).then()
+    }
+
+    await pushMessage('scout', `Nice to meet you, ${trimmed}! I need your role so I can tailor how I present insights.`, 1000)
+    await pushMessage('scout', "What's your role?", 800)
+
+    setShowRoleOptions(true)
+  }
 
   const handleRoleSelection = async (roleSelection: ScoutRole) => {
     setShowRoleOptions(false)
@@ -105,12 +139,13 @@ export default function OnboardingPage() {
 
     // Dynamic response based on selected role
     let ackMessage = ""
+    const nameGreet = userName ? `, ${userName}` : ""
     if (roleSelection === 'clinician') {
-      ackMessage = "Got it. I’ll present structured clinical summaries with key metrics up front."
+      ackMessage = `Got it${nameGreet}. I'll present structured clinical summaries with key metrics up front.`
     } else if (roleSelection === 'researcher') {
-      ackMessage = "Understood. I'll focus on model methodology, raw analytical metrics, and statistical confidence bounds."
+      ackMessage = `Understood${nameGreet}. I'll focus on model methodology, raw analytical metrics, and statistical confidence bounds.`
     } else {
-      ackMessage = "Got it. I'll use clear, reassuring language and avoid complex medical jargon."
+      ackMessage = `Got it${nameGreet}. I'll use clear, reassuring language and avoid complex medical jargon.`
     }
 
     // Continue the flow
@@ -194,6 +229,32 @@ export default function OnboardingPage() {
                 <span className="w-1.5 h-1.5 rounded-full bg-[#94A3B8] animate-bounce" style={{ animationDelay: '150ms' }} />
                 <span className="w-1.5 h-1.5 rounded-full bg-[#94A3B8] animate-bounce" style={{ animationDelay: '300ms' }} />
               </div>
+            </div>
+          )}
+
+          {showNameInput && (
+            <div className="flex flex-col gap-3 pt-2 pl-2 animate-in fade-in slide-in-from-bottom-2 duration-500">
+              <form
+                onSubmit={(e) => { e.preventDefault(); void handleNameSubmit() }}
+                className="flex items-center gap-2 w-[320px]"
+              >
+                <input
+                  ref={nameInputRef}
+                  id="scout-name-input"
+                  type="text"
+                  value={nameValue}
+                  onChange={(e) => setNameValue(e.target.value)}
+                  placeholder="Enter your name…"
+                  className="flex-1 px-4 py-3 rounded-xl border border-[#E2E8F0] bg-white text-[15px] text-[#0F172A] shadow-sm outline-none transition-all focus:border-[#10B981] focus:ring-2 focus:ring-[#10B981]/20 placeholder:text-[#94A3B8]"
+                />
+                <button
+                  type="submit"
+                  disabled={!nameValue.trim()}
+                  className="shrink-0 flex items-center justify-center px-4 py-3 rounded-xl bg-[#10B981] text-white font-bold text-[14px] shadow-sm transition-all hover:bg-[#059669] hover:shadow-md hover:-translate-y-0.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
+              </form>
             </div>
           )}
 

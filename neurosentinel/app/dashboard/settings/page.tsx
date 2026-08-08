@@ -37,7 +37,7 @@ export default async function SettingsPage() {
         </div>
       </header>
 
-      <SettingsClient email={user.email ?? ''} roleLabel={getRoleLabel(profile.role)} />
+      <SettingsClient email={user.email ?? ''} roleLabel={getRoleLabel(profile.role)} fullName={profile.full_name} />
     </>
   )
 }

@@ -90,10 +90,14 @@ class SupabaseService:
 
     def fetch_user_profile(self, user_id: str) -> dict[str, Any] | None:
         try:
-            response = self.client.table("users").select("id, email, role, onboarding_complete, preferences").eq("id", user_id).limit(1).execute()
+            response = self.client.table("users").select("id, email, role, onboarding_complete, preferences, full_name").eq("id", user_id).limit(1).execute()
         except Exception:
-            # Fallback if 'preferences' column doesn't exist yet
-            response = self.client.table("users").select("id, email, role, onboarding_complete").eq("id", user_id).limit(1).execute()
+            try:
+                # Fallback if 'full_name' column doesn't exist yet
+                response = self.client.table("users").select("id, email, role, onboarding_complete, preferences").eq("id", user_id).limit(1).execute()
+            except Exception:
+                # Fallback if 'preferences' column doesn't exist yet
+                response = self.client.table("users").select("id, email, role, onboarding_complete").eq("id", user_id).limit(1).execute()
         if not response.data:
             return None
         profile = response.data[0]

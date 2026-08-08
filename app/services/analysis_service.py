@@ -106,6 +106,7 @@ class AnalysisService:
             user_profile = self.supabase_service.fetch_user_profile(user_id)
             user_email = (user_profile or {}).get("email")
             user_role = (user_profile or {}).get("role")
+            user_name = (user_profile or {}).get("full_name") or None
 
             if not user_email:
                 logger.warning("No email found for user %s — skipping notification.", user_id)
@@ -135,6 +136,7 @@ class AnalysisService:
                 relay_api_url=self.settings.relay_api_url,
                 internal_api_secret=self.settings.internal_api_secret,
                 app_url=self.settings.app_url,
+                user_name=user_name,
             )
             if sent:
                 logger.info("Report completion email sent for %s to %s", filename, user_email)

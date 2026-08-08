@@ -6,12 +6,14 @@ type UserLike = {
   user_metadata?: {
     role?: unknown
     scout_role?: unknown
+    full_name?: unknown
   } | null
 }
 
 export type UserProfile = {
   role: ScoutRole
   onboarding_complete: boolean
+  full_name: string | null
 }
 
 type DatabaseUserRole = 'user' | 'admin' | 'doctor' | 'clinician' | 'researcher' | 'patient'
@@ -19,6 +21,7 @@ type DatabaseUserRole = 'user' | 'admin' | 'doctor' | 'clinician' | 'researcher'
 const DEFAULT_PROFILE: UserProfile = {
   role: null,
   onboarding_complete: false,
+  full_name: null,
 }
 
 function normalizeDatabaseRole(role: unknown): DatabaseUserRole | null {
@@ -63,7 +66,7 @@ export async function ensureUserProfile(supabase: any, user: UserLike): Promise<
   const metadataRole = getRoleFromUser(user)
   const { data: existing, error: existingError } = await supabase
     .from('users')
-    .select('role, onboarding_complete')
+    .select('role, onboarding_complete, full_name')
     .eq('id', user.id)
     .maybeSingle()
 
@@ -88,14 +91,16 @@ export async function ensureUserProfile(supabase: any, user: UserLike): Promise<
     return {
       role: normalizedRole,
       onboarding_complete: Boolean(existing.onboarding_complete),
+      full_name: typeof existing.full_name === 'string' ? existing.full_name : null,
     }
   }
 
-  const createPayload: { id: string; email: string; onboarding_complete: boolean; role: DatabaseUserRole } = {
+  const createPayload: { id: string; email: string; onboarding_complete: boolean; role: DatabaseUserRole; full_name: string | null } = {
     id: user.id,
     email: user.email ?? '',
     onboarding_complete: false,
     role: 'user',
+    full_name: typeof user.user_metadata?.full_name === 'string' ? user.user_metadata.full_name : null,
   }
 
   const databaseRole = toDatabaseRole(metadataRole)
@@ -109,7 +114,7 @@ export async function ensureUserProfile(supabase: any, user: UserLike): Promise<
       createPayload,
       { onConflict: 'id' }
     )
-    .select('role, onboarding_complete')
+    .select('role, onboarding_complete, full_name')
     .single()
 
   if (createError) {
@@ -119,5 +124,6 @@ export async function ensureUserProfile(supabase: any, user: UserLike): Promise<
   return {
     role: normalizeRole(created?.role) ?? metadataRole ?? DEFAULT_PROFILE.role,
     onboarding_complete: Boolean(created?.onboarding_complete),
+    full_name: typeof created?.full_name === 'string' ? created.full_name : null,
   }
 }

@@ -198,6 +198,8 @@ def _summarize_user_preferences(user_profile: dict[str, Any] | None) -> list[str
 
     preferences = user_profile.get("preferences") if isinstance(user_profile.get("preferences"), dict) else {}
     lines: list[str] = []
+    if user_profile.get("full_name"):
+        lines.append(f"User's full name: {user_profile['full_name']}")
     if user_profile.get("email"):
         lines.append(f"Signed-in account email: {user_profile['email']}")
     if preferences:
@@ -1406,6 +1408,7 @@ class ScoutService:
         product_snippets: list[dict[str, Any]],
     ) -> str:
         role = _normalize_role(context.role or (user_profile or {}).get("role"))
+        user_name: str | None = (user_profile or {}).get("full_name") or None
         role_instructions = {
             "clinician": (
                 "Be clinical, structured, and metric-dense. Provide concise paragraph-style responses. Do not use bulleted lists or pipe-separated lines for regular responses unless explicitly requested. "
@@ -1564,6 +1567,7 @@ class ScoutService:
         return "\n".join(
             [
                 f"You are {SCOUT_FULL_NAME}, the intelligent clinical assistant powering NeuroSentinel AI.",
+                f"The user's name is {user_name}. When addressing the user directly — especially in greetings, farewells, or when offering guidance — use their name naturally. Do not force it into every sentence, but use it where it feels warm and personal." if user_name else "The user's name is not known yet.",
                 "You are NOT a generic chatbot. You are a specialized clinical intelligence layer that has deep access to the user's EEG analysis data, account history, active processing state, and profile.",
                 "You help with onboarding, product guidance, report explanation, medical context, health recommendations, and real-time awareness of what the user is doing.",
                 "Never diagnose, prescribe, or recommend specific treatment changes — but you CAN and SHOULD provide general medical guidance, health tips, lifestyle recommendations, and clinical context based on findings.",

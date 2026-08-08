@@ -110,7 +110,7 @@ function PasswordInput({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function SettingsClient({ email, roleLabel }: { email: string; roleLabel: string }) {
+export function SettingsClient({ email, roleLabel, fullName }: { email: string; roleLabel: string; fullName: string | null }) {
   const supabase = createClient()
 
   // Password state
@@ -224,6 +224,13 @@ export function SettingsClient({ email, roleLabel }: { email: string; roleLabel:
             </div>
           </div>
           <div className="p-8">
+            {/* Full name row */}
+            {fullName && (
+              <div className="mb-5 pb-5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                <div className="text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: 'var(--text-muted)' }}>Full Name</div>
+                <div className="mt-1 text-[15px] font-semibold" style={{ color: 'var(--text-primary)' }}>{fullName}</div>
+              </div>
+            )}
             <div className="grid gap-0 sm:grid-cols-2">
               {/* Email block */}
               <div className="space-y-1.5 py-2 pr-8">
