@@ -169,6 +169,7 @@ export default function ReportPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showChat, setShowChat] = useState(true)
+  const [isDownloading, setIsDownloading] = useState(false)
 
   /* ─ Auth & Session check ─ */
   useEffect(() => {
@@ -252,6 +253,55 @@ export default function ReportPage() {
     }
   }, [report])
 
+  /* ─ PDF Download with chart capture ─ */
+  const handleDownloadPDF = async () => {
+    if (!report) return
+    setIsDownloading(true)
+    try {
+      const { default: html2canvas } = await import('html2canvas')
+      let timelineImage: string | undefined
+      let heatmapImage: string | undefined
+
+      const timelineEl = document.getElementById('ns-timeline-capture')
+      if (timelineEl) {
+        try {
+          const canvas = await html2canvas(timelineEl, { scale: 2, backgroundColor: '#ffffff', logging: false, useCORS: true })
+          timelineImage = canvas.toDataURL('image/png')
+        } catch {}
+      }
+
+      const heatmapEl = document.getElementById('ns-heatmap-capture')
+      if (heatmapEl) {
+        try {
+          const canvas = await html2canvas(heatmapEl, { scale: 2, backgroundColor: '#ffffff', logging: false, useCORS: true })
+          heatmapImage = canvas.toDataURL('image/png')
+        } catch {}
+      }
+
+      const res = await fetch(`/api/reports/${report.id}/pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ timelineImage, heatmapImage }),
+      })
+
+      if (!res.ok) throw new Error('PDF generation failed')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${(report.filename || 'report').replace(/\.edf$/i, '')}-report.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch {
+      // Fallback: open GET route in new tab
+      window.open(`/api/reports/${report.id}/pdf`, '_blank')
+    } finally {
+      setIsDownloading(false)
+    }
+  }
+
   /* ─ Render Logic ─ */
   const reportJson = report?.report_json
   const recommendations = Array.isArray(reportJson?.clinical_report?.recommendations) ? reportJson.clinical_report.recommendations : []
@@ -332,14 +382,13 @@ export default function ReportPage() {
 
         {/* RIGHT GROUP (Actions) */}
         <div className="flex items-center gap-3">
-          <a
-            href={`/api/reports/${report.id}/pdf`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex h-9 items-center rounded-lg border border-[#E5E7EB] bg-white px-[14px] text-[14px] font-medium text-[#111827] transition-all hover:bg-[#F9FAFB]"
+          <button
+            onClick={handleDownloadPDF}
+            disabled={isDownloading}
+            className="flex h-9 items-center rounded-lg border border-[#E5E7EB] bg-white px-[14px] text-[14px] font-medium text-[#111827] transition-all hover:bg-[#F9FAFB] disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            Download PDF
-          </a>
+            {isDownloading ? 'Generating PDF…' : 'Download PDF'}
+          </button>
           
           <button
             onClick={handleToggleChat}
@@ -461,7 +510,7 @@ export default function ReportPage() {
             </section>
 
             {/* ─── § 5  EEG PROBABILITY TIMELINE (EVIDENCE) ─── */}
-            <section className="rounded-[32px] bg-white p-8 shadow-sm ring-1 ring-gray-100">
+            <section id="ns-timeline-capture" className="rounded-[32px] bg-white p-8 shadow-sm ring-1 ring-gray-100">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
                 <div className="flex items-center gap-3">
                   <span className="text-xl">📉</span>
@@ -500,7 +549,7 @@ export default function ReportPage() {
 
             {/* ─── § 6  BRAIN REGIONS & CHANNEL INFLUENCE ─── */}
             <div className="grid gap-8 md:grid-cols-2">
-               <section className="rounded-[32px] bg-white p-8 shadow-sm ring-1 ring-gray-100">
+               <section id="ns-heatmap-capture" className="rounded-[32px] bg-white p-8 shadow-sm ring-1 ring-gray-100">
                  <div className="mb-6">
                     <h2 className="text-sm font-black uppercase tracking-widest text-[#1E293B]">Affected Brain Regions</h2>
                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-tight">Spatial activation heatmap</p>

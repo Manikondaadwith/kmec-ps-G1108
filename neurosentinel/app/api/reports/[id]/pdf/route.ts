@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 import { createHash } from 'crypto'
+import { readFileSync } from 'fs'
+import path from 'path'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { normalizeReport } from '@/lib/neurosentinel/types'
@@ -13,13 +15,14 @@ const REPORT_PDF_BUCKET = process.env.SUPABASE_REPORT_PDF_BUCKET || 'report-pdfs
 /*  Shared colour constants                                       */
 /* ═══════════════════════════════════════════════════════════════ */
 
-const ACCENT_BLUE = rgb(0, 0.4, 0.8)
-const HEADER_BG = rgb(0.039, 0.145, 0.251)
+const ACCENT_TEAL = rgb(0.082, 0.722, 0.651)     // #14B8A6 Clinical Teal
+const HEADER_BG = rgb(0.039, 0.267, 0.333)        // #0A4455 Dark Teal
+const HEADER_SUBTITLE = rgb(0.612, 0.867, 0.847)  // teal-tinted light text for header
 const TEXT_DARK = rgb(0.1, 0.1, 0.18)
 const TEXT_MEDIUM = rgb(0.24, 0.24, 0.31)
 const TEXT_LIGHT = rgb(0.42, 0.42, 0.5)
 const BORDER_LIGHT = rgb(0.886, 0.898, 0.922)
-const SECTION_BG = rgb(0.941, 0.957, 0.976)
+const SECTION_BG = rgb(0.937, 0.976, 0.973)       // teal-tinted section bg
 const WHITE = rgb(1, 1, 1)
 const RISK_RED = rgb(0.863, 0.149, 0.149)
 const RISK_ORANGE = rgb(0.918, 0.345, 0.047)
@@ -353,6 +356,7 @@ class MedicalPDFBuilder {
   private mx = 48
   private contentW: number
   private role: 'patient' | 'clinician' | 'researcher'
+  private extras: { logoImage?: any; timelineImage?: any; heatmapImage?: any } = {}
 
   constructor(doc: PDFDocument, font: any, bold: any, role: 'patient' | 'clinician' | 'researcher') {
     this.doc = doc
@@ -370,7 +374,7 @@ class MedicalPDFBuilder {
     this.pageNum++
     this.y = this.height - 36
     if (this.pageNum > 1) {
-      this.page.drawRectangle({ x: this.mx, y: this.height - 30, width: this.contentW, height: 2, color: ACCENT_BLUE })
+      this.page.drawRectangle({ x: this.mx, y: this.height - 30, width: this.contentW, height: 2, color: ACCENT_TEAL })
       const contTitle = this.role !== 'researcher' ? 'NEUROSENTINEL AI — CLINICAL EEG ANALYSIS REPORT (continued)' : 'NEUROSENTINEL AI — EEG PIPELINE ANALYSIS (continued)'
       this.page.drawText(contTitle, { x: this.mx, y: this.height - 26, size: 6.5, font: this.font, color: TEXT_LIGHT })
       this.y = this.height - 50
@@ -395,14 +399,50 @@ class MedicalPDFBuilder {
     })
   }
 
+  private drawChartImage(image: any, caption: string, maxH = 185) {
+    if (!image) return
+    const dims = image.scale(1)
+    const targetW = this.contentW
+    const scale = Math.min(targetW / dims.width, maxH / dims.height)
+    const drawW = dims.width * scale
+    const drawH = dims.height * scale
+    const offsetX = this.mx + (this.contentW - drawW) / 2
+
+    this.ensureSpace(drawH + 28)
+    this.y -= 4
+    this.page.drawText(caption, {
+      x: this.mx + 10, y: this.y, size: 7.5, font: this.bold, color: TEXT_MEDIUM,
+    })
+    this.y -= 6
+    this.page.drawImage(image, {
+      x: offsetX,
+      y: this.y - drawH,
+      width: drawW,
+      height: drawH,
+    })
+    this.y -= drawH + 10
+  }
+
   private drawHeader(filename: string, createdAt: string) {
     this.newPage()
     this.page.drawRectangle({ x: 0, y: this.height - 84, width: this.width, height: 84, color: HEADER_BG })
-    this.page.drawRectangle({ x: 0, y: this.height - 88, width: this.width, height: 4, color: ACCENT_BLUE })
+    this.page.drawRectangle({ x: 0, y: this.height - 88, width: this.width, height: 4, color: ACCENT_TEAL })
 
-    this.page.drawText('NEUROSENTINEL AI', { x: this.mx, y: this.height - 32, size: 16, font: this.bold, color: WHITE })
+    // Logo — 36×36 vertically centred in header
+    const logoSize = 36
+    if (this.extras.logoImage) {
+      this.page.drawImage(this.extras.logoImage, {
+        x: this.mx,
+        y: this.height - 68,   // top = height-32, bottom = height-68
+        width: logoSize,
+        height: logoSize,
+      })
+    }
+    const textX = this.extras.logoImage ? this.mx + logoSize + 8 : this.mx
+
+    this.page.drawText('NEUROSENTINEL AI', { x: textX, y: this.height - 32, size: 16, font: this.bold, color: WHITE })
     this.page.drawText('Seizure Clinical Operations & Understanding Tool  |  Automated EEG Analysis Platform', {
-      x: this.mx, y: this.height - 46, size: 7.5, font: this.font, color: rgb(0.533, 0.6, 0.733),
+      x: textX, y: this.height - 46, size: 7.5, font: this.font, color: HEADER_SUBTITLE,
     })
 
     const rightTitle = this.role !== 'researcher' ? 'CLINICAL EEG ANALYSIS REPORT' : 'EEG PIPELINE ANALYSIS REPORT'
@@ -412,11 +452,11 @@ class MedicalPDFBuilder {
     })
     this.page.drawText(`Generated: ${createdAt}`, {
       x: this.width - this.mx - this.font.widthOfTextAtSize(`Generated: ${createdAt}`, 7.5),
-      y: this.height - 46, size: 7.5, font: this.font, color: rgb(0.533, 0.6, 0.733),
+      y: this.height - 46, size: 7.5, font: this.font, color: HEADER_SUBTITLE,
     })
     this.page.drawText(filename, {
       x: this.width - this.mx - this.font.widthOfTextAtSize(filename, 7),
-      y: this.height - 58, size: 7, font: this.font, color: rgb(0.533, 0.6, 0.733),
+      y: this.height - 58, size: 7, font: this.font, color: HEADER_SUBTITLE,
     })
 
     this.y = this.height - 100
@@ -426,9 +466,9 @@ class MedicalPDFBuilder {
     this.ensureSpace(42)
     this.y -= 14
     this.page.drawRectangle({ x: this.mx, y: this.y - 6, width: this.contentW, height: 24, color: SECTION_BG })
-    this.page.drawRectangle({ x: this.mx, y: this.y - 6, width: 4, height: 24, color: ACCENT_BLUE })
+    this.page.drawRectangle({ x: this.mx, y: this.y - 6, width: 4, height: 24, color: ACCENT_TEAL })
     this.page.drawText(`${number}   ${title}`.toUpperCase(), {
-      x: this.mx + 12, y: this.y, size: 9.5, font: this.bold, color: ACCENT_BLUE,
+      x: this.mx + 12, y: this.y, size: 9.5, font: this.bold, color: ACCENT_TEAL,
     })
     this.y -= 28
   }
@@ -469,7 +509,7 @@ class MedicalPDFBuilder {
 
   private numberedItem(num: number, text: string) {
     this.ensureSpace(28)
-    this.page.drawCircle({ x: this.mx + 18, y: this.y + 2, size: 7, color: ACCENT_BLUE })
+    this.page.drawCircle({ x: this.mx + 18, y: this.y + 2, size: 7, color: ACCENT_TEAL })
     this.page.drawText(String(num), { x: this.mx + 15, y: this.y - 1, size: 6.5, font: this.bold, color: WHITE })
     const maxW = this.contentW - 44
     const lines = wrapText(text, this.font, 8, maxW)
@@ -481,7 +521,20 @@ class MedicalPDFBuilder {
     this.y -= 4
   }
 
-  build(report: any, reportJson: any, userProfile?: { email?: string; role?: string } | null) {
+  async build(report: any, reportJson: any, userProfile?: { email?: string; role?: string } | null, extras?: { logoPng?: Buffer; timelinePng?: Buffer; heatmapPng?: Buffer }) {
+    // Embed chart images provided by client
+    if (extras?.logoPng) {
+      try { this.extras.logoImage = await this.doc.embedJpg(extras.logoPng) } catch {
+        try { this.extras.logoImage = await this.doc.embedPng(extras.logoPng) } catch {}
+      }
+    }
+    if (extras?.timelinePng) {
+      try { this.extras.timelineImage = await this.doc.embedPng(extras.timelinePng) } catch {}
+    }
+    if (extras?.heatmapPng) {
+      try { this.extras.heatmapImage = await this.doc.embedPng(extras.heatmapPng) } catch {}
+    }
+
     const role = this.role
     const cr = reportJson?.clinical_report || {}
     const meta = cr.meta || {}
@@ -701,6 +754,17 @@ class MedicalPDFBuilder {
       this.y -= 28
     }
 
+    // Probability Timeline Chart (captured from report viewer)
+    if (this.extras.timelineImage) {
+      this.y -= 6
+      this.sectionHeader('Seizure Probability Timeline', '◆')
+      this.drawChartImage(
+        this.extras.timelineImage,
+        'Model output probability vs. time — detected event zones highlighted',
+        185,
+      )
+    }
+
     // ═══════════════ §4 DETECTED EVENTS ═══════════════
     this.sectionHeader(role !== 'researcher' ? 'Detected Seizure Events' : 'Detected Events', '§4')
     if (events.length === 0) {
@@ -781,16 +845,16 @@ class MedicalPDFBuilder {
     // Role-specific channel detail
     if (role === 'clinician' && topChDetail.length > 0) {
       this.y -= 4
-      this.textBlock('Clinical Channel Mapping:', 8, ACCENT_BLUE)
+      this.textBlock('Clinical Channel Mapping:', 8, ACCENT_TEAL)
       for (const [ch, sc] of topChDetail.slice(0, 8)) {
         const clinical = CHANNEL_CLINICAL_LABELS[ch] || 'Unknown Region'
         this.textBlock(`  ${ch}  ->  ${clinical}  (${sc.toFixed(4)})`, 7.5)
       }
       this.y -= 4
-      this.textBlock(`Lateralisation Assessment: ${determineLat(topChDetail)}`, 8, ACCENT_BLUE)
+      this.textBlock(`Lateralisation Assessment: ${determineLat(topChDetail)}`, 8, ACCENT_TEAL)
     } else if (role === 'researcher' && topChDetail.length > 0) {
       this.y -= 4
-      this.textBlock('Channel Importance Ranking (gradient-based feature importance):', 8, ACCENT_BLUE)
+      this.textBlock('Channel Importance Ranking (gradient-based feature importance):', 8, ACCENT_TEAL)
       for (const [ch, sc] of topChDetail.slice(0, 10)) {
         this.textBlock(`  ${ch}   ${'#'.repeat(Math.max(1, Math.round(sc * 40)))}  ${sc.toFixed(4)}`, 7.5)
       }
@@ -798,10 +862,21 @@ class MedicalPDFBuilder {
       this.textBlock('Attribution method: gradient-based feature importance. Cross-validate with SHAP or integrated gradients for robustness.', 7, TEXT_LIGHT)
     } else if (role === 'patient' && topChDetail.length > 0) {
       this.y -= 4
-      this.textBlock('Most Active Brain Signal Channels:', 8, ACCENT_BLUE)
+      this.textBlock('Most Active Brain Signal Channels:', 8, ACCENT_TEAL)
       for (const [ch, sc] of topChDetail.slice(0, 5)) {
         this.textBlock(`  ${ch}   ${'#'.repeat(Math.max(1, Math.round(sc * 40)))}  ${sc.toFixed(4)}`, 7.5)
       }
+    }
+
+    // Brain Region Activation Heatmap (captured from report viewer)
+    if (this.extras.heatmapImage) {
+      this.y -= 6
+      this.sectionHeader('Brain Region Activation Map', '◆')
+      this.drawChartImage(
+        this.extras.heatmapImage,
+        'Spatial EEG channel importance — electrode activation heatmap (10-20 system)',
+        200,
+      )
     }
 
     // ═══════════════ §6 RECOMMENDATIONS ═══════════════
@@ -828,12 +903,12 @@ class MedicalPDFBuilder {
     // ═══════════════ §7 DISCLAIMER ═══════════════
     this.y -= 14
     this.ensureSpace(68)
-    const disclaimerColor = role === 'researcher' ? ACCENT_BLUE : RISK_RED
+    const disclaimerColor = role === 'researcher' ? ACCENT_TEAL : RISK_RED
     this.page.drawLine({ start: { x: this.mx, y: this.y + 10 }, end: { x: this.mx + this.contentW, y: this.y + 10 }, thickness: 1, color: disclaimerColor })
     this.y -= 2
 
     if (role === 'researcher') {
-      this.page.drawText('RESEARCH USE ONLY', { x: this.mx + 8, y: this.y, size: 7.5, font: this.bold, color: ACCENT_BLUE })
+      this.page.drawText('RESEARCH USE ONLY', { x: this.mx + 8, y: this.y, size: 7.5, font: this.bold, color: ACCENT_TEAL })
       this.y -= 14
       const disclaimers = [
         'This output is the result of an automated ML inference pipeline intended for research evaluation and algorithm development only.',
@@ -842,7 +917,7 @@ class MedicalPDFBuilder {
       ]
       for (const line of disclaimers) {
         this.ensureSpace(12)
-        this.page.drawText(line, { x: this.mx + 8, y: this.y, size: 7, font: this.font, color: ACCENT_BLUE })
+        this.page.drawText(line, { x: this.mx + 8, y: this.y, size: 7, font: this.font, color: ACCENT_TEAL })
         this.y -= 10
       }
     } else {
@@ -913,7 +988,93 @@ export async function GET(_request: Request, { params }: { params: { id: string 
     const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
 
     const builder = new MedicalPDFBuilder(pdf, font, bold, role)
-    builder.build(report, reportJson, userProfile)
+
+    // Read logo from public directory
+    let logoPng: Buffer | undefined
+    try { logoPng = readFileSync(path.join(process.cwd(), 'public', 'logo.jpeg')) } catch {}
+
+    await builder.build(report, reportJson, userProfile, { logoPng })
+
+    const bytes = await pdf.save()
+    try {
+      await admin.storage.from(REPORT_PDF_BUCKET).upload(`${user.id}/${params.id}.pdf`, Buffer.from(bytes), {
+        contentType: 'application/pdf',
+        upsert: true,
+      })
+    } catch {}
+
+    return new NextResponse(Buffer.from(bytes), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="${report.filename.replace(/\.edf$/i, '') || 'report'}-report.pdf"`,
+      },
+    })
+  } catch (error: any) {
+    return NextResponse.json({ error: error?.message || 'Unable to generate report PDF.' }, { status: 500 })
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/*  POST handler — receives captured chart PNGs from client         */
+/* ═══════════════════════════════════════════════════════════════ */
+
+export async function POST(request: Request, { params }: { params: { id: string } }) {
+  const supabase = await createClient()
+  const admin = createAdminClient()
+
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return NextResponse.json({ error: 'You need to be signed in to download reports.' }, { status: 401 })
+    }
+
+    const { data, error } = await admin
+      .from('reports')
+      .select('id, user_id, filename, status, summary, result_label, event_count, confidence_score, risk_level, quality_grade, duration_minutes, created_at, error_message, report_json')
+      .eq('id', params.id)
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    if (error) throw error
+    if (!data) return NextResponse.json({ error: 'Report not found.' }, { status: 404 })
+
+    let userProfile: { email?: string; role?: string } | null = null
+    try {
+      const profile = await ensureUserProfile(supabase, user)
+      userProfile = { email: user.email || undefined, role: profile.role || undefined }
+    } catch {
+      userProfile = { email: user.email || undefined }
+    }
+
+    const role = resolveRole(userProfile)
+    const report = normalizeReport(data)
+    const reportJson = report.report_json
+
+    // Parse chart images from client request body
+    let timelinePng: Buffer | undefined
+    let heatmapPng: Buffer | undefined
+    try {
+      const body = await request.json()
+      if (body.timelineImage) {
+        const b64 = String(body.timelineImage).replace(/^data:image\/[^;]+;base64,/, '')
+        timelinePng = Buffer.from(b64, 'base64')
+      }
+      if (body.heatmapImage) {
+        const b64 = String(body.heatmapImage).replace(/^data:image\/[^;]+;base64,/, '')
+        heatmapPng = Buffer.from(b64, 'base64')
+      }
+    } catch {}
+
+    let logoPng: Buffer | undefined
+    try { logoPng = readFileSync(path.join(process.cwd(), 'public', 'logo.jpeg')) } catch {}
+
+    const pdf = await PDFDocument.create()
+    const font = await pdf.embedFont(StandardFonts.Helvetica)
+    const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
+
+    const builder = new MedicalPDFBuilder(pdf, font, bold, role)
+    await builder.build(report, reportJson, userProfile, { logoPng, timelinePng, heatmapPng })
 
     const bytes = await pdf.save()
     try {
