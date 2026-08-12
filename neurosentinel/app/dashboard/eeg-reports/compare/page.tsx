@@ -1,13 +1,14 @@
 'use client'
 
-import { useMemo, useEffect, useState } from 'react'
+import { useMemo, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { normalizeReport, normalizeReportStatus, type ReportRecord, type ScoutPageData } from '@/lib/neurosentinel/types'
+import { normalizeReport, normalizeReportStatus, type ReportRecord } from '@/lib/neurosentinel/types'
 import { ensureUserProfile } from '@/lib/user-profile'
 import type { ScoutRole } from '@/lib/scout-guide'
 import { ScoutConversation } from '@/app/components/scout-conversation'
+import { ScoutAvatar } from '@/app/components/scout-avatar'
 
 
 /* ─────────────────────────────────────────
@@ -363,16 +364,12 @@ function ScoutChatSection({
   reportB: ReportRecord
   role: ScoutRole
 }) {
-  const stateKey = useMemo(() => `compare:${reportA.id}:${reportB.id}`, [reportA.id, reportB.id])
+  // Per-mount key — resets conversation on every page reload
+  const stateKey = useRef(`compare:${reportA.id}:${reportB.id}:${Date.now()}`).current
 
   const autoPrompt = useMemo(
     () => ({ content: buildComparisonPrompt(reportA, reportB, role), visible: false }),
     [reportA.id, reportB.id, role],
-  )
-
-  const pageData = useMemo<ScoutPageData>(
-    () => ({ latestReport: reportA, recentReports: [reportB] }),
-    [reportA, reportB],
   )
 
   const compareQuickPrompts = [
@@ -401,60 +398,31 @@ function ScoutChatSection({
           borderBottom: '1px solid var(--border-subtle)',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
+          gap: 10,
           background: 'var(--bg-muted)',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div
-            style={{
-              width: 28, height: 28, borderRadius: 'var(--radius-sm)',
-              background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.15)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 14,
-            }}
-          >
-            ✶
+        <ScoutAvatar size={26} variant="primary" />
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--text-heading)' }}>
+            SCOUT Comparison Chat
           </div>
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--text-heading)' }}>
-              SCOUT Comparison Chat
-            </div>
-            <div style={{ fontSize: 9, color: 'var(--text-faint)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 1 }}>
-              Seizure Clinical Operations &amp; Understanding Tool
-            </div>
+          <div style={{ fontSize: 9, color: 'var(--text-faint)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 1 }}>
+            Seizure Clinical Operations &amp; Understanding Tool
           </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <div style={{ position: 'relative', width: 6, height: 6, flexShrink: 0 }}>
-              <span style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: '#10B981', opacity: 0.75, animation: 'ping 1s cubic-bezier(0,0,0.2,1) infinite' }} />
-              <span style={{ position: 'relative', display: 'block', width: '100%', height: '100%', borderRadius: '50%', background: '#10B981' }} />
-            </div>
-            <span style={{ fontSize: 10, fontWeight: 700, color: '#10B981' }}>Live</span>
-          </div>
-          <span
-            style={{
-              fontSize: 9, fontWeight: 700, color: '#2563EB',
-              background: 'rgba(37,99,235,0.07)', border: '1px solid rgba(37,99,235,0.18)',
-              borderRadius: 99, padding: '3px 10px', textTransform: 'uppercase', letterSpacing: '0.06em',
-            }}
-          >
-            AI Assisted
-          </span>
         </div>
       </div>
 
       {/* Embedded chat — fixed height, scrollable */}
       <div style={{ height: 520 }}>
         <ScoutConversation
-          page="report"
+          page="general"
           role={role}
-          reportId={reportA.id}
-          currentReport={reportA}
-          pageData={pageData}
+          reportId={null}
+          currentReport={null}
+          pageData={null}
           stateKey={stateKey}
-          initialMessage="SCOUT online. I’ll analyze both EEG reports and prepare a comparison summary."
+          initialMessage="SCOUT online. Comparison mode active — analyzing both EEG reports now."
           quickPrompts={compareQuickPrompts}
           autoPrompt={autoPrompt}
         />
