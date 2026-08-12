@@ -20,10 +20,18 @@ export function ClinicalMetrics({ report, events }: Props) {
     return '#64748B'
   })()
 
+  // Peak probability from probability_summary or fall back to confidence score
+  const probSummary = report?.report_json?.model_outputs?.probability_summary
+  const peakProbValue = probSummary?.max != null
+    ? Number(probSummary.max).toFixed(4)
+    : typeof report?.confidence_score === 'number'
+      ? (report.confidence_score / 100).toFixed(4)
+      : '—'
+
   const metrics = [
     { label: 'Confidence', value: formatConfidence(report?.confidence_score), color: '#3B82F6', icon: '📊' },
     { label: 'Mean Duration', value: events.length > 0 ? `${meanDurationSec.toFixed(1)}s` : '—', color: '#1E293B', icon: '⏱️' },
-    { label: 'Signal Quality', value: report?.quality_grade || 'Unknown', color: report?.quality_grade?.toLowerCase() === 'good' ? '#10B981' : '#F59E0B', icon: '📶' },
+    { label: 'Peak Probability', value: peakProbValue, color: '#0D9488', icon: '📈' },
     { label: 'Risk Level', value: report?.risk_level || 'Unknown', color: riskColor, icon: '🛡️' },
     { label: 'Recording', value: formatDurationMinutes(report?.duration_minutes), color: '#64748B', icon: '🧠' },
   ]
@@ -47,4 +55,3 @@ export function ClinicalMetrics({ report, events }: Props) {
     </div>
   )
 }
-

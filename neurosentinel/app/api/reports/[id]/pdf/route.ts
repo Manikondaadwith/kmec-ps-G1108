@@ -873,7 +873,13 @@ class MedicalPDFBuilder {
           : typeof ev.mean_probability === 'number' ? `${(ev.mean_probability * 100).toFixed(1)}%` : '?'
         const risk = String(ev.risk_level ?? '?')
         const pattern = String(ev.pattern ?? ev.pattern_type ?? '—')
-        const peakP = typeof ev.peak_probability === 'number' ? ev.peak_probability.toFixed(4) : (typeof ev.mean_probability === 'number' ? ev.mean_probability.toFixed(4) : '?')
+        const peakP = typeof ev.peak_probability === 'number'
+          ? ev.peak_probability.toFixed(4)
+          : typeof ev.mean_probability === 'number'
+            ? ev.mean_probability.toFixed(4)
+            : ev.confidence_pct != null
+              ? (Number(ev.confidence_pct) / 100).toFixed(4)
+              : '-'
 
         let vals: string[]
         if (role === 'researcher') {
@@ -935,7 +941,10 @@ class MedicalPDFBuilder {
       this.y -= 4
       this.textBlock('Channel Importance Ranking (gradient-based feature importance):', 8, ACCENT_TEAL)
       for (const [ch, sc] of topChDetail.slice(0, 10)) {
-        this.textBlock(`  ${ch}   ${'#'.repeat(Math.max(1, Math.round(sc * 40)))}  ${sc.toFixed(4)}`, 7.5)
+        const pct = `${(sc * 100).toFixed(1)}%`
+        const barLen = Math.max(1, Math.round(sc * 20))
+        const bar = '|'.repeat(barLen) + ' '.repeat(20 - barLen)
+        this.textBlock(`  ${ch.padEnd(8)}  [${bar}]  ${pct}  (${sc.toFixed(4)})`, 7.5)
       }
       this.y -= 4
       this.textBlock('Attribution method: gradient-based feature importance. Cross-validate with SHAP or integrated gradients for robustness.', 7, TEXT_LIGHT)
@@ -943,7 +952,10 @@ class MedicalPDFBuilder {
       this.y -= 4
       this.textBlock('Most Active Brain Signal Channels:', 8, ACCENT_TEAL)
       for (const [ch, sc] of topChDetail.slice(0, 5)) {
-        this.textBlock(`  ${ch}   ${'#'.repeat(Math.max(1, Math.round(sc * 40)))}  ${sc.toFixed(4)}`, 7.5)
+        const pct = `${(sc * 100).toFixed(1)}%`
+        const barLen = Math.max(1, Math.round(sc * 20))
+        const bar = '|'.repeat(barLen) + ' '.repeat(20 - barLen)
+        this.textBlock(`  ${ch.padEnd(8)}  [${bar}]  ${pct}`, 7.5)
       }
     }
 
