@@ -92,6 +92,12 @@ export function EventCards({ events, diagnosticState }: Props) {
                     {typeof event.duration_sec === 'number' ? `${event.duration_sec.toFixed(1)}s` : '—'}
                   </span>
                 </div>
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Probability</span>
+                  <span className="text-sm font-bold font-mono text-gray-900">
+                    {typeof event.peak_probability === 'number' ? event.peak_probability.toFixed(4) : (typeof event.mean_probability === 'number' ? event.mean_probability.toFixed(4) : '—')}
+                  </span>
+                </div>
                 
                 {/* Severity Score */}
                 {event.severity_score != null && (

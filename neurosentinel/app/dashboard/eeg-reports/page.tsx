@@ -600,7 +600,7 @@ function AnalysisCard({
                   className="clinical-btn-outline"
                   style={{ height: 32, padding: '0 14px', fontSize: 12, borderRadius: 6, cursor: pdfLoading ? 'wait' : 'pointer' }}
                 >
-                  {pdfLoading ? 'Generating…' : <><IconDownload size={13} />{' '}View PDF</>}
+                  {pdfLoading ? 'Generating…' : <><IconDownload size={13} />{' '}Download PDF</>}
                 </button>
               )}
             </div>

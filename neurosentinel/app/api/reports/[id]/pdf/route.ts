@@ -852,11 +852,11 @@ class MedicalPDFBuilder {
       this.ensureSpace(20)
       let cols: string[]
       if (role === 'researcher') {
-        cols = ['Event', 'Onset', 'Offset', 'Duration', 'Confidence', 'Peak Prob', 'Risk', 'Pattern', 'Windows']
+        cols = ['Event', 'Onset', 'Offset', 'Duration', 'Confidence', 'Probability', 'Risk', 'Pattern', 'Windows']
       } else if (role === 'clinician') {
-        cols = ['Event', 'Onset', 'Offset', 'Duration', 'Confidence', 'Risk', 'Pattern', 'Onset Zone']
+        cols = ['Event', 'Onset', 'Offset', 'Duration', 'Confidence', 'Probability', 'Risk', 'Pattern', 'Onset Zone']
       } else {
-        cols = ['Event', 'Onset', 'Offset', 'Duration', 'Confidence', 'Risk', 'Pattern']
+        cols = ['Event', 'Onset', 'Offset', 'Duration', 'Confidence', 'Probability', 'Risk', 'Pattern']
       }
       const colW = this.contentW / cols.length
       this.page.drawRectangle({ x: this.mx, y: this.y - 5, width: this.contentW, height: 18, color: rgb(0.878, 0.898, 0.925) })
@@ -873,10 +873,10 @@ class MedicalPDFBuilder {
           : typeof ev.mean_probability === 'number' ? `${(ev.mean_probability * 100).toFixed(1)}%` : '?'
         const risk = String(ev.risk_level ?? '?')
         const pattern = String(ev.pattern ?? ev.pattern_type ?? '—')
+        const peakP = typeof ev.peak_probability === 'number' ? ev.peak_probability.toFixed(4) : (typeof ev.mean_probability === 'number' ? ev.mean_probability.toFixed(4) : '?')
 
         let vals: string[]
         if (role === 'researcher') {
-          const peakP = typeof ev.peak_probability === 'number' ? ev.peak_probability.toFixed(4) : '?'
           const durSec = Number(ev.duration_sec || 0)
           const winCount = durSec > 0 ? String(Math.round(durSec / 4)) : '?'
           vals = [String(ev.id ?? ev.event_idx ?? '?'), `${ev.onset_sec ?? '?'}s`, `${ev.offset_sec ?? '?'}s`, `${ev.duration_sec ?? '?'}s`, confPct, peakP, risk, pattern, winCount]
@@ -887,9 +887,9 @@ class MedicalPDFBuilder {
           } else if (topChDetail.length > 0) {
             oz = regionHypothesis(topChDetail.slice(0, 3))
           }
-          vals = [String(ev.id ?? ev.event_idx ?? '?'), `${ev.onset_sec ?? '?'}s`, `${ev.offset_sec ?? '?'}s`, `${ev.duration_sec ?? '?'}s`, confPct, risk, pattern, oz]
+          vals = [String(ev.id ?? ev.event_idx ?? '?'), `${ev.onset_sec ?? '?'}s`, `${ev.offset_sec ?? '?'}s`, `${ev.duration_sec ?? '?'}s`, confPct, peakP, risk, pattern, oz]
         } else {
-          vals = [String(ev.id ?? ev.event_idx ?? '?'), `${ev.onset_sec ?? '?'}s`, `${ev.offset_sec ?? '?'}s`, `${ev.duration_sec ?? '?'}s`, confPct, risk, pattern]
+          vals = [String(ev.id ?? ev.event_idx ?? '?'), `${ev.onset_sec ?? '?'}s`, `${ev.offset_sec ?? '?'}s`, `${ev.duration_sec ?? '?'}s`, confPct, peakP, risk, pattern]
         }
 
         const riskIdx = role === 'researcher' ? 6 : 5

@@ -594,12 +594,11 @@ export default function ReportPage() {
                </section>
 
                <section className="rounded-[32px] bg-white p-8 shadow-sm ring-1 ring-gray-100">
-                 <h2 className="text-sm font-black uppercase tracking-widest text-[#1E293B] mb-6">Signal Validation</h2>
-                 <DataQualityPanel 
-                   qualityScore={quality.mean_quality_score ?? quality.quality_score}
-                   qualityGrade={report.quality_grade || quality.grade}
-                   missingChannels={Array.isArray(quality?.missing_channels) ? quality.missing_channels : []}
-                 />
+                 <h2 className="text-sm font-black uppercase tracking-widest text-[#1E293B] mb-6">Peak Probability</h2>
+                 <div className="text-3xl font-black text-gray-900 font-mono">
+                   {modelOutputs?.probability_summary?.max ? Number(modelOutputs.probability_summary.max).toFixed(4) : '—'}
+                 </div>
+                 <p className="mt-2 text-[10px] font-bold text-gray-400 uppercase tracking-tight">Maximum model probability</p>
                </section>
             </div>
 
