@@ -36,7 +36,6 @@ export function ReliabilityBadge({ confidence, duration, signalQuality, classNam
         boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.6)',
       }}
     >
-      <span aria-hidden="true">{s.icon}</span>
       {s.label}
     </span>
   )

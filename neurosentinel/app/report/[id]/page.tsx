@@ -253,69 +253,70 @@ export default function ReportPage() {
     }
   }, [report])
 
-  /* ─ PDF Download with chart capture ─ */
+  /* ─ Capture the largest SVG inside an element as a PNG data URL ─
+   *  Works reliably for Recharts (probability timeline) and custom SVGs (brain heatmap).
+   *  Key steps:
+   *    1. scrollIntoView — ensures ResponsiveContainer measures real width
+   *    2. 350ms delay — lets the chart re-render at the correct size
+   *    3. Clone SVG with explicit dimensions + resolve currentColor
+   *    4. Serialize → canvas → PNG
+   */
   async function captureElAsPng(el: HTMLElement): Promise<string | undefined> {
-    // Method 1: html2canvas
-    try {
-      const { default: html2canvas } = await import('html2canvas')
-      const canvas = await html2canvas(el, {
-        scale: 2,
-        backgroundColor: '#ffffff',
-        logging: false,
-        useCORS: true,
-        allowTaint: true,
-        width: el.scrollWidth,
-        height: el.scrollHeight,
-        windowWidth: document.documentElement.scrollWidth,
-        windowHeight: document.documentElement.scrollHeight,
-      })
-      const dataUrl = canvas.toDataURL('image/png')
-      if (dataUrl && dataUrl.length > 300) return dataUrl
-    } catch (e) {
-      console.warn('[PDF] html2canvas failed, trying SVG fallback:', e)
-    }
+    // Step 1: Bring element into viewport so SVG has real dimensions
+    el.scrollIntoView({ behavior: 'instant', block: 'center' })
+    await new Promise<void>(r => setTimeout(r, 350))
 
-    // Method 2: SVG serialization (reliable for Recharts & SVG components)
+    // Step 2: Find the largest SVG (the actual chart, not 12px icon SVGs)
+    const svgEls = Array.from(el.querySelectorAll('svg')) as SVGSVGElement[]
+    if (svgEls.length === 0) return undefined
+
+    const svgEl = svgEls.reduce((best, s) => {
+      const a = s.getBoundingClientRect()
+      const b = best.getBoundingClientRect()
+      return a.width * a.height > b.width * b.height ? s : best
+    })
+
+    const rect = svgEl.getBoundingClientRect()
+    const w = Math.round(rect.width)
+    const h = Math.round(rect.height)
+    if (w < 30 || h < 30) return undefined
+
     try {
-      const svgEls = el.querySelectorAll('svg')
-      if (svgEls.length === 0) return undefined
-      // Pick the largest SVG (the chart itself, not small icon SVGs)
-      let svgEl: SVGSVGElement | null = null
-      let maxArea = 0
-      svgEls.forEach((s) => {
-        const r = s.getBoundingClientRect()
-        const area = r.width * r.height
-        if (area > maxArea) { maxArea = area; svgEl = s as SVGSVGElement }
-      })
-      if (!svgEl || maxArea < 100) return undefined
-      const rect = (svgEl as SVGSVGElement).getBoundingClientRect()
-      const w = rect.width || 800
-      const h = rect.height || 300
-      const clone = (svgEl as SVGSVGElement).cloneNode(true) as SVGSVGElement
+      // Step 3: Clone with explicit size so it renders standalone
+      const clone = svgEl.cloneNode(true) as SVGSVGElement
       clone.setAttribute('width', String(w))
       clone.setAttribute('height', String(h))
       clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+      clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink')
+      clone.style.background = '#ffffff'
+
+      // Resolve currentColor so it survives serialization
+      const resolvedColor = window.getComputedStyle(svgEl).color || '#1E293B'
+      clone.querySelectorAll('[fill="currentColor"]').forEach(n => n.setAttribute('fill', resolvedColor))
+      clone.querySelectorAll('[stroke="currentColor"]').forEach(n => n.setAttribute('stroke', resolvedColor))
+
+      // Step 4: Serialize → Image → Canvas → PNG
       const svgStr = new XMLSerializer().serializeToString(clone)
-      const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' })
-      const url = URL.createObjectURL(blob)
+      const svgDataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgStr)}`
+
       return await new Promise<string>((resolve, reject) => {
         const img = new Image()
         img.onload = () => {
-          const c = document.createElement('canvas')
-          c.width = Math.round(w * 2); c.height = Math.round(h * 2)
-          const ctx = c.getContext('2d')!
+          const canvas = document.createElement('canvas')
+          canvas.width = w * 2
+          canvas.height = h * 2
+          const ctx = canvas.getContext('2d')!
           ctx.scale(2, 2)
           ctx.fillStyle = '#ffffff'
           ctx.fillRect(0, 0, w, h)
           ctx.drawImage(img, 0, 0, w, h)
-          URL.revokeObjectURL(url)
-          resolve(c.toDataURL('image/png'))
+          resolve(canvas.toDataURL('image/png'))
         }
-        img.onerror = (e) => { URL.revokeObjectURL(url); reject(e) }
-        img.src = url
+        img.onerror = reject
+        img.src = svgDataUrl
       })
     } catch (e) {
-      console.error('[PDF] SVG fallback failed:', e)
+      console.error('[PDF Capture] SVG capture failed:', e)
       return undefined
     }
   }
@@ -326,10 +327,10 @@ export default function ReportPage() {
     try {
       const timelineEl = document.getElementById('ns-timeline-capture')
       const heatmapEl  = document.getElementById('ns-heatmap-capture')
-      const [timelineImage, heatmapImage] = await Promise.all([
-        timelineEl ? captureElAsPng(timelineEl) : Promise.resolve(undefined),
-        heatmapEl  ? captureElAsPng(heatmapEl)  : Promise.resolve(undefined),
-      ])
+
+      // Capture sequentially — parallel scrollIntoView calls cancel each other out
+      const timelineImage = timelineEl ? await captureElAsPng(timelineEl) : undefined
+      const heatmapImage  = heatmapEl  ? await captureElAsPng(heatmapEl)  : undefined
 
       const res = await fetch(`/api/reports/${report.id}/pdf`, {
         method: 'POST',
@@ -503,7 +504,7 @@ export default function ReportPage() {
                   {reliability.level === 'Low' && (
                     <div className="mt-6 rounded-2xl bg-amber-50/50 p-4 border border-amber-100 inline-block text-left w-full max-w-xl">
                       <div className="text-[13px] font-bold text-amber-800 flex flex-col gap-1.5">
-                        <div className="flex items-center gap-2">⚠️ Low reliability detected. This result should not be considered conclusive.</div>
+                        <div className="flex items-center gap-2">Low reliability detected. This result should not be considered conclusive.</div>
                         <div className="text-[12px] font-bold text-amber-700">Recommended Action: Upload ≥20 minutes of EEG data for more reliable analysis.</div>
                       </div>
                       
@@ -519,9 +520,9 @@ export default function ReportPage() {
                         <div>
                           <div className="text-[11px] font-black uppercase tracking-widest text-[#1E293B] mb-2">Confidence Factors:</div>
                           <ul className="text-[12px] text-gray-600 space-y-1 ml-1">
-                            <li>• Recording Length: {(report.duration_minutes || 0) < 20 ? 'Low ⚠️' : 'Optimal ✓'}</li>
-                            <li>• Signal Quality: {report.quality_grade === 'A' || report.quality_grade === 'B' || report.quality_grade === 'Good' ? 'Good ✓' : 'Poor ⚠️'}</li>
-                            <li>• Channel Coverage: Partial ⚠️</li>
+                            <li>• Recording Length: {(report.duration_minutes || 0) < 20 ? 'Low' : 'Optimal'}</li>
+                            <li>• Signal Quality: {report.quality_grade === 'A' || report.quality_grade === 'B' || report.quality_grade === 'Good' ? 'Good' : 'Poor'}</li>
+                            <li>• Channel Coverage: Partial</li>
                           </ul>
                         </div>
                       </div>

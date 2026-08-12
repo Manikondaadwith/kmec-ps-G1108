@@ -428,12 +428,12 @@ class MedicalPDFBuilder {
     this.page.drawRectangle({ x: 0, y: this.height - 84, width: this.width, height: 84, color: HEADER_BG })
     this.page.drawRectangle({ x: 0, y: this.height - 88, width: this.width, height: 4, color: ACCENT_TEAL })
 
-    // Logo — 28×28 centred on "NEUROSENTINEL AI" text (baseline height-32, caps ~height-20, centre ~height-26)
+    // Logo — 28×28 nudged down so it sits beside "NEUROSENTINEL AI" text
     const logoSize = 28
     if (this.extras.logoImage) {
       this.page.drawImage(this.extras.logoImage, {
         x: this.mx,
-        y: this.height - 40,   // bottom = height-40  →  top = height-12  →  centre ≈ height-26
+        y: this.height - 47,   // moved down 7pt from previous -40
         width: logoSize,
         height: logoSize,
       })
