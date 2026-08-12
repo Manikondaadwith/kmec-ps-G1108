@@ -45,40 +45,72 @@ function cleanMarkdown(text: string): string {
 }
 
 /* ─────────────────────────────────────────
-   SCOUT comparison prompt
+   SCOUT comparison prompt (role-aware, structured)
 ───────────────────────────────────────── */
-function buildComparisonPrompt(a: ReportRecord, b: ReportRecord): string {
+
+function buildComparisonPrompt(a: ReportRecord, b: ReportRecord, role: ScoutRole): string {
   const fc = (v: number | null | undefined) => {
     const n = normalizeConf(v)
     return n == null ? 'not recorded' : `${n.toFixed(1)}%`
   }
   const fd = (v: number | null | undefined) =>
     v == null ? 'not recorded' : `${v.toFixed(1)} min`
+  const fmtDateShort = (s: string) =>
+    new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+
+  // Role-specific tone and output guidance
+  const roleTone =
+    role === 'patient'
+      ? `You are speaking to a PATIENT — someone tracking their own EEG recordings. Use warm, plain, compassionate language. Write in flowing paragraphs — never use bullet points or numbered lists. Avoid medical jargon entirely; if you must use a technical term, immediately explain it in simple words. Be completely honest: if the findings show a worsening pattern (new seizure events detected, higher risk level, rising event count, or lower signal quality), state clearly and firmly that the patient must contact their neurologist or healthcare provider as soon as possible. Do not soften serious findings. If findings improved or stayed stable, reassure calmly and still recommend they discuss results with their care team.`
+      : role === 'clinician'
+      ? `You are speaking to a CLINICIAN. Use precise, metric-dense clinical language. Lead with the most significant findings first. Reference exact values and calculated deltas (e.g. "+12.4 pp confidence", "event count 0 → 3"). Note changes in risk stratification and signal quality that may affect clinical interpretation. End with specific, evidence-based follow-up recommendations appropriate to the differential.`
+      : role === 'researcher'
+      ? `You are speaking to a RESEARCHER. Use rigorous, technical language. Provide exact numerical deltas for every metric. Comment on model confidence changes and what they imply about signal quality or EEG characteristics. Note any pattern that could affect reproducibility or model behavior. Suggest analytical or protocol-level follow-up steps.`
+      : `You are speaking to a clinical user. Use clear, professional language appropriate for a medical context.`
 
   const describeReport = (label: string, r: ReportRecord) =>
     [
-      `REPORT ${label}: "${r.filename}"`,
-      `  Result: ${r.result_label || 'not available'}`,
-      `  Detected events: ${r.event_count ?? 'not recorded'}`,
+      `REPORT ${label}: "${r.filename}" (analyzed ${fmtDateShort(r.created_at)})`,
+      `  Primary result: ${r.result_label || 'not available'}`,
+      `  Detected seizure events: ${r.event_count ?? 'not recorded'}`,
       `  Risk level: ${r.risk_level || 'not recorded'}`,
       `  Model confidence: ${fc(r.confidence_score)}`,
       `  Recording duration: ${fd(r.duration_minutes)}`,
       `  Signal quality grade: ${r.quality_grade || 'not recorded'}`,
-      r.summary ? `  Clinical summary note: ${r.summary}` : null,
+      r.summary ? `  Model summary: ${r.summary}` : null,
     ]
       .filter(Boolean)
       .join('\n')
 
   return [
-    'Compare the following two EEG analysis reports and provide a concise, clinically-cautious summary of their key differences.',
-    'Be factual and descriptive — do not declare one report better, worse, or clinically superior to the other.',
-    'Do not recommend treatment changes. Do not diagnose.',
-    '',
+    `You are SCOUT — Seizure Clinical Operations & Understanding Tool.`,
+    `Your task is to compare TWO EEG analysis reports directly, not analyze them in isolation.`,
+    ``,
+    `AUDIENCE & TONE:`,
+    roleTone,
+    ``,
+    `GUARDRAILS:`,
+    `- Do NOT diagnose. Do NOT recommend specific medications or dosages.`,
+    `- Compare Report A to Report B — not Report A alone or Report B alone.`,
+    `- Be precise: cite actual values when describing changes (e.g. "risk level changed from Low to High", "event count increased from 0 to 2").`,
+    `- If there is no clinically meaningful change, say so clearly and explain what that means.`,
+    ``,
     describeReport('A', a),
-    '',
+    ``,
     describeReport('B', b),
-    '',
-    'In 3–5 sentences, summarize the main observable differences between Report A and Report B.',
+    ``,
+    `STRUCTURE YOUR RESPONSE with these three clear sections:`,
+    ``,
+    `WHAT CHANGED`,
+    `Compare each key metric directly: result classification, detected events, risk level, model confidence, recording duration, and signal quality. Be specific — cite both values and the delta. If something is unchanged, say so.`,
+    ``,
+    `WHAT IT MEANS`,
+    `Explain the clinical or practical significance of the changes you identified, tailored to the audience. Be honest about what concerning changes imply. Acknowledge when changes are reassuring.`,
+    ``,
+    `WHAT TO DO NEXT`,
+    `Give clear, actionable next steps appropriate for this audience. For patients: if any worsening is found, firmly recommend contacting their neurologist. For clinicians: recommend clinical follow-up. For researchers: recommend analytical next steps. Make the guidance specific to what actually changed.`,
+    ``,
+    `Be thorough. Make every sentence count. Do not pad with generic statements.`,
   ].join('\n')
 }
 
@@ -334,9 +366,8 @@ function ScoutChatSection({
   const stateKey = useMemo(() => `compare:${reportA.id}:${reportB.id}`, [reportA.id, reportB.id])
 
   const autoPrompt = useMemo(
-    () => ({ content: buildComparisonPrompt(reportA, reportB), visible: false }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [reportA.id, reportB.id],
+    () => ({ content: buildComparisonPrompt(reportA, reportB, role), visible: false }),
+    [reportA.id, reportB.id, role],
   )
 
   const pageData = useMemo<ScoutPageData>(
