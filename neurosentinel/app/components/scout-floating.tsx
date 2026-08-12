@@ -98,7 +98,7 @@ export function ScoutFloating() {
   const resizeRef = useRef<{ startX: number; startY: number; width: number; height: number } | null>(null)
   const userIdRef = useRef<string | null>(null)
 
-  const hidden = pathname === '/' || pathname === '/login' || pathname === '/onboarding' || pathname === '/terms' || pathname === '/privacy' || pathname.startsWith('/report/')
+  const hidden = pathname === '/' || pathname === '/login' || pathname === '/onboarding' || pathname === '/terms' || pathname === '/privacy' || pathname.startsWith('/report/') || pathname === '/dashboard/eeg-reports/compare'
 
   const pageContext = useMemo<ScoutPageContext>(() => {
     if (pathname === '/dashboard/settings') return 'settings'

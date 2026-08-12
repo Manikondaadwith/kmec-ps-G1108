@@ -600,13 +600,14 @@ export default function ReportPage() {
           {!showChat && !loading && (
             <button
               onClick={handleToggleChat}
-              className="fixed bottom-6 right-6 z-[90] flex h-[62px] w-[62px] items-center justify-center rounded-full transition-all hover:scale-110 active:scale-95 animate-in fade-in slide-in-from-bottom-4 ring-4 ring-white shadow-xl"
+              className="fixed bottom-8 right-8 z-[90] flex h-[56px] w-[56px] md:h-[70px] md:w-[70px] items-center justify-center rounded-full transition-all hover:scale-105 active:scale-90 animate-in fade-in slide-in-from-bottom-4 ring-2 ring-white/60 ring-inset"
               style={{
                 background: 'linear-gradient(135deg, #3B82F6, #06B6D4)',
+                boxShadow: '0 8px 20px rgba(59, 130, 246, 0.25)',
               }}
-              title="Open SCOUT"
+              aria-label="Open SCOUT"
             >
-              <ScoutAvatar size={38} variant="primary" />
+              <ScoutAvatar size={42} variant="primary" />
             </button>
           )}
 

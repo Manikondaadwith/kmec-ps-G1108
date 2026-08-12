@@ -1,12 +1,14 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useMemo, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { normalizeReport, normalizeReportStatus, type ReportRecord } from '@/lib/neurosentinel/types'
+import { normalizeReport, normalizeReportStatus, type ReportRecord, type ScoutPageData } from '@/lib/neurosentinel/types'
 import { ensureUserProfile } from '@/lib/user-profile'
 import type { ScoutRole } from '@/lib/scout-guide'
+import { ScoutConversation } from '@/app/components/scout-conversation'
+
 
 /* ─────────────────────────────────────────
    Helpers
@@ -318,9 +320,9 @@ function ReportSummaryCard({ report, label }: { report: ReportRecord; label: 'A'
 }
 
 /* ─────────────────────────────────────────
-   SCOUT comparison section (real API)
+   SCOUT chatbot section (embedded, interactive)
 ───────────────────────────────────────── */
-function ScoutComparisonSection({
+function ScoutChatSection({
   reportA,
   reportB,
   role,
@@ -329,76 +331,24 @@ function ScoutComparisonSection({
   reportB: ReportRecord
   role: ScoutRole
 }) {
-  const [summary, setSummary] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [failed, setFailed] = useState(false)
+  const stateKey = useMemo(() => `compare:${reportA.id}:${reportB.id}`, [reportA.id, reportB.id])
 
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setSummary(null)
-    setFailed(false)
+  const autoPrompt = useMemo(
+    () => ({ content: buildComparisonPrompt(reportA, reportB), visible: false }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [reportA.id, reportB.id],
+  )
 
-    async function run() {
-      try {
-        const prompt = buildComparisonPrompt(reportA, reportB)
-        const res = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            messages: [{ role: 'user', content: prompt }],
-            context: {
-              page: 'report',
-              role: role ?? null,
-              report_id: reportA.id,
-              current_report: null,
-              page_data: {
-                report_a: {
-                  id: reportA.id,
-                  filename: reportA.filename,
-                  result_label: reportA.result_label,
-                  event_count: reportA.event_count,
-                  risk_level: reportA.risk_level,
-                  confidence_score: reportA.confidence_score,
-                  duration_minutes: reportA.duration_minutes,
-                  quality_grade: reportA.quality_grade,
-                  summary: reportA.summary,
-                  status: reportA.status,
-                },
-                report_b: {
-                  id: reportB.id,
-                  filename: reportB.filename,
-                  result_label: reportB.result_label,
-                  event_count: reportB.event_count,
-                  risk_level: reportB.risk_level,
-                  confidence_score: reportB.confidence_score,
-                  duration_minutes: reportB.duration_minutes,
-                  quality_grade: reportB.quality_grade,
-                  summary: reportB.summary,
-                  status: reportB.status,
-                },
-              },
-            },
-          }),
-        })
-        if (cancelled) return
-        const data = await res.json()
-        if (cancelled) return
-        if (typeof data.message === 'string' && data.message.trim()) {
-          setSummary(data.message.trim())
-        } else {
-          setFailed(true)
-        }
-      } catch {
-        if (!cancelled) setFailed(true)
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
+  const pageData = useMemo<ScoutPageData>(
+    () => ({ latestReport: reportA, recentReports: [reportB] }),
+    [reportA, reportB],
+  )
 
-    void run()
-    return () => { cancelled = true }
-  }, [reportA.id, reportB.id, role])
+  const compareQuickPrompts = [
+    'Explain the confidence difference',
+    'Compare risk levels',
+    'What changed between reports?',
+  ]
 
   return (
     <section
@@ -413,96 +363,75 @@ function ScoutComparisonSection({
       {/* Blue top bar */}
       <div style={{ height: 3, background: 'linear-gradient(90deg, #3B82F6, #06B6D4)' }} />
 
-      <div style={{ padding: '20px 28px' }}>
-        {/* Header row */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div
-              style={{
-                width: 30, height: 30, borderRadius: 'var(--radius-sm)',
-                background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.15)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}
-            >
-              <span style={{ fontSize: 14 }}>✦</span>
-            </div>
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--text-heading)' }}>
-                SCOUT Comparison Summary
-              </div>
-              <div style={{ fontSize: 9, color: 'var(--text-faint)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 1 }}>
-                Seizure Clinical Operations & Understanding Tool
-              </div>
-            </div>
-          </div>
-          {!loading && !failed && summary && (
-            <span
-              style={{
-                fontSize: 9, fontWeight: 700, color: '#10B981',
-                background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)',
-                borderRadius: 99, padding: '3px 10px', textTransform: 'uppercase', letterSpacing: '0.06em',
-              }}
-            >
-              AI Generated
-            </span>
-          )}
-        </div>
-
-        {/* Loading */}
-        {loading && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0' }}>
-            <div style={{ display: 'flex', gap: 4 }}>
-              {[0, 1, 2].map((i) => (
-                <div
-                  key={i}
-                  className="h-1.5 w-1.5 rounded-full bg-blue-400"
-                  style={{ animation: 'scoutBounce 1.2s infinite', animationDelay: `${i * 0.15}s` }}
-                />
-              ))}
-            </div>
-            <span style={{ fontSize: 14, fontWeight: 600, color: '#3B82F6' }}>
-              SCOUT is analyzing both reports…
-            </span>
-          </div>
-        )}
-
-        {/* Non-blocking error */}
-        {!loading && failed && (
+      {/* SCOUT header */}
+      <div
+        style={{
+          padding: '14px 24px',
+          borderBottom: '1px solid var(--border-subtle)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          background: 'var(--bg-muted)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div
             style={{
-              padding: '12px 16px',
-              background: 'var(--bg-inset)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-md)',
-              fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.55,
+              width: 28, height: 28, borderRadius: 'var(--radius-sm)',
+              background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.15)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 14,
             }}
           >
-            SCOUT could not generate a comparison summary at this time. The structured comparison table above remains fully available.
+            ✶
           </div>
-        )}
-
-        {/* Summary response */}
-        {!loading && !failed && summary && (
           <div>
-            <p style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic', marginBottom: 12, lineHeight: 1.6 }}>
-              SCOUT analyzed both reports using its clinical backend. This summary is AI-generated and descriptive only — clinical interpretation is required.
-            </p>
-            <p style={{ fontSize: 14, color: 'var(--text-secondary)', fontWeight: 500, lineHeight: 1.75, whiteSpace: 'pre-wrap' }}>
-              {cleanMarkdown(summary)}
-            </p>
+            <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--text-heading)' }}>
+              SCOUT Comparison Chat
+            </div>
+            <div style={{ fontSize: 9, color: 'var(--text-faint)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 1 }}>
+              Seizure Clinical Operations &amp; Understanding Tool
+            </div>
           </div>
-        )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <div style={{ position: 'relative', width: 6, height: 6, flexShrink: 0 }}>
+              <span style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: '#10B981', opacity: 0.75, animation: 'ping 1s cubic-bezier(0,0,0.2,1) infinite' }} />
+              <span style={{ position: 'relative', display: 'block', width: '100%', height: '100%', borderRadius: '50%', background: '#10B981' }} />
+            </div>
+            <span style={{ fontSize: 10, fontWeight: 700, color: '#10B981' }}>Live</span>
+          </div>
+          <span
+            style={{
+              fontSize: 9, fontWeight: 700, color: '#2563EB',
+              background: 'rgba(37,99,235,0.07)', border: '1px solid rgba(37,99,235,0.18)',
+              borderRadius: 99, padding: '3px 10px', textTransform: 'uppercase', letterSpacing: '0.06em',
+            }}
+          >
+            AI Assisted
+          </span>
+        </div>
       </div>
 
-      <style>{`
-        @keyframes scoutBounce {
-          0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-4px); }
-        }
-      `}</style>
+      {/* Embedded chat — fixed height, scrollable */}
+      <div style={{ height: 520 }}>
+        <ScoutConversation
+          page="report"
+          role={role}
+          reportId={reportA.id}
+          currentReport={reportA}
+          pageData={pageData}
+          stateKey={stateKey}
+          initialMessage="SCOUT online. I’ll analyze both EEG reports and prepare a comparison summary."
+          quickPrompts={compareQuickPrompts}
+          autoPrompt={autoPrompt}
+        />
+      </div>
     </section>
   )
 }
+
 
 /* ─────────────────────────────────────────
    Main page
@@ -787,8 +716,9 @@ export default function ComparePage() {
             ))}
           </section>
 
-          {/* ── SCOUT Comparison Summary (real backend) ── */}
-          <ScoutComparisonSection reportA={reportA} reportB={reportB} role={role} />
+          {/* ── SCOUT Chat (embedded, interactive) ── */}
+          <ScoutChatSection reportA={reportA} reportB={reportB} role={role} />
+
 
           {/* ── Actions bar ── */}
           <div
