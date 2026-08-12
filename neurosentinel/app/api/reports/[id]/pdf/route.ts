@@ -428,17 +428,18 @@ class MedicalPDFBuilder {
     this.page.drawRectangle({ x: 0, y: this.height - 84, width: this.width, height: 84, color: HEADER_BG })
     this.page.drawRectangle({ x: 0, y: this.height - 88, width: this.width, height: 4, color: ACCENT_TEAL })
 
-    // Logo — 36×36 vertically centred in header
-    const logoSize = 36
+    // Logo — 28×28 centred on "NEUROSENTINEL AI" text (baseline height-32, caps ~height-20, centre ~height-26)
+    const logoSize = 28
     if (this.extras.logoImage) {
       this.page.drawImage(this.extras.logoImage, {
         x: this.mx,
-        y: this.height - 68,   // top = height-32, bottom = height-68
+        y: this.height - 40,   // bottom = height-40  →  top = height-12  →  centre ≈ height-26
         width: logoSize,
         height: logoSize,
       })
     }
     const textX = this.extras.logoImage ? this.mx + logoSize + 8 : this.mx
+
 
     this.page.drawText('NEUROSENTINEL AI', { x: textX, y: this.height - 32, size: 16, font: this.bold, color: WHITE })
     this.page.drawText('Seizure Clinical Operations & Understanding Tool  |  Automated EEG Analysis Platform', {
@@ -521,7 +522,92 @@ class MedicalPDFBuilder {
     this.y -= 4
   }
 
+  /* ─ Native server-side chart: Probability Timeline ─ */
+  private drawNativeTimeline(probTimeline: any[], events: any[], thresholdHigh?: number) {
+    if (!Array.isArray(probTimeline) || probTimeline.length < 2) return
+    const chartH = 110
+    const chartW = this.contentW - 20
+    const chartX = this.mx + 10
+    const padT = 6; const padB = 18; const plotH = chartH - padT - padB
+    this.ensureSpace(chartH + 30)
+    this.y -= 6
+    const top = this.y; const bottom = this.y - chartH
+    const plotTop = top - padT; const plotBottom = bottom + padB
+    // Background
+    this.page.drawRectangle({ x: chartX, y: bottom, width: chartW, height: chartH, color: rgb(0.961, 0.992, 0.988) })
+    this.page.drawLine({ start: { x: chartX, y: bottom }, end: { x: chartX + chartW, y: bottom }, thickness: 0.5, color: BORDER_LIGHT })
+    this.page.drawLine({ start: { x: chartX, y: bottom }, end: { x: chartX, y: top }, thickness: 0.5, color: BORDER_LIGHT })
+    // Grid & Y labels
+    for (let i = 0; i <= 4; i++) {
+      const gy = plotBottom + (i / 4) * plotH
+      this.page.drawLine({ start: { x: chartX, y: gy }, end: { x: chartX + chartW, y: gy }, thickness: 0.25, color: BORDER_LIGHT })
+      this.page.drawText(`${(i * 25)}%`, { x: chartX - 16, y: gy - 2, size: 5, font: this.font, color: TEXT_LIGHT })
+    }
+    const getT = (p: any) => typeof p === 'object' ? (p.time ?? p[0] ?? 0) : 0
+    const getP = (p: any) => typeof p === 'object' ? (p.seizure_probability ?? p.probability ?? p[1] ?? 0) : 0
+    const times = probTimeline.map(getT); const probs = probTimeline.map(getP)
+    const minT = Math.min(...times); const maxT = Math.max(...times); const tRange = maxT - minT || 1
+    const toX = (t: number) => chartX + ((t - minT) / tRange) * chartW
+    const toY = (p: number) => plotBottom + Math.min(Math.max(p, 0), 1) * plotH
+    // Event zones
+    for (const ev of events) {
+      const st = ev.start_time ?? ev.start ?? 0; const et = ev.end_time ?? ev.end ?? st + 30
+      const x1 = toX(st); const x2 = toX(et)
+      if (x2 > x1 + 0.5) this.page.drawRectangle({ x: x1, y: plotBottom, width: x2 - x1, height: plotH, color: rgb(0.992, 0.863, 0.863), opacity: 0.7 })
+    }
+    // Threshold line
+    if (thresholdHigh != null && thresholdHigh > 0 && thresholdHigh <= 1) {
+      const ty = toY(thresholdHigh)
+      this.page.drawLine({ start: { x: chartX, y: ty }, end: { x: chartX + chartW, y: ty }, thickness: 0.75, color: RISK_ORANGE, dashArray: [4, 2] })
+      this.page.drawText(`${(thresholdHigh * 100).toFixed(0)}% threshold`, { x: chartX + 2, y: ty + 2, size: 5, font: this.font, color: RISK_ORANGE })
+    }
+    // Probability line
+    for (let i = 1; i < probTimeline.length; i++) {
+      const col = probs[i] >= (thresholdHigh ?? 0.5) ? RISK_RED : ACCENT_TEAL
+      this.page.drawLine({ start: { x: toX(times[i - 1]), y: toY(probs[i - 1]) }, end: { x: toX(times[i]), y: toY(probs[i]) }, thickness: 1, color: col })
+    }
+    // X axis labels
+    for (let i = 0; i <= 4; i++) {
+      const t = minT + (i / 4) * tRange; const lx = toX(t)
+      const mins = Math.floor(t / 60); const secs = Math.floor(t % 60)
+      const label = mins > 0 ? `${mins}m${secs.toString().padStart(2, '0')}s` : `${Math.round(t)}s`
+      this.page.drawText(label, { x: lx - 8, y: bottom - 10, size: 5, font: this.font, color: TEXT_LIGHT })
+    }
+    // Legend
+    this.page.drawLine({ start: { x: chartX + chartW - 62, y: top - 6 }, end: { x: chartX + chartW - 50, y: top - 6 }, thickness: 1.5, color: ACCENT_TEAL })
+    this.page.drawText('Seizure Prob.', { x: chartX + chartW - 48, y: top - 9, size: 5, font: this.font, color: TEXT_MEDIUM })
+    this.y -= chartH + 12
+  }
+
+  /* ─ Native server-side chart: Channel Importance Bars ─ */
+  private drawNativeChannelBars(channels: [string, number][]) {
+    const rows = channels.slice(0, 10)
+    if (rows.length === 0) return
+    const barH = 13; const gap = 3; const labelW = 32
+    const chartW = this.contentW - 20; const chartX = this.mx + 10
+    const totalH = rows.length * (barH + gap) + 16
+    this.ensureSpace(totalH + 16)
+    this.y -= 6
+    // Lobe colours (by first letter of channel name)
+    const lobeCol: Record<string, ReturnType<typeof rgb>> = {
+      F: rgb(0.255, 0.412, 0.882), T: ACCENT_TEAL, P: rgb(0.576, 0.173, 0.729),
+      O: rgb(0.094, 0.620, 0.294), C: RISK_ORANGE,
+    }
+    for (const [ch, score] of rows) {
+      const lobe = ch.replace(/[0-9z]/gi, '')[0]?.toUpperCase() ?? 'C'
+      const barColor = lobeCol[lobe] ?? ACCENT_TEAL
+      const fillW = (chartW - labelW - 48) * Math.min(score, 1)
+      this.page.drawText(ch.padEnd(4), { x: chartX, y: this.y + 2, size: 7, font: this.bold, color: TEXT_MEDIUM })
+      this.page.drawRectangle({ x: chartX + labelW, y: this.y, width: chartW - labelW - 48, height: barH, color: SECTION_BG })
+      if (fillW > 0) this.page.drawRectangle({ x: chartX + labelW, y: this.y, width: fillW, height: barH, color: barColor, opacity: 0.85 })
+      this.page.drawText(`${(score * 100).toFixed(1)}%`, { x: chartX + labelW + fillW + 4, y: this.y + 2, size: 6, font: this.font, color: TEXT_MEDIUM })
+      this.y -= barH + gap
+    }
+    this.y -= 8
+  }
+
   async build(report: any, reportJson: any, userProfile?: { email?: string; role?: string } | null, extras?: { logoPng?: Buffer; timelinePng?: Buffer; heatmapPng?: Buffer }) {
+
     // Embed chart images provided by client
     if (extras?.logoPng) {
       try { this.extras.logoImage = await this.doc.embedJpg(extras.logoPng) } catch {
@@ -546,6 +632,8 @@ class MedicalPDFBuilder {
     const explainability = reportJson?.explainability || {}
     const rawMeta = reportJson?.metadata || {}
     const probSummary = modelOutputs?.probability_summary || {}
+    const probTimeline: any[] = Array.isArray(modelOutputs?.probability_timeline) ? modelOutputs.probability_timeline : []
+    const thresholdHigh: number | undefined = typeof modelOutputs?.threshold_high === 'number' ? modelOutputs.threshold_high : undefined
 
     const riskLevel = summary.overall_risk || reportJson?.risk_level || report.risk_level || 'Unknown'
     const qualityGrade = sq.grade || reportJson?.quality_grade || report.quality_grade || 'Unknown'
@@ -754,7 +842,7 @@ class MedicalPDFBuilder {
       this.y -= 28
     }
 
-    // Probability Timeline Chart (captured from report viewer)
+    // Probability Timeline Chart (captured from report viewer, or native fallback)
     if (this.extras.timelineImage) {
       this.y -= 6
       this.sectionHeader('Seizure Probability Timeline', '◆')
@@ -763,6 +851,11 @@ class MedicalPDFBuilder {
         'Model output probability vs. time — detected event zones highlighted',
         185,
       )
+    } else if (probTimeline.length >= 2) {
+      this.y -= 6
+      this.sectionHeader('Seizure Probability Timeline', '◆')
+      this.textBlock('Model output probability vs. time — detected event zones highlighted in red.', 7, TEXT_LIGHT)
+      this.drawNativeTimeline(probTimeline, events, thresholdHigh)
     }
 
     // ═══════════════ §4 DETECTED EVENTS ═══════════════
@@ -868,7 +961,7 @@ class MedicalPDFBuilder {
       }
     }
 
-    // Brain Region Activation Heatmap (captured from report viewer)
+    // Brain Region Activation Heatmap (captured from report viewer, or native bar chart fallback)
     if (this.extras.heatmapImage) {
       this.y -= 6
       this.sectionHeader('Brain Region Activation Map', '◆')
@@ -877,6 +970,11 @@ class MedicalPDFBuilder {
         'Spatial EEG channel importance — electrode activation heatmap (10-20 system)',
         200,
       )
+    } else if (topChDetail.length > 0) {
+      this.y -= 6
+      this.sectionHeader('Channel Importance (Brain Activity)', '◆')
+      this.textBlock('Relative contribution of each EEG channel to the AI decision. Colour indicates brain lobe (F=Frontal, T=Temporal, P=Parietal, O=Occipital, C=Central).', 7, TEXT_LIGHT)
+      this.drawNativeChannelBars(topChDetail)
     }
 
     // ═══════════════ §6 RECOMMENDATIONS ═══════════════

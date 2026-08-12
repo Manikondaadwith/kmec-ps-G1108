@@ -3,6 +3,53 @@ import { createClient } from '@supabase/supabase-js'
 
 const OTP_TTL_MS = 10 * 60 * 1000
 const OTP_LENGTH = 6
+const APP_URL = (process.env.NEXT_PUBLIC_APP_URL || 'https://neuro-sentinel-ai-6vfv.vercel.app').replace(/\/+$/, '')
+const LOGO_URL = `${APP_URL}/logo.jpeg`
+
+/** Shared table-based email template matching the NeuroSentinel clinical teal design */
+function buildEmailHtml({ headline, bodyHtml, footerNote }: { headline: string; bodyHtml: string; footerNote?: string }) {
+  return `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8" /><title>NeuroSentinel AI</title></head>
+<body style="margin:0;padding:0;background-color:#EAF9F8;font-family:Arial,Helvetica,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#EAF9F8">
+<tr><td align="center" style="padding:32px 16px">
+  <table width="540" cellpadding="0" cellspacing="0" border="0" style="max-width:540px;border-radius:14px;overflow:hidden;border:1px solid #A7F3D0">
+    <!-- HEADER -->
+    <tr>
+      <td style="background:#0A4455;padding:18px 24px">
+        <table cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td style="vertical-align:middle;padding-right:10px">
+              <img src="${LOGO_URL}" width="30" height="30" alt="" style="display:block;border-radius:6px;border:0" />
+            </td>
+            <td style="vertical-align:middle">
+              <span style="font-family:Arial,Helvetica,sans-serif;font-size:17px;font-weight:700;color:#FFFFFF;line-height:1">${headline}</span>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <!-- TEAL ACCENT BAR -->
+    <tr><td style="background:#14B8A6;height:3px;font-size:1px;line-height:1px">&nbsp;</td></tr>
+    <!-- BODY -->
+    <tr>
+      <td style="background:#FFFFFF;padding:28px 28px 24px">
+        ${bodyHtml}
+      </td>
+    </tr>
+    <!-- FOOTER -->
+    <tr>
+      <td style="background:#EAF9F8;padding:14px 24px;border-top:1px solid #CCFBF1">
+        <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#64748B">${footerNote ?? 'NeuroSentinel AI &mdash; AI-Powered EEG Seizure Detection Platform'}</p>
+      </td>
+    </tr>
+  </table>
+</td></tr>
+</table>
+</body></html>`
+}
+
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase()
@@ -217,16 +264,17 @@ export async function sendSignupOtp(email: string) {
     to: normalizedEmail,
     subject: 'Your NeuroSentinel AI verification code',
     text: `Your NeuroSentinel AI verification code is ${otp}. It expires in 10 minutes.`,
-    html: `
-      <div style="font-family:Arial,sans-serif;background:#0A0A0F;color:#E8F7FF;padding:24px">
-        <h2 style="margin:0 0 12px;color:#00F0FF">NeuroSentinel AI</h2>
-        <p style="margin:0 0 16px;color:#B8C7D1">Use this verification code to finish creating your account.</p>
-        <div style="font-size:32px;font-weight:700;letter-spacing:8px;padding:16px 20px;border-radius:14px;background:#111827;display:inline-block;color:#FFFFFF">
-          ${otp}
-        </div>
-        <p style="margin:16px 0 0;color:#8FA4B3">This code expires in 10 minutes.</p>
-      </div>
-    `,
+    html: buildEmailHtml({
+      headline: 'NeuroSentinel AI',
+      bodyHtml: `
+        <p style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#1E293B;margin:0 0 12px">Verify your account</p>
+        <p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#475569;margin:0 0 22px">Use the code below to finish creating your NeuroSentinel AI account. The code expires in <strong>10 minutes</strong>.</p>
+        <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td align="center" style="padding-bottom:22px">
+          <div style="display:inline-block;background:#0A4455;border-radius:12px;padding:16px 32px;font-family:Arial,Helvetica,sans-serif;font-size:34px;font-weight:700;letter-spacing:12px;color:#FFFFFF">${otp}</div>
+        </td></tr></table>
+        <p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#94A3B8;margin:0">If you did not request this code, you can safely ignore this email.</p>
+      `,
+    }),
   })
 
   const encodedPayload = encodePayload({
@@ -297,16 +345,18 @@ export async function sendResetPasswordOtp(email: string) {
     to: normalizedEmail,
     subject: 'Your NeuroSentinel AI password reset code',
     text: `Your NeuroSentinel AI password reset code is ${otp}. It expires in 10 minutes.`,
-    html: `
-      <div style="font-family:Arial,sans-serif;background:#0A0A0F;color:#E8F7FF;padding:24px">
-        <h2 style="margin:0 0 12px;color:#00F0FF">NeuroSentinel AI</h2>
-        <p style="margin:0 0 16px;color:#B8C7D1">You requested to reset your password. Use the verification code below to proceed.</p>
-        <div style="font-size:32px;font-weight:700;letter-spacing:8px;padding:16px 20px;border-radius:14px;background:#111827;display:inline-block;color:#FFFFFF">
-          ${otp}
-        </div>
-        <p style="margin:16px 0 0;color:#8FA4B3">This code expires in 10 minutes. If you did not request this, please ignore this email.</p>
-      </div>
-    `,
+    html: buildEmailHtml({
+      headline: 'NeuroSentinel AI',
+      bodyHtml: `
+        <p style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#1E293B;margin:0 0 12px">Password Reset Request</p>
+        <p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#475569;margin:0 0 22px">We received a request to reset your NeuroSentinel AI password. Enter the code below to proceed. The code expires in <strong>10 minutes</strong>.</p>
+        <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td align="center" style="padding-bottom:22px">
+          <div style="display:inline-block;background:#0A4455;border-radius:12px;padding:16px 32px;font-family:Arial,Helvetica,sans-serif;font-size:34px;font-weight:700;letter-spacing:12px;color:#FFFFFF">${otp}</div>
+        </td></tr></table>
+        <p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#94A3B8;margin:0">If you did not request a password reset, you can safely ignore this email. Your account remains secure.</p>
+      `,
+      footerNote: 'NeuroSentinel AI &mdash; AI-Powered EEG Seizure Detection Platform &bull; This is an automated security email.',
+    }),
   })
 
   const encodedPayload = encodePayload({

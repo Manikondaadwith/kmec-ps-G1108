@@ -254,29 +254,82 @@ export default function ReportPage() {
   }, [report])
 
   /* ─ PDF Download with chart capture ─ */
+  async function captureElAsPng(el: HTMLElement): Promise<string | undefined> {
+    // Method 1: html2canvas
+    try {
+      const { default: html2canvas } = await import('html2canvas')
+      const canvas = await html2canvas(el, {
+        scale: 2,
+        backgroundColor: '#ffffff',
+        logging: false,
+        useCORS: true,
+        allowTaint: true,
+        width: el.scrollWidth,
+        height: el.scrollHeight,
+        windowWidth: document.documentElement.scrollWidth,
+        windowHeight: document.documentElement.scrollHeight,
+      })
+      const dataUrl = canvas.toDataURL('image/png')
+      if (dataUrl && dataUrl.length > 300) return dataUrl
+    } catch (e) {
+      console.warn('[PDF] html2canvas failed, trying SVG fallback:', e)
+    }
+
+    // Method 2: SVG serialization (reliable for Recharts & SVG components)
+    try {
+      const svgEls = el.querySelectorAll('svg')
+      if (svgEls.length === 0) return undefined
+      // Pick the largest SVG (the chart itself, not small icon SVGs)
+      let svgEl: SVGSVGElement | null = null
+      let maxArea = 0
+      svgEls.forEach((s) => {
+        const r = s.getBoundingClientRect()
+        const area = r.width * r.height
+        if (area > maxArea) { maxArea = area; svgEl = s as SVGSVGElement }
+      })
+      if (!svgEl || maxArea < 100) return undefined
+      const rect = (svgEl as SVGSVGElement).getBoundingClientRect()
+      const w = rect.width || 800
+      const h = rect.height || 300
+      const clone = (svgEl as SVGSVGElement).cloneNode(true) as SVGSVGElement
+      clone.setAttribute('width', String(w))
+      clone.setAttribute('height', String(h))
+      clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+      const svgStr = new XMLSerializer().serializeToString(clone)
+      const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      return await new Promise<string>((resolve, reject) => {
+        const img = new Image()
+        img.onload = () => {
+          const c = document.createElement('canvas')
+          c.width = Math.round(w * 2); c.height = Math.round(h * 2)
+          const ctx = c.getContext('2d')!
+          ctx.scale(2, 2)
+          ctx.fillStyle = '#ffffff'
+          ctx.fillRect(0, 0, w, h)
+          ctx.drawImage(img, 0, 0, w, h)
+          URL.revokeObjectURL(url)
+          resolve(c.toDataURL('image/png'))
+        }
+        img.onerror = (e) => { URL.revokeObjectURL(url); reject(e) }
+        img.src = url
+      })
+    } catch (e) {
+      console.error('[PDF] SVG fallback failed:', e)
+      return undefined
+    }
+  }
+
   const handleDownloadPDF = async () => {
     if (!report) return
     setIsDownloading(true)
     try {
-      const { default: html2canvas } = await import('html2canvas')
-      let timelineImage: string | undefined
-      let heatmapImage: string | undefined
-
       const timelineEl = document.getElementById('ns-timeline-capture')
-      if (timelineEl) {
-        try {
-          const canvas = await html2canvas(timelineEl, { scale: 2, backgroundColor: '#ffffff', logging: false, useCORS: true })
-          timelineImage = canvas.toDataURL('image/png')
-        } catch {}
-      }
-
-      const heatmapEl = document.getElementById('ns-heatmap-capture')
-      if (heatmapEl) {
-        try {
-          const canvas = await html2canvas(heatmapEl, { scale: 2, backgroundColor: '#ffffff', logging: false, useCORS: true })
-          heatmapImage = canvas.toDataURL('image/png')
-        } catch {}
-      }
+      const heatmapEl  = document.getElementById('ns-heatmap-capture')
+      const [timelineImage, heatmapImage] = await Promise.all([
+        timelineEl ? captureElAsPng(timelineEl) : Promise.resolve(undefined),
+        heatmapEl  ? captureElAsPng(heatmapEl)  : Promise.resolve(undefined),
+      ])
 
       const res = await fetch(`/api/reports/${report.id}/pdf`, {
         method: 'POST',
@@ -295,12 +348,13 @@ export default function ReportPage() {
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
     } catch {
-      // Fallback: open GET route in new tab
+      // Fallback: open GET route in new tab (logo + teal theme, no charts)
       window.open(`/api/reports/${report.id}/pdf`, '_blank')
     } finally {
       setIsDownloading(false)
     }
   }
+
 
   /* ─ Render Logic ─ */
   const reportJson = report?.report_json
