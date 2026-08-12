@@ -842,21 +842,7 @@ class MedicalPDFBuilder {
       this.y -= 28
     }
 
-    // Probability Timeline Chart (captured from report viewer, or native fallback)
-    if (this.extras.timelineImage) {
-      this.y -= 6
-      this.sectionHeader('Seizure Probability Timeline', '*')
-      this.drawChartImage(
-        this.extras.timelineImage,
-        'Model output probability vs. time — detected event zones highlighted',
-        185,
-      )
-    } else if (probTimeline.length >= 2) {
-      this.y -= 6
-      this.sectionHeader('Seizure Probability Timeline', '*')
-      this.textBlock('Model output probability vs. time — detected event zones highlighted in red.', 7, TEXT_LIGHT)
-      this.drawNativeTimeline(probTimeline, events, thresholdHigh)
-    }
+
 
     // ═══════════════ §4 DETECTED EVENTS ═══════════════
     this.sectionHeader(role !== 'researcher' ? 'Detected Seizure Events' : 'Detected Events', '§4')
@@ -961,21 +947,7 @@ class MedicalPDFBuilder {
       }
     }
 
-    // Brain Region Activation Heatmap (captured from report viewer, or native bar chart fallback)
-    if (this.extras.heatmapImage) {
-      this.y -= 6
-      this.sectionHeader('Brain Region Activation Map', '*')
-      this.drawChartImage(
-        this.extras.heatmapImage,
-        'Spatial EEG channel importance — electrode activation heatmap (10-20 system)',
-        200,
-      )
-    } else if (topChDetail.length > 0) {
-      this.y -= 6
-      this.sectionHeader('Channel Importance (Brain Activity)', '*')
-      this.textBlock('Relative contribution of each EEG channel to the AI decision. Colour indicates brain lobe (F=Frontal, T=Temporal, P=Parietal, O=Occipital, C=Central).', 7, TEXT_LIGHT)
-      this.drawNativeChannelBars(topChDetail)
-    }
+
 
     // ═══════════════ §6 RECOMMENDATIONS ═══════════════
     let recommendations: string[]

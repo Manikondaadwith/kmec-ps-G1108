@@ -253,103 +253,30 @@ export default function ReportPage() {
     }
   }, [report])
 
-  /* ─ Capture the largest SVG inside an element as a PNG data URL ─
-   *  Works reliably for Recharts (probability timeline) and custom SVGs (brain heatmap).
-   *  Key steps:
-   *    1. scrollIntoView — ensures ResponsiveContainer measures real width
-   *    2. 350ms delay — lets the chart re-render at the correct size
-   *    3. Clone SVG with explicit dimensions + resolve currentColor
-   *    4. Serialize → canvas → PNG
-   */
-  async function captureElAsPng(el: HTMLElement): Promise<string | undefined> {
-    // Step 1: Bring element into viewport so SVG has real dimensions
-    el.scrollIntoView({ behavior: 'instant', block: 'center' })
-    await new Promise<void>(r => setTimeout(r, 350))
-
-    // Step 2: Find the largest SVG (the actual chart, not 12px icon SVGs)
-    const svgEls = Array.from(el.querySelectorAll('svg')) as SVGSVGElement[]
-    if (svgEls.length === 0) return undefined
-
-    const svgEl = svgEls.reduce((best, s) => {
-      const a = s.getBoundingClientRect()
-      const b = best.getBoundingClientRect()
-      return a.width * a.height > b.width * b.height ? s : best
-    })
-
-    const rect = svgEl.getBoundingClientRect()
-    const w = Math.round(rect.width)
-    const h = Math.round(rect.height)
-    if (w < 30 || h < 30) return undefined
-
-    try {
-      // Step 3: Clone with explicit size so it renders standalone
-      const clone = svgEl.cloneNode(true) as SVGSVGElement
-      clone.setAttribute('width', String(w))
-      clone.setAttribute('height', String(h))
-      clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
-      clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink')
-      clone.style.background = '#ffffff'
-
-      // Resolve currentColor so it survives serialization
-      const resolvedColor = window.getComputedStyle(svgEl).color || '#1E293B'
-      clone.querySelectorAll('[fill="currentColor"]').forEach(n => n.setAttribute('fill', resolvedColor))
-      clone.querySelectorAll('[stroke="currentColor"]').forEach(n => n.setAttribute('stroke', resolvedColor))
-
-      // Step 4: Serialize → Image → Canvas → PNG
-      const svgStr = new XMLSerializer().serializeToString(clone)
-      const svgDataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgStr)}`
-
-      return await new Promise<string>((resolve, reject) => {
-        const img = new Image()
-        img.onload = () => {
-          const canvas = document.createElement('canvas')
-          canvas.width = w * 2
-          canvas.height = h * 2
-          const ctx = canvas.getContext('2d')!
-          ctx.scale(2, 2)
-          ctx.fillStyle = '#ffffff'
-          ctx.fillRect(0, 0, w, h)
-          ctx.drawImage(img, 0, 0, w, h)
-          resolve(canvas.toDataURL('image/png'))
-        }
-        img.onerror = reject
-        img.src = svgDataUrl
-      })
-    } catch (e) {
-      console.error('[PDF Capture] SVG capture failed:', e)
-      return undefined
-    }
-  }
-
+  /* ─ PDF: generate via POST and open in browser tab (not download) ─ */
   const handleDownloadPDF = async () => {
     if (!report) return
     setIsDownloading(true)
     try {
-      const timelineEl = document.getElementById('ns-timeline-capture')
-      const heatmapEl  = document.getElementById('ns-heatmap-capture')
-
-      // Capture sequentially — parallel scrollIntoView calls cancel each other out
-      const timelineImage = timelineEl ? await captureElAsPng(timelineEl) : undefined
-      const heatmapImage  = heatmapEl  ? await captureElAsPng(heatmapEl)  : undefined
-
       const res = await fetch(`/api/reports/${report.id}/pdf`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ timelineImage, heatmapImage }),
+        body: '{}',
       })
-
       if (!res.ok) throw new Error('PDF generation failed')
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
+      // Open in browser tab so user can read / save as they prefer
       const a = document.createElement('a')
       a.href = url
-      a.download = `${(report.filename || 'report').replace(/\.edf$/i, '')}-report.pdf`
+      a.target = '_blank'
+      a.rel = 'noopener noreferrer'
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
-      URL.revokeObjectURL(url)
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
     } catch {
-      // Fallback: open GET route in new tab (logo + teal theme, no charts)
+      // Fallback: open GET route directly
       window.open(`/api/reports/${report.id}/pdf`, '_blank')
     } finally {
       setIsDownloading(false)

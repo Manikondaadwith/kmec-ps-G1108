@@ -249,6 +249,36 @@ function AnalysisCard({
   const isCompleted = status === 'completed'
   const isCompact = density === 'compact'
 
+  // Per-card PDF open state
+  const [pdfLoading, setPdfLoading] = useState(false)
+  const handleOpenPdf = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setPdfLoading(true)
+    try {
+      const res = await fetch(`/api/reports/${report.id}/pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      })
+      if (!res.ok) throw new Error('PDF failed')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      // Open in browser tab (not download)
+      const a = document.createElement('a')
+      a.href = url
+      a.target = '_blank'
+      a.rel = 'noopener noreferrer'
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch {
+      window.open(`/api/reports/${report.id}/pdf`, '_blank')
+    } finally {
+      setPdfLoading(false)
+    }
+  }
+
   // Only completed reports can be compared or have their report viewed
   const isSelectableInCompare = compareMode && isCompleted
 
@@ -564,16 +594,14 @@ function AnalysisCard({
                 </Link>
               )}
               {isCompleted && (
-                <a
-                  href={`/api/reports/${report.id}/pdf`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
+                <button
+                  onClick={handleOpenPdf}
+                  disabled={pdfLoading}
                   className="clinical-btn-outline"
-                  style={{ height: 32, padding: '0 14px', fontSize: 12, borderRadius: 6 }}
+                  style={{ height: 32, padding: '0 14px', fontSize: 12, borderRadius: 6, cursor: pdfLoading ? 'wait' : 'pointer' }}
                 >
-                  <IconDownload size={13} /> Download PDF
-                </a>
+                  {pdfLoading ? 'Generating…' : <><IconDownload size={13} />{' '}View PDF</>}
+                </button>
               )}
             </div>
           </div>
