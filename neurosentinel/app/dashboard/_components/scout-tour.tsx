@@ -15,6 +15,11 @@ const TOUR_STEPS = [
     message: "Here you can access your entire analysis history and track neurological results over time.",
   },
   {
+    route: '/dashboard/eeg-reports',
+    targetId: 'tour-step-compare',
+    message: "Use the Compare feature to select any two completed EEG reports side-by-side to track clinical progress, compare risk levels, and evaluate changes.",
+  },
+  {
     route: '/dashboard',
     targetId: 'tour-step-latest',
     message: "After processing, I automatically generate a highly structured clinical report equipped with insights for review.",

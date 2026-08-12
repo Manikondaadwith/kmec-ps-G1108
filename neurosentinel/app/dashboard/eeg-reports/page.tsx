@@ -973,6 +973,7 @@ export default function AnalysisHistoryPage() {
                 {/* Compare Toggle */}
                 <button
                   type="button"
+                  id="tour-step-compare"
                   onClick={() => compareMode ? exitCompareMode() : setCompareMode(true)}
                   style={{
                     height: 38,
