@@ -39,7 +39,7 @@ export async function POST(req: Request) {
     const recentHistory = messages
       .filter((m: any) => m?.role && typeof m?.content === 'string')
       .slice(-10)
-      .map((m: any) => ({ role: m.role as string, content: (m.content as string).slice(0, 2000) }))
+      .map((m: any) => ({ role: m.role as string, content: (m.content as string).slice(0, 8000) }))
 
     const backendResponse = await fetchBackend('/api/v1/scout/chat', {
       method: 'POST',
