@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
 import { createClient } from '@/lib/supabase/client'
@@ -161,6 +162,13 @@ const IconHistory = ({ size = 20, color = 'currentColor' }) => (
     <polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 .49-4.98" />
   </svg>
 )
+const IconCompare = ({ size = 14, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9 3H5a2 2 0 0 0-2 2v4" /><path d="M9 21H5a2 2 0 0 1-2-2v-4" />
+    <path d="M15 3h4a2 2 0 0 1 2 2v4" /><path d="M15 21h4a2 2 0 0 0 2-2v-4" />
+    <line x1="12" y1="8" x2="12" y2="16" /><line x1="8" y1="12" x2="16" y2="12" />
+  </svg>
+)
 
 /* ─────────────────────────────────────────────────────────────
    Skeleton loader for a single card
@@ -224,10 +232,16 @@ function AnalysisCard({
   report,
   density = 'comfortable',
   isAlternating = false,
+  compareMode = false,
+  isSelected = false,
+  onToggleSelect,
 }: {
   report: ReportRecord
   density?: 'comfortable' | 'compact'
   isAlternating?: boolean
+  compareMode?: boolean
+  isSelected?: boolean
+  onToggleSelect?: (id: string) => void
 }) {
   const status = normalizeReportStatus(report.status)
   const isFailed = status === 'failed'
@@ -249,24 +263,34 @@ function AnalysisCard({
 
   return (
     <article
+      onClick={compareMode ? () => onToggleSelect?.(report.id) : undefined}
       style={{
-        background: isFailed ? 'rgba(220, 38, 38, 0.02)' : isAlternating ? '#FAFBFC' : 'var(--bg-card)',
-        border: isFailed ? '1px solid rgba(220, 38, 38, 0.15)' : '1px solid var(--border-default)',
+        background: isSelected
+          ? 'rgba(16, 185, 129, 0.03)'
+          : isFailed ? 'rgba(220, 38, 38, 0.02)' : isAlternating ? '#FAFBFC' : 'var(--bg-card)',
+        border: isSelected
+          ? '1px solid var(--accent-primary)'
+          : isFailed ? '1px solid rgba(220, 38, 38, 0.15)' : '1px solid var(--border-default)',
         borderRadius: 'var(--radius-lg)',
-        boxShadow: 'var(--shadow-card)',
+        boxShadow: isSelected
+          ? '0 0 0 3px rgba(16, 185, 129, 0.12), var(--shadow-card)'
+          : 'var(--shadow-card)',
         padding: '0',
         overflow: 'hidden',
         transition: 'all 0.15s cubic-bezier(0.4, 0, 0.2, 1)',
         animation: 'clinicalFadeIn 0.35s ease forwards',
         position: 'relative',
         display: 'flex',
+        cursor: compareMode ? 'pointer' : 'default',
       }}
       onMouseEnter={(e) => {
+        if (isSelected) return
         const el = e.currentTarget as HTMLElement
         el.style.boxShadow = 'var(--shadow-card-hover)'
-        el.style.borderColor = isFailed ? 'rgba(220, 38, 38, 0.25)' : 'var(--border-strong)'
+        el.style.borderColor = isFailed ? 'rgba(220, 38, 38, 0.25)' : compareMode ? 'rgba(16, 185, 129, 0.4)' : 'var(--border-strong)'
       }}
       onMouseLeave={(e) => {
+        if (isSelected) return
         const el = e.currentTarget as HTMLElement
         el.style.boxShadow = 'var(--shadow-card)'
         el.style.borderColor = isFailed ? 'rgba(220, 38, 38, 0.15)' : 'var(--border-default)'
@@ -285,6 +309,36 @@ function AnalysisCard({
           opacity: isFailed ? 0.8 : 0.6,
         }}
       />
+
+      {/* ── Compare mode selection indicator ── */}
+      {compareMode && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            top: 14,
+            right: 14,
+            zIndex: 2,
+            width: 20,
+            height: 20,
+            borderRadius: '50%',
+            border: `2px solid ${isSelected ? 'var(--accent-primary)' : 'var(--border-strong)'}`,
+            background: isSelected ? 'var(--accent-primary)' : 'var(--bg-card)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'all 0.15s ease',
+            flexShrink: 0,
+            boxShadow: isSelected ? '0 0 0 3px rgba(16,185,129,0.15)' : 'none',
+          }}
+        >
+          {isSelected && (
+            <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+              <polyline points="2,6 5,9 10,3" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          )}
+        </div>
+      )}
 
       {/* ── Main Content Grid ── */}
       <div style={{ padding: isCompact ? '16px 20px 16px 24px' : '24px 28px 24px 32px', width: '100%' }}>
@@ -507,12 +561,33 @@ function AnalysisCard({
 ───────────────────────────────────────────────────────────── */
 export default function AnalysisHistoryPage() {
   const { currentAnalysis, abortAnalysis } = useAnalysis()
+  const router = useRouter()
   const [reports, setReports] = useState<ReportRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [dateFilter, setDateFilter] = useState('')
   const [density, setDensity] = useState<'comfortable' | 'compact'>('comfortable')
+  const [compareMode, setCompareMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
   const supabase = createClient()
+
+  const handleToggleSelect = useCallback((id: string) => {
+    setSelectedIds(prev => {
+      if (prev.includes(id)) return prev.filter(x => x !== id)
+      if (prev.length >= 2) return prev
+      return [...prev, id]
+    })
+  }, [])
+
+  const exitCompareMode = useCallback(() => {
+    setCompareMode(false)
+    setSelectedIds([])
+  }, [])
+
+  const handleCompare = useCallback(() => {
+    if (selectedIds.length !== 2) return
+    router.push(`/dashboard/eeg-reports/compare?a=${selectedIds[0]}&b=${selectedIds[1]}`)
+  }, [selectedIds, router])
 
   /* ── Initial fetch ── */
   useEffect(() => {
@@ -839,6 +914,31 @@ export default function AnalysisHistoryPage() {
                     </button>
                   ))}
                 </div>
+
+                {/* Compare Toggle */}
+                <button
+                  type="button"
+                  onClick={() => compareMode ? exitCompareMode() : setCompareMode(true)}
+                  style={{
+                    height: 38,
+                    padding: '0 16px',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    borderRadius: 'var(--radius-sm)',
+                    border: compareMode ? '1px solid var(--accent-primary)' : '1px solid var(--border-default)',
+                    background: compareMode ? 'var(--accent-primary-light)' : 'var(--bg-card)',
+                    color: compareMode ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    transition: 'all 0.15s ease',
+                    marginLeft: 4,
+                  }}
+                >
+                  <IconCompare size={13} color={compareMode ? 'var(--accent-primary)' : 'var(--text-secondary)'} />
+                  {compareMode ? 'Exit Compare' : 'Compare'}
+                </button>
               </div>
             </div>
           </section>
@@ -951,6 +1051,9 @@ export default function AnalysisHistoryPage() {
                           report={r}
                           density={density}
                           isAlternating={idx % 2 !== 0}
+                          compareMode={compareMode}
+                          isSelected={selectedIds.includes(r.id)}
+                          onToggleSelect={handleToggleSelect}
                         />
                       ))}
                     </div>
@@ -962,6 +1065,90 @@ export default function AnalysisHistoryPage() {
 
           {/* Bottom spacer */}
           <div style={{ height: 16 }} />
+
+          {/* ── Compare Mode Sticky Bar ── */}
+          {compareMode && (
+            <section
+              style={{
+                position: 'sticky',
+                bottom: currentAnalysis ? 108 : 24,
+                zIndex: 39,
+                background: 'var(--bg-card)',
+                border: `1px solid ${selectedIds.length === 2 ? 'var(--accent-primary)' : 'var(--border-default)'}`,
+                borderRadius: 'var(--radius-xl)',
+                padding: '16px 28px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 24,
+                boxShadow: selectedIds.length === 2
+                  ? '0 0 0 3px rgba(16,185,129,0.1), var(--shadow-lg)'
+                  : 'var(--shadow-lg)',
+                transition: 'all 0.2s ease',
+                marginTop: 8,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 'var(--radius-sm)',
+                    background: 'var(--accent-primary-light)',
+                    border: '1px solid rgba(16,185,129,0.2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  <IconCompare size={16} color="var(--accent-primary)" />
+                </div>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-heading)', lineHeight: 1.3 }}>
+                    {selectedIds.length === 0 && 'Select two reports to compare'}
+                    {selectedIds.length === 1 && '1 of 2 reports selected'}
+                    {selectedIds.length === 2 && '2 of 2 reports selected — ready to compare'}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                    Click any report card to select or deselect it
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={exitCompareMode}
+                  className="clinical-btn-secondary"
+                  style={{ height: 36, padding: '0 16px', fontSize: 12 }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCompare}
+                  disabled={selectedIds.length !== 2}
+                  className="clinical-btn-primary"
+                  style={{
+                    height: 36,
+                    padding: '0 18px',
+                    fontSize: 12,
+                    opacity: selectedIds.length !== 2 ? 0.45 : 1,
+                    cursor: selectedIds.length !== 2 ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  Compare Reports
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                    <polyline points="12 5 19 12 12 19" />
+                  </svg>
+                </button>
+              </div>
+            </section>
+          )}
 
           {/* ── Current Processing Panel (Bottom) ── */}
           {currentAnalysis && (
