@@ -249,6 +249,9 @@ function AnalysisCard({
   const isCompleted = status === 'completed'
   const isCompact = density === 'compact'
 
+  // Only completed reports can be compared or have their report viewed
+  const isSelectableInCompare = compareMode && isCompleted
+
   const { primary: primaryResult, secondary: secondaryResult, isSeizure } = getKeyResult(report)
 
   const confidenceDisplay = formatConfidence(report.confidence_score)
@@ -263,7 +266,7 @@ function AnalysisCard({
 
   return (
     <article
-      onClick={compareMode ? () => onToggleSelect?.(report.id) : undefined}
+      onClick={isSelectableInCompare ? () => onToggleSelect?.(report.id) : undefined}
       style={{
         background: isSelected
           ? 'rgba(16, 185, 129, 0.03)'
@@ -281,13 +284,14 @@ function AnalysisCard({
         animation: 'clinicalFadeIn 0.35s ease forwards',
         position: 'relative',
         display: 'flex',
-        cursor: compareMode ? 'pointer' : 'default',
+        cursor: isSelectableInCompare ? 'pointer' : compareMode && !isCompleted ? 'not-allowed' : 'default',
+        opacity: compareMode && !isCompleted ? 0.55 : 1,
       }}
       onMouseEnter={(e) => {
         if (isSelected) return
         const el = e.currentTarget as HTMLElement
         el.style.boxShadow = 'var(--shadow-card-hover)'
-        el.style.borderColor = isFailed ? 'rgba(220, 38, 38, 0.25)' : compareMode ? 'rgba(16, 185, 129, 0.4)' : 'var(--border-strong)'
+        el.style.borderColor = isFailed ? 'rgba(220, 38, 38, 0.25)' : isSelectableInCompare ? 'rgba(16, 185, 129, 0.4)' : 'var(--border-strong)'
       }}
       onMouseLeave={(e) => {
         if (isSelected) return
@@ -310,8 +314,8 @@ function AnalysisCard({
         }}
       />
 
-      {/* ── Compare mode selection indicator ── */}
-      {compareMode && (
+      {/* ── Compare mode selection indicator (only for completed reports) ── */}
+      {isSelectableInCompare && (
         <div
           aria-hidden="true"
           style={{
@@ -340,7 +344,28 @@ function AnalysisCard({
         </div>
       )}
 
-      {/* ── Main Content Grid ── */}
+      {/* ── Compare mode: unavailable label for non-completed ── */}
+      {compareMode && !isCompleted && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 10,
+            right: 12,
+            zIndex: 2,
+            fontSize: 9,
+            fontWeight: 700,
+            textTransform: 'uppercase',
+            letterSpacing: '0.06em',
+            color: 'var(--text-faint)',
+            background: 'var(--bg-inset)',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: 99,
+            padding: '2px 8px',
+          }}
+        >
+          Not available for comparison
+        </div>
+      )}
       <div style={{ padding: isCompact ? '16px 20px 16px 24px' : '24px 28px 24px 32px', width: '100%' }}>
         <div
           style={{
@@ -528,14 +553,16 @@ function AnalysisCard({
                   <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 500 }}>Processing…</span>
                 </div>
               )}
-              <Link
-                href={`/report/${report.id}`}
-                className="clinical-btn-primary"
-                onClick={(e) => e.stopPropagation()}
-                style={{ height: 32, padding: '0 14px', fontSize: 12, borderRadius: 6 }}
-              >
-                <IconReport size={13} /> View Report
-              </Link>
+              {isCompleted && (
+                <Link
+                  href={`/report/${report.id}`}
+                  className="clinical-btn-primary"
+                  onClick={(e) => e.stopPropagation()}
+                  style={{ height: 32, padding: '0 14px', fontSize: 12, borderRadius: 6 }}
+                >
+                  <IconReport size={13} /> View Report
+                </Link>
+              )}
               {isCompleted && (
                 <a
                   href={`/api/reports/${report.id}/pdf`}
@@ -1071,28 +1098,28 @@ export default function AnalysisHistoryPage() {
             <section
               style={{
                 position: 'sticky',
-                bottom: currentAnalysis ? 108 : 24,
+                bottom: currentAnalysis ? 108 : 20,
                 zIndex: 39,
                 background: 'var(--bg-card)',
                 border: `1px solid ${selectedIds.length === 2 ? 'var(--accent-primary)' : 'var(--border-default)'}`,
                 borderRadius: 'var(--radius-xl)',
-                padding: '16px 28px',
+                padding: '12px 20px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                gap: 24,
+                gap: 20,
                 boxShadow: selectedIds.length === 2
                   ? '0 0 0 3px rgba(16,185,129,0.1), var(--shadow-lg)'
                   : 'var(--shadow-lg)',
-                transition: 'all 0.2s ease',
+                transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
                 marginTop: 8,
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <div
                   style={{
-                    width: 36,
-                    height: 36,
+                    width: 32,
+                    height: 32,
                     borderRadius: 'var(--radius-sm)',
                     background: 'var(--accent-primary-light)',
                     border: '1px solid rgba(16,185,129,0.2)',
@@ -1102,16 +1129,16 @@ export default function AnalysisHistoryPage() {
                     flexShrink: 0,
                   }}
                 >
-                  <IconCompare size={16} color="var(--accent-primary)" />
+                  <IconCompare size={15} color="var(--accent-primary)" />
                 </div>
                 <div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-heading)', lineHeight: 1.3 }}>
-                    {selectedIds.length === 0 && 'Select two reports to compare'}
-                    {selectedIds.length === 1 && '1 of 2 reports selected'}
-                    {selectedIds.length === 2 && '2 of 2 reports selected — ready to compare'}
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-heading)', lineHeight: 1.25 }}>
+                    {selectedIds.length === 0 && 'Select two completed reports'}
+                    {selectedIds.length === 1 && '1 of 2 selected'}
+                    {selectedIds.length === 2 && 'Ready to compare'}
                   </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                    Click any report card to select or deselect it
+                  <div style={{ fontSize: 10, color: 'var(--text-faint)', marginTop: 1, fontWeight: 500 }}>
+                    {selectedIds.length === 2 ? '2 of 2 reports selected' : 'Click a report card to select'}
                   </div>
                 </div>
               </div>
@@ -1120,7 +1147,7 @@ export default function AnalysisHistoryPage() {
                   type="button"
                   onClick={exitCompareMode}
                   className="clinical-btn-secondary"
-                  style={{ height: 36, padding: '0 16px', fontSize: 12 }}
+                  style={{ height: 32, padding: '0 14px', fontSize: 12 }}
                 >
                   Cancel
                 </button>
@@ -1130,20 +1157,19 @@ export default function AnalysisHistoryPage() {
                   disabled={selectedIds.length !== 2}
                   className="clinical-btn-primary"
                   style={{
-                    height: 36,
-                    padding: '0 18px',
+                    height: 32,
+                    padding: '0 16px',
                     fontSize: 12,
-                    opacity: selectedIds.length !== 2 ? 0.45 : 1,
+                    opacity: selectedIds.length !== 2 ? 0.4 : 1,
                     cursor: selectedIds.length !== 2 ? 'not-allowed' : 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 6,
+                    gap: 5,
                   }}
                 >
                   Compare Reports
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                    <line x1="5" y1="12" x2="19" y2="12" />
-                    <polyline points="12 5 19 12 12 19" />
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />
                   </svg>
                 </button>
               </div>
