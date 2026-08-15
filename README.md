@@ -1,5 +1,5 @@
 ---
-title: NeuroSentinel Backend
+title: NeuroSentinel AI Backend
 emoji: 🧠
 colorFrom: blue
 colorTo: green
