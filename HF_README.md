@@ -9,12 +9,12 @@ pinned: false
 
 # NeuroSentinel AI — Backend API
 
-FastAPI backend powering the NeuroSentinel clinical EEG analysis platform.
+FastAPI backend powering the NeuroSentinel AI clinical EEG analysis platform.
 
 ## What it does
 
 - Accepts EDF (EEG) file uploads via `POST /api/v1/analyze`
-- Runs the NeuroSentinel ML pipeline (preprocessing → inference → explainability → report)
+- Runs the NeuroSentinel AI ML pipeline (preprocessing → inference → explainability → report)
 - Writes structured reports to Supabase
 - Serves job status via `GET /api/v1/job-status/{report_id}`
 - Sends email notifications on completion via SendGrid
@@ -40,4 +40,4 @@ Set the following environment variables in the HF Space settings:
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key |
 | `SENDGRID_API_KEY` | SendGrid API key for email reports |
 | `GOOGLE_API_KEY` | Gemini API key for SCOUT assistant |
-| `FRONTEND_URL` | URL of the NeuroSentinel frontend |
+| `FRONTEND_URL` | URL of the NeuroSentinel AI frontend |
