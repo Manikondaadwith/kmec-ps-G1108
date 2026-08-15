@@ -1218,10 +1218,10 @@ def _deterministic_fallback(context: ScoutContext, user_profile: dict[str, Any] 
             return f"\"{filename}\" is currently in \"{status}\" state."
 
     if any(term in query for term in ["diagnose", "treat", "medication", "prescribe"]):
-        return "I can explain NeuroSentinel results and provide general health guidance, but I cannot diagnose, prescribe, or recommend specific treatment changes. Please consult your healthcare provider."
+        return "I can explain NeuroSentinel AI results and provide general health guidance, but I cannot diagnose, prescribe, or recommend specific treatment changes. Please consult your healthcare provider."
 
     if any(term in query for term in ["upload", "start", "tour", "dashboard"]) and not active_analysis:
-        return "Start on the dashboard, upload an EDF file, and NeuroSentinel will create a pending report immediately while the backend analyzes the recording asynchronously."
+        return "Start on the dashboard, upload an EDF file, and NeuroSentinel AI will create a pending report immediately while the backend analyzes the recording asynchronously."
 
     # Past results / history queries
     if any(term in query for term in ["past", "history", "previous", "old report", "my results", "my reports", "trend"]):
@@ -1528,7 +1528,7 @@ class ScoutService:
                 "- Compare trends across reports: 'Your last 3 reports all showed no seizure activity — that's a positive trend.'\n"
                 "- If seizures were detected, explain what brain regions were involved and what that might mean in simple terms.\n"
                 "- Be proactive: if the user has a high-risk report, gently recommend urgent follow-up.\n"
-                "- You are this patient's trusted health companion inside NeuroSentinel. Be supportive, knowledgeable, and actionable."
+                "- You are this patient's trusted health companion inside NeuroSentinel AI. Be supportive, knowledgeable, and actionable."
             ),
             "clinician": (
                 "CLINICIAN INTELLIGENCE RULES:\n"

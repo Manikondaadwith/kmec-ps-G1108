@@ -64,7 +64,7 @@ const sections: Section[] = [
   },
   {
     title: '7. Uploaded Files and Analysis',
-    body: 'Uploaded EDF files are processed by the NeuroSentinel backend to perform EEG preprocessing, model inference, quality assessment, explainability analysis, and report generation. Uploads are subject to a maximum file size of 1 GB. Analysis may produce stored reports, metrics, summaries, and generated PDF reports associated with your account.',
+    body: 'Uploaded EDF files are processed by NeuroSentinel AI to perform EEG preprocessing, model inference, quality assessment, explainability analysis, and report generation. Uploads are subject to a maximum file size of 1 GB. Analysis may produce stored reports, metrics, summaries, and generated PDF reports associated with your account.',
   },
   {
     title: '8. Reports and Results',

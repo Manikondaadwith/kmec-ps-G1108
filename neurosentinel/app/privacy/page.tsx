@@ -67,7 +67,7 @@ const sections: Section[] = [
   },
   {
     title: '3. How EEG Files Are Processed',
-    body: 'When you upload an EDF recording, the file is streamed to the NeuroSentinel backend for processing. The current backend processes uploaded files through preprocessing, chunked inference, quality assessment, explainability analysis, report generation, and database updates. Temporary processing files may exist on backend infrastructure during analysis.',
+    body: 'When you upload an EDF recording, the file is securely streamed to NeuroSentinel AI for processing. The platform processes uploaded files through preprocessing, chunked inference, quality assessment, explainability analysis, report generation, and database updates. Temporary processing files may exist on backend infrastructure during analysis.',
   },
   {
     title: '4. Stored Reports and Files',
