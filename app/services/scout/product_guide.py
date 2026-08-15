@@ -12,15 +12,15 @@ PRODUCT_SNIPPETS = {
     },
     "workflow": {
         "title": "Core workflow",
-        "body": "Users sign in with Supabase auth, land on the dashboard, upload EDF files, track pending or processing reports, then open completed reports for the full structured explanation.",
+        "body": "Users sign in, land on the dashboard, upload EDF files, track pending or processing reports, then open completed reports for the full structured explanation.",
     },
     "upload": {
         "title": "Upload behavior",
-        "body": "The frontend creates a pending report immediately, uploads the EDF into Supabase Storage, then asks the FastAPI backend to analyze the stored file asynchronously.",
+        "body": "When a file is uploaded, the platform creates a pending report immediately, transfers the EDF securely to the analysis server, and begins asynchronous processing. The user can navigate away and the report will be ready when processing completes.",
     },
     "reports": {
         "title": "Report behavior",
-        "body": "The canonical analysis record lives in the reports table. The full report_json stores notebook-derived outputs, while summary fields keep the dashboard and reports list fast to render.",
+        "body": "The canonical analysis record stores the full structured report output including events, probability summaries, channel importance, and region mappings. Summary fields keep the dashboard and report list fast to render.",
     },
     "model": {
         "title": "Model facts",
