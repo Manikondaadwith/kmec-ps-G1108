@@ -8,6 +8,7 @@ const LOGO_URL = `${APP_URL}/logo.jpeg`
 
 /** Shared table-based email template matching the NeuroSentinel clinical teal design */
 function buildEmailHtml({ headline, bodyHtml, footerNote }: { headline: string; bodyHtml: string; footerNote?: string }) {
+  const appUrl = APP_URL
   return `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8" /><title>NeuroSentinel AI</title></head>
@@ -21,7 +22,7 @@ function buildEmailHtml({ headline, bodyHtml, footerNote }: { headline: string; 
         <table cellpadding="0" cellspacing="0" border="0">
           <tr>
             <td style="vertical-align:middle;padding-right:10px">
-              <img src="${LOGO_URL}" width="30" height="30" alt="" style="display:block;border-radius:6px;border:0" />
+              <img src="${LOGO_URL}" width="30" height="30" alt="NeuroSentinel AI" style="display:block;border-radius:6px;border:0" />
             </td>
             <td style="vertical-align:middle">
               <span style="font-family:Arial,Helvetica,sans-serif;font-size:17px;font-weight:700;color:#FFFFFF;line-height:1">${headline}</span>
@@ -41,7 +42,16 @@ function buildEmailHtml({ headline, bodyHtml, footerNote }: { headline: string; 
     <!-- FOOTER -->
     <tr>
       <td style="background:#EAF9F8;padding:14px 24px;border-top:1px solid #CCFBF1">
-        <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#64748B">${footerNote ?? 'NeuroSentinel AI &mdash; AI-Powered EEG Seizure Detection Platform'}</p>
+        <p style="margin:0 0 6px;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#64748B">
+          ${footerNote ?? 'NeuroSentinel AI &mdash; AI-Powered EEG Seizure Detection Platform'}
+        </p>
+        <p style="margin:0 0 4px;font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#94A3B8">
+          Keshav Memorial Engineering College, Narayanaguda, Hyderabad, Telangana 500029, India
+        </p>
+        <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#94A3B8">
+          This is a transactional email sent because you requested it. You cannot unsubscribe from security emails.
+          &bull; <a href="${appUrl}" style="color:#14B8A6;text-decoration:none">Visit NeuroSentinel AI</a>
+        </p>
       </td>
     </tr>
   </table>
@@ -117,9 +127,12 @@ async function sendEmailViaBackend({
 }): Promise<void> {
 
   // ── Tier 1: Gmail SMTP directly from Vercel via nodemailer ──────────────────
+  // Gmail's SMTP servers automatically add SPF + DKIM for @gmail.com senders.
+  // Use a dedicated Gmail (e.g. neurosentinelai.noreply@gmail.com), not a personal one.
   const smtpUser = process.env.SMTP_USER
   const smtpPass = process.env.SMTP_PASSWORD
   const smtpFrom = process.env.SMTP_FROM_EMAIL ?? smtpUser
+  const smtpFromName = process.env.SMTP_FROM_NAME ?? 'NeuroSentinel AI'
 
   if (smtpUser && smtpPass) {
     const nodemailer = await import('nodemailer')
@@ -130,20 +143,28 @@ async function sendEmailViaBackend({
       auth: { user: smtpUser, pass: smtpPass.replace(/\s/g, '') },
     })
     await transporter.sendMail({
-      from: `NeuroSentinel AI <${smtpFrom}>`,
+      from: `"${smtpFromName}" <${smtpFrom}>`,
       to,
       subject,
       html,
       text: text || undefined,
+      // List-Unsubscribe: Gmail reads this header natively and shows an unsubscribe button.
+      // For transactional/security emails this points back to the app (not a bulk list).
+      headers: {
+        'List-Unsubscribe': `<mailto:${smtpFrom}?subject=Unsubscribe>, <${APP_URL}>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        'X-Mailer': 'NeuroSentinel AI Mailer',
+        'X-Entity-Ref-ID': `neurosentinelai-${Date.now()}`,
+      },
     })
     return
   }
 
-  // ── Tier 2: Brevo (free, no domain needed — just verify your Gmail) ──────────
+  // ── Tier 2: Brevo (free, no domain needed — just verify your Gmail as sender) ─
   const brevoKey = process.env.BREVO_API_KEY
   if (brevoKey) {
-    const fromEmail = process.env.BREVO_FROM_EMAIL ?? 'noreply@neurosentinel.app'
-    const fromName  = process.env.BREVO_FROM_NAME  ?? 'NeuroSentinel AI'
+    const fromEmail = process.env.BREVO_FROM_EMAIL ?? smtpUser ?? 'noreply@gmail.com'
+    const fromName  = process.env.BREVO_FROM_NAME  ?? process.env.SMTP_FROM_NAME ?? 'NeuroSentinel AI'
 
     const res = await fetch('https://api.brevo.com/v3/smtp/email', {
       method: 'POST',
@@ -154,6 +175,10 @@ async function sendEmailViaBackend({
         subject,
         htmlContent: html,
         textContent: text,
+        headers: {
+          'List-Unsubscribe': `<${APP_URL}>`,
+          'X-Mailer': 'NeuroSentinel AI Mailer',
+        },
       }),
       signal: AbortSignal.timeout(15000),
     }).catch((err: unknown) => {
@@ -262,8 +287,20 @@ export async function sendSignupOtp(email: string) {
 
   await sendEmailViaBackend({
     to: normalizedEmail,
-    subject: 'Your NeuroSentinel AI verification code',
-    text: `Your NeuroSentinel AI verification code is ${otp}. It expires in 10 minutes.`,
+    subject: 'NeuroSentinel AI – Your verification code',
+    text: [
+      'NeuroSentinel AI – Account Verification',
+      '',
+      `Your verification code is: ${otp}`,
+      'This code expires in 10 minutes.',
+      '',
+      'If you did not request this, you can safely ignore this email.',
+      '',
+      '--',
+      'NeuroSentinel AI – AI-Powered EEG Seizure Detection',
+      'Keshav Memorial Engineering College, Hyderabad, Telangana 500029, India',
+      APP_URL,
+    ].join('\n'),
     html: buildEmailHtml({
       headline: 'NeuroSentinel AI',
       bodyHtml: `
@@ -272,8 +309,9 @@ export async function sendSignupOtp(email: string) {
         <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td align="center" style="padding-bottom:22px">
           <div style="display:inline-block;background:#0A4455;border-radius:12px;padding:16px 32px;font-family:Arial,Helvetica,sans-serif;font-size:34px;font-weight:700;letter-spacing:12px;color:#FFFFFF">${otp}</div>
         </td></tr></table>
-        <p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#94A3B8;margin:0">If you did not request this code, you can safely ignore this email.</p>
+        <p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#94A3B8;margin:0">If you did not request this code, you can safely ignore this email. No action is needed.</p>
       `,
+      footerNote: 'NeuroSentinel AI &mdash; This is a transactional security email. You received it because you signed up at neuro-sentinel-ai-6vfv.vercel.app.',
     }),
   })
 
@@ -343,8 +381,20 @@ export async function sendResetPasswordOtp(email: string) {
 
   await sendEmailViaBackend({
     to: normalizedEmail,
-    subject: 'Your NeuroSentinel AI password reset code',
-    text: `Your NeuroSentinel AI password reset code is ${otp}. It expires in 10 minutes.`,
+    subject: 'NeuroSentinel AI – Password reset code',
+    text: [
+      'NeuroSentinel AI – Password Reset',
+      '',
+      `Your password reset code is: ${otp}`,
+      'This code expires in 10 minutes.',
+      '',
+      'If you did not request a password reset, ignore this email. Your account remains secure.',
+      '',
+      '--',
+      'NeuroSentinel AI – AI-Powered EEG Seizure Detection',
+      'Keshav Memorial Engineering College, Hyderabad, Telangana 500029, India',
+      APP_URL,
+    ].join('\n'),
     html: buildEmailHtml({
       headline: 'NeuroSentinel AI',
       bodyHtml: `
@@ -355,7 +405,7 @@ export async function sendResetPasswordOtp(email: string) {
         </td></tr></table>
         <p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#94A3B8;margin:0">If you did not request a password reset, you can safely ignore this email. Your account remains secure.</p>
       `,
-      footerNote: 'NeuroSentinel AI &mdash; AI-Powered EEG Seizure Detection Platform &bull; This is an automated security email.',
+      footerNote: 'NeuroSentinel AI &mdash; This is an automated security email sent because a password reset was requested for your account.',
     }),
   })
 
