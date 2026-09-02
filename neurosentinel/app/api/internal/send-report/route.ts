@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
       '',
       '--',
       'NeuroSentinel AI — AI-Powered EEG Seizure Detection',
-      'Keshav Memorial Engineering College, Narayanaguda, Hyderabad, Telangana 500029, India',
+      'Champapet, Hyderabad, Telangana 500079, India',
       APP_URL,
     ].join('\n')
 

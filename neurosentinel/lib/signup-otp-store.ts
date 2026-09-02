@@ -46,7 +46,7 @@ function buildEmailHtml({ headline, bodyHtml, footerNote }: { headline: string; 
           ${footerNote ?? 'NeuroSentinel AI &mdash; AI-Powered EEG Seizure Detection Platform'}
         </p>
         <p style="margin:0 0 4px;font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#94A3B8">
-          Keshav Memorial Engineering College, Narayanaguda, Hyderabad, Telangana 500029, India
+          Champapet, Hyderabad, Telangana 500079, India
         </p>
         <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#94A3B8">
           This is a transactional email sent because you requested it. You cannot unsubscribe from security emails.
@@ -298,7 +298,7 @@ export async function sendSignupOtp(email: string) {
       '',
       '--',
       'NeuroSentinel AI – AI-Powered EEG Seizure Detection',
-      'Keshav Memorial Engineering College, Hyderabad, Telangana 500029, India',
+      'Champapet, Hyderabad, Telangana 500079, India',
       APP_URL,
     ].join('\n'),
     html: buildEmailHtml({
@@ -392,7 +392,7 @@ export async function sendResetPasswordOtp(email: string) {
       '',
       '--',
       'NeuroSentinel AI – AI-Powered EEG Seizure Detection',
-      'Keshav Memorial Engineering College, Hyderabad, Telangana 500029, India',
+      'Champapet, Hyderabad, Telangana 500079, India',
       APP_URL,
     ].join('\n'),
     html: buildEmailHtml({
