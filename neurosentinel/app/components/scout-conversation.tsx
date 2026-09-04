@@ -76,19 +76,24 @@ export function ScoutConversation({
     return () => clearTimeout(timer)
   }, [])
 
-  // Auto-send logic for summary
-  const didAutoSend = useRef<string | null>(null)
+  // Auto-send logic: fires once when the conversation is fully settled (not loading, only
+  // the seed greeting exists). This is more reliable than a fixed 600ms timer because it
+  // waits for the provider's conversation state to be ready before sending.
+  const autoSentRef = useRef(false)
   useEffect(() => {
     if (!autoPrompt?.content) return
-    const key = reportId ?? currentReport?.id ?? 'none'
-    if (didAutoSend.current === key) return
-    
-    const timer = setTimeout(() => {
-      didAutoSend.current = key
-      sendMessageRef.current(autoPrompt.content, true)
-    }, 600)
-    return () => clearTimeout(timer)
-  }, [autoPrompt?.content, reportId, currentReport?.id])
+    if (autoSentRef.current) return               // already sent — never fire twice
+    if (loading) return                            // wait until provider is not busy
+    if (messages.length > 1) {
+      // Conversation already has a response (session restore or prior auto-send)
+      autoSentRef.current = true
+      return
+    }
+    // Conversation is ready: only the seed greeting is present, nothing in-flight
+    autoSentRef.current = true
+    sendMessageRef.current(autoPrompt.content, true)
+  }, [autoPrompt?.content, loading, messages.length])
+
 
   const handleSend = (text: string) => {
     const trimmed = text.trim()
